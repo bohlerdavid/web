@@ -200,8 +200,20 @@
     {% endif %}
 </div>
 
+<style>
+.tc-drag-over { border-left: 3px solid var(--accent) !important; }
+th[draggable] { cursor: grab; user-select: none; }
+th[draggable]:active { cursor: grabbing; }
+th[draggable] .drag-handle {
+    opacity: 0; font-size: .7rem; color: #94a3b8;
+    transition: opacity .15s; margin-left: 4px;
+}
+th[draggable]:hover .drag-handle { opacity: 1; }
+</style>
+
 <script>
-const STORAGE_KEY = 'devices_visible_cols';
+const STORAGE_KEY     = 'devices_visible_cols';
+const STORAGE_ORDER   = 'devices_col_order';
 
 const COLUMNS = [
     { id: 'name',         label: 'Name',           locked: true,  defaultOn: true  },
@@ -221,44 +233,127 @@ const COLUMNS = [
     { id: 'actions',      label: 'Aktionen',        locked: true,  defaultOn: true  },
 ];
 
+/* ── Visibility ── */
 function getVisibleCols() {
     try {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) return JSON.parse(stored);
+        const s = localStorage.getItem(STORAGE_KEY);
+        if (s) return JSON.parse(s);
     } catch(e) {}
-    // Default
     const def = {};
     COLUMNS.forEach(c => def[c.id] = c.defaultOn);
     return def;
 }
-
-function saveVisibleCols(state) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-}
+function saveVisibleCols(state) { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
 
 function applyVisibility(state) {
     COLUMNS.forEach(col => {
         const visible = col.locked ? true : (state[col.id] !== false);
-        const els = document.querySelectorAll('.tc-' + col.id);
-        els.forEach(el => {
+        document.querySelectorAll('.tc-' + col.id).forEach(el => {
             el.style.display = visible ? '' : 'none';
         });
     });
 }
 
+/* ── Column order ── */
+function getColOrder() {
+    try {
+        const s = localStorage.getItem(STORAGE_ORDER);
+        if (s) {
+            const saved = JSON.parse(s);
+            // Merge: keep saved order, append any new columns at end
+            const all = COLUMNS.map(c => c.id);
+            const merged = saved.filter(id => all.includes(id));
+            all.forEach(id => { if (!merged.includes(id)) merged.push(id); });
+            return merged;
+        }
+    } catch(e) {}
+    return COLUMNS.map(c => c.id);
+}
+function saveColOrder(order) { localStorage.setItem(STORAGE_ORDER, JSON.stringify(order)); }
+
+function applyOrder(order) {
+    const table = document.getElementById('devicesTable');
+    if (!table) return;
+    const rows = table.querySelectorAll('tr');
+    rows.forEach(row => {
+        order.forEach(colId => {
+            const cell = row.querySelector('.tc-' + colId);
+            if (cell) row.appendChild(cell);
+        });
+    });
+}
+
+/* ── Drag & Drop ── */
+let dragSrcId = null;
+
+function initDragDrop() {
+    const ths = document.querySelectorAll('#devicesTable thead th[draggable]');
+    ths.forEach(th => {
+        th.addEventListener('dragstart', e => {
+            dragSrcId = th.dataset.col;
+            e.dataTransfer.effectAllowed = 'move';
+            th.style.opacity = '0.5';
+        });
+        th.addEventListener('dragend', () => {
+            th.style.opacity = '';
+            document.querySelectorAll('.tc-drag-over').forEach(el => el.classList.remove('tc-drag-over'));
+        });
+        th.addEventListener('dragover', e => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            document.querySelectorAll('.tc-drag-over').forEach(el => el.classList.remove('tc-drag-over'));
+            th.classList.add('tc-drag-over');
+        });
+        th.addEventListener('dragleave', () => th.classList.remove('tc-drag-over'));
+        th.addEventListener('drop', e => {
+            e.preventDefault();
+            const targetId = th.dataset.col;
+            if (!dragSrcId || dragSrcId === targetId) return;
+
+            // Reorder in saved order array
+            const order = getColOrder();
+            const fromIdx = order.indexOf(dragSrcId);
+            const toIdx   = order.indexOf(targetId);
+            if (fromIdx === -1 || toIdx === -1) return;
+            order.splice(fromIdx, 1);
+            order.splice(toIdx, 0, dragSrcId);
+
+            saveColOrder(order);
+            applyOrder(order);
+            applyVisibility(getVisibleCols());
+            buildChecklist(getVisibleCols()); // refresh checklist order too
+            th.classList.remove('tc-drag-over');
+        });
+    });
+}
+
+function makeThsDraggable() {
+    document.querySelectorAll('#devicesTable thead th').forEach(th => {
+        const colId = th.className.match(/tc-(\S+)/)?.[1];
+        if (!colId) return;
+        th.setAttribute('draggable', 'true');
+        th.dataset.col = colId;
+        // Add subtle handle icon if not already there
+        if (!th.querySelector('.drag-handle')) {
+            th.innerHTML += '<i class="bi bi-grip-vertical drag-handle"></i>';
+        }
+    });
+}
+
+/* ── Checklist (respects current order) ── */
 function buildChecklist(state) {
+    const order = getColOrder();
     const container = document.getElementById('colChecklist');
     container.innerHTML = '';
-    COLUMNS.forEach(col => {
-        if (col.locked) return; // don't show locked columns in picker
+    order.forEach(colId => {
+        const col = COLUMNS.find(c => c.id === colId);
+        if (!col || col.locked) return;
         const checked = state[col.id] !== false;
         const div = document.createElement('div');
         div.className = 'form-check mb-1';
         div.innerHTML = `
-            <input class="form-check-input" type="checkbox" id="col_${col.id}"
-                   ${checked ? 'checked' : ''}>
-            <label class="form-check-label" for="col_${col.id}"
-                   style="font-size:.87rem;cursor:pointer;">
+            <input class="form-check-input" type="checkbox" id="col_${col.id}" ${checked ? 'checked' : ''}>
+            <label class="form-check-label" for="col_${col.id}" style="font-size:.87rem;cursor:pointer;">
                 ${col.label}
             </label>`;
         div.querySelector('input').addEventListener('change', function() {
@@ -271,18 +366,22 @@ function buildChecklist(state) {
     });
 }
 
+/* ── Reset ── */
 function resetColumns() {
     localStorage.removeItem(STORAGE_KEY);
-    const state = getVisibleCols();
-    buildChecklist(state);
-    applyVisibility(state);
+    localStorage.removeItem(STORAGE_ORDER);
+    location.reload();
 }
 
-// Init on page load
+/* ── Init ── */
 (function() {
+    makeThsDraggable();
+    const order = getColOrder();
+    applyOrder(order);
     const state = getVisibleCols();
     buildChecklist(state);
     applyVisibility(state);
+    initDragDrop();
 })();
 </script>
 {% endblock %}
