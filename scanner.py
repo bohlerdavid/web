@@ -496,3 +496,202 @@ def get_scan_state():
     """Return a thread-safe copy of scan_state."""
     with scan_lock:
         return dict(scan_state)
+
+
+# ---------------------------------------------------------------------------
+# Hardware query functions
+# ---------------------------------------------------------------------------
+
+def query_hardware_wmi(ip, username=None, password=None, domain=''):
+    """
+    Query hardware info from a Windows machine via WMI.
+    If username is None, tries current Windows session (NTLM passthrough).
+    Returns dict with keys: cpu, cpu_cores, ram_gb, disks, manufacturer, model,
+                            serial, os_caption, os_build, last_boot, method, error
+    """
+    try:
+        import wmi
+
+        connect_kwargs = {'computer': ip}
+        if username:
+            connect_kwargs['user'] = f'{domain}\\{username}' if domain else username
+            connect_kwargs['password'] = password
+
+        c = wmi.WMI(**connect_kwargs)
+        result = {'method': 'wmi', 'error': None}
+
+        # CPU
+        try:
+            cpus = c.Win32_Processor()
+            if cpus:
+                result['cpu'] = cpus[0].Name.strip()
+                result['cpu_cores'] = cpus[0].NumberOfCores
+                result['cpu_threads'] = cpus[0].NumberOfLogicalProcessors
+        except: pass
+
+        # RAM
+        try:
+            cs = c.Win32_ComputerSystem()
+            if cs:
+                result['ram_gb'] = round(int(cs[0].TotalPhysicalMemory) / (1024**3), 1)
+                result['manufacturer'] = cs[0].Manufacturer.strip()
+                result['model'] = cs[0].Model.strip()
+        except: pass
+
+        # Disks
+        try:
+            disks = []
+            for disk in c.Win32_DiskDrive():
+                size_gb = round(int(disk.Size) / (1024**3), 1) if disk.Size else 0
+                disks.append(f'{disk.Model.strip()} ({size_gb} GB)')
+            result['disks'] = ' | '.join(disks)
+        except: pass
+
+        # BIOS / Serial
+        try:
+            bios = c.Win32_BIOS()
+            if bios:
+                result['serial'] = bios[0].SerialNumber.strip()
+        except: pass
+
+        # OS
+        try:
+            os_list = c.Win32_OperatingSystem()
+            if os_list:
+                result['os_caption'] = os_list[0].Caption.strip()
+                result['os_build'] = os_list[0].BuildNumber
+                lb = os_list[0].LastBootUpTime
+                if lb:
+                    result['last_boot'] = lb[:4]+'-'+lb[4:6]+'-'+lb[6:8]+' '+lb[8:10]+':'+lb[10:12]
+        except: pass
+
+        return result
+
+    except ImportError:
+        return {'error': 'wmi_not_installed', 'method': 'wmi'}
+    except Exception as e:
+        err = str(e)
+        if 'Access denied' in err or '0x80070005' in err:
+            return {'error': 'access_denied', 'method': 'wmi'}
+        elif 'RPC' in err or 'connect' in err.lower() or '0x800706ba' in err:
+            return {'error': 'unreachable', 'method': 'wmi'}
+        return {'error': err[:200], 'method': 'wmi'}
+
+
+def query_hardware_ssh(ip, username, password, port=22):
+    """Query hardware info from a Linux/Mac machine via SSH."""
+    try:
+        import paramiko
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh.connect(ip, port=port, username=username, password=password, timeout=10)
+
+        result = {'method': 'ssh', 'error': None}
+
+        def run(cmd):
+            _, stdout, _ = ssh.exec_command(cmd, timeout=10)
+            return stdout.read().decode('utf-8', errors='ignore').strip()
+
+        # CPU
+        cpu = run("lscpu | grep 'Model name' | sed 's/.*: *//'")
+        if not cpu:
+            cpu = run("sysctl -n machdep.cpu.brand_string 2>/dev/null")  # macOS
+        if cpu: result['cpu'] = cpu
+
+        cores = run("nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null")
+        if cores:
+            try:
+                result['cpu_cores'] = int(cores)
+            except ValueError:
+                pass
+
+        # RAM
+        ram = run("free -b | awk '/Mem:/ {print $2}'")
+        if not ram:
+            ram = run("sysctl -n hw.memsize 2>/dev/null")  # macOS
+        if ram:
+            try:
+                result['ram_gb'] = round(int(ram) / (1024**3), 1)
+            except ValueError:
+                pass
+
+        # Disks
+        disks = run("lsblk -d -o NAME,SIZE,MODEL --noheadings 2>/dev/null | head -5")
+        if disks: result['disks'] = disks.replace('\n', ' | ')
+
+        # OS
+        os_info = run("cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | cut -d= -f2 | tr -d '\"'")
+        if not os_info:
+            os_info = run("sw_vers -productVersion 2>/dev/null")  # macOS
+        if os_info: result['os_caption'] = os_info
+
+        # Serial / Model
+        serial = run("sudo dmidecode -s system-serial-number 2>/dev/null || cat /sys/class/dmi/id/product_serial 2>/dev/null")
+        if serial and 'Permission' not in serial: result['serial'] = serial
+
+        model = run("sudo dmidecode -s system-product-name 2>/dev/null || cat /sys/class/dmi/id/product_name 2>/dev/null")
+        if model: result['model'] = model
+
+        # Last boot
+        last_boot = run("uptime -s 2>/dev/null")
+        if last_boot: result['last_boot'] = last_boot
+
+        ssh.close()
+        return result
+
+    except ImportError:
+        return {'error': 'paramiko_not_installed', 'method': 'ssh'}
+    except Exception as e:
+        err = str(e)
+        if 'Authentication' in err:
+            return {'error': 'access_denied', 'method': 'ssh'}
+        return {'error': err[:200], 'method': 'ssh'}
+
+
+def get_smb_info(ip):
+    """Use nmap NSE scripts to get hostname, OS, domain via SMB (no credentials)."""
+    try:
+        import nmap
+        nm = nmap.PortScanner()
+        nm.scan(ip, arguments='--script smb-os-discovery,nbstat -p 137,139,445 -T4 --host-timeout 15s')
+
+        result = {}
+        if ip not in nm.all_hosts():
+            return result
+
+        host = nm[ip]
+
+        # From smb-os-discovery script
+        script_output = ''
+        if 'tcp' in host:
+            for port in [445, 139]:
+                if port in host.get('tcp', {}):
+                    scripts = host['tcp'][port].get('script', {})
+                    if 'smb-os-discovery' in scripts:
+                        script_output = scripts['smb-os-discovery']
+                        break
+
+        if script_output:
+            for line in script_output.split('\n'):
+                line = line.strip()
+                if 'OS:' in line:
+                    result['os'] = line.split('OS:')[-1].strip()
+                elif 'Computer name:' in line:
+                    result['hostname'] = line.split('Computer name:')[-1].strip()
+                elif 'Domain name:' in line or 'Workgroup:' in line:
+                    result['domain'] = line.split(':')[-1].strip()
+
+        # From nbstat
+        for port in [137]:
+            if 'udp' in host and port in host.get('udp', {}):
+                scripts = host['udp'][port].get('script', {})
+                if 'nbstat' in scripts and 'hostname' not in result:
+                    nb = scripts['nbstat']
+                    for line in nb.split('\n'):
+                        if '<00>' in line and 'UNIQUE' in line:
+                            result['hostname'] = line.split()[0].strip()
+                            break
+
+        return result
+    except:
+        return {}

@@ -86,6 +86,32 @@
                         <div class="detail-value">{{ device['status']|status_badge|safe }}</div>
                     </div>
                 </div>
+
+                {% if device['manufacturer'] or device['model'] or device['cpu_info'] or device['ram_info'] %}
+                <div class="detail-section">
+                    <div class="form-section-title">Hardware-Informationen</div>
+                    {% if device['manufacturer'] or device['model'] %}
+                    <div class="mb-3">
+                        <div class="detail-label">Hersteller / Modell</div>
+                        <div class="detail-value">
+                            {{ [device['manufacturer'], device['model']] | select | join(' ') or 'Nicht angegeben' }}
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% if device['cpu_info'] %}
+                    <div class="mb-3">
+                        <div class="detail-label">CPU</div>
+                        <div class="detail-value" style="font-size:.87rem;">{{ device['cpu_info'] }}</div>
+                    </div>
+                    {% endif %}
+                    {% if device['ram_info'] %}
+                    <div class="mb-3">
+                        <div class="detail-label">RAM</div>
+                        <div class="detail-value">{{ device['ram_info'] }}</div>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
             </div>
 
             <!-- Column 2: Network -->

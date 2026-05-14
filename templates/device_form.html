@@ -97,6 +97,37 @@
                 </div>
             </div>
 
+            <!-- Hardware Info -->
+            <div class="form-card mb-3">
+                <div class="form-section-title">Hardware-Informationen</div>
+                <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Hersteller</label>
+                        <input type="text" name="manufacturer" class="form-control"
+                               value="{{ device.get('manufacturer', '') or '' }}"
+                               placeholder="z. B. Dell, HP, Lenovo">
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Modell</label>
+                        <input type="text" name="model" class="form-control"
+                               value="{{ device.get('model', '') or '' }}"
+                               placeholder="z. B. OptiPlex 7090">
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">CPU</label>
+                        <input type="text" name="cpu_info" class="form-control"
+                               value="{{ device.get('cpu_info', '') or '' }}"
+                               placeholder="z. B. Intel Core i7-11700">
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">RAM</label>
+                        <input type="text" name="ram_info" class="form-control"
+                               value="{{ device.get('ram_info', '') or '' }}"
+                               placeholder="z. B. 16 GB">
+                    </div>
+                </div>
+            </div>
+
             <!-- Notes -->
             <div class="form-card">
                 <div class="form-section-title">Notizen</div>

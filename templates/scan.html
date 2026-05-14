@@ -15,6 +15,9 @@
         </h1>
         <p class="text-muted mb-0">Aktive Geräte im Netzwerk erkennen und verwalten</p>
     </div>
+    <button class="btn btn-outline-info btn-sm" id="btnHwAll" onclick="queryAllHardware()">
+        <i class="bi bi-cpu me-1"></i>Alle Hardware abfragen
+    </button>
 </div>
 
 <!-- Scan Control Card -->
@@ -67,6 +70,12 @@
             Ohne diese Rechte wird die OS-Erkennung ohne Fehlermeldung übersprungen.
         </div>
     </div>
+</div>
+
+<!-- "Alle Hardware abfragen" status -->
+<div id="hwAllStatus" class="alert alert-info py-2 mb-3" style="display:none;">
+    <i class="bi bi-hourglass-split me-1"></i>
+    <span id="hwAllStatusText">Hardware-Abfrage läuft …</span>
 </div>
 
 <!-- Stats Row -->
@@ -131,11 +140,13 @@
                 <thead class="table-light">
                     <tr>
                         <th>IP-Adresse</th>
-                        <th>MAC-Adresse</th>
-                        <th>Hersteller</th>
+                        <th>MAC / Hersteller</th>
                         <th>Hostname</th>
                         <th>Betriebssystem</th>
-                        <th>Genauigkeit</th>
+                        <th>CPU</th>
+                        <th>RAM</th>
+                        <th>Hersteller / Modell</th>
+                        <th>Hardware-Status</th>
                         <th>Zuletzt gesehen</th>
                         <th>Status</th>
                         <th class="text-end">Aktionen</th>
@@ -143,7 +154,7 @@
                 </thead>
                 <tbody id="discoveredBody">
                     <tr id="emptyRow">
-                        <td colspan="9" class="text-center text-muted py-4">
+                        <td colspan="11" class="text-center text-muted py-4">
                             <i class="bi bi-inbox fs-3 d-block mb-2"></i>
                             Noch keine Ergebnisse. Scan starten oder vorherige Ergebnisse werden geladen …
                         </td>
@@ -172,6 +183,32 @@ function statusBadge(status) {
         'ignored':  '<span class="badge bg-secondary">Ignoriert</span>',
     };
     return map[status] || `<span class="badge bg-light text-dark">${status}</span>`;
+}
+
+function hwStatusBadge(hwStatus, hwError) {
+    if (!hwStatus || hwStatus === 'pending') {
+        return '<span class="badge bg-secondary">Ausstehend</span>';
+    }
+    if (hwStatus === 'ok') {
+        return '<span class="badge bg-success">Abgerufen</span>';
+    }
+    if (hwStatus === 'needs_credentials') {
+        return '<span class="badge bg-warning text-dark">Credentials nötig</span>';
+    }
+    if (hwStatus === 'error') {
+        const tip = hwError ? ` title="${escHtml(hwError)}"` : '';
+        return `<span class="badge bg-danger" ${tip} style="cursor:help;">Fehler</span>`;
+    }
+    return `<span class="badge bg-light text-dark">${escHtml(hwStatus)}</span>`;
+}
+
+function escHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
 }
 
 function fmtDate(val) {
@@ -209,7 +246,7 @@ function renderTable(devices) {
     if (!devices || devices.length === 0) {
         tbody.innerHTML = `
             <tr id="emptyRow">
-                <td colspan="9" class="text-center text-muted py-4">
+                <td colspan="11" class="text-center text-muted py-4">
                     <i class="bi bi-inbox fs-3 d-block mb-2"></i>
                     Keine Geräte gefunden.
                 </td>
@@ -220,17 +257,78 @@ function renderTable(devices) {
     let html = '';
     devices.forEach(d => {
         const actionsHtml = buildActions(d);
+        const hwBadge = hwStatusBadge(d.hw_status, d.hw_error);
+        const cpuCell = d.cpu
+            ? `<span class="small" title="${escHtml(d.cpu)}">${escHtml(d.cpu.length > 24 ? d.cpu.substring(0,24)+'…' : d.cpu)}</span>`
+            : '<span class="text-muted small">—</span>';
+        const ramCell = d.ram_gb
+            ? `<span class="small">${d.ram_gb} GB</span>`
+            : '<span class="text-muted small">—</span>';
+        const modelCell = (d.manufacturer || d.model)
+            ? `<span class="small">${escHtml([d.manufacturer, d.model].filter(Boolean).join(' '))}</span>`
+            : '<span class="text-muted small">—</span>';
+        const vendorCell = d.vendor || '<span class="text-muted">—</span>';
+        const macCell = d.mac ? `<code class="text-muted small">${d.mac}</code>` : '<span class="text-muted small">—</span>';
+
         html += `
         <tr data-id="${d.id}" data-status="${d.status || 'new'}">
             <td><code>${d.ip || '—'}</code></td>
-            <td><code class="text-muted small">${d.mac || '—'}</code></td>
-            <td>${d.vendor || '<span class="text-muted">—</span>'}</td>
+            <td>${macCell}<br><small class="text-muted">${vendorCell}</small></td>
             <td>${d.hostname || '<span class="text-muted">—</span>'}</td>
-            <td>${d.os || '<span class="text-muted">—</span>'}</td>
-            <td>${d.os_accuracy ? d.os_accuracy + '%' : '<span class="text-muted">—</span>'}</td>
+            <td>
+                <span class="small">${d.os_caption ? escHtml(d.os_caption) : (d.os ? escHtml(d.os) : '<span class="text-muted">—</span>')}</span>
+                ${d.os_accuracy ? `<br><small class="text-muted">${d.os_accuracy}%</small>` : ''}
+            </td>
+            <td class="hw-cpu-${d.id}">${cpuCell}</td>
+            <td class="hw-ram-${d.id}">${ramCell}</td>
+            <td class="hw-model-${d.id}">${modelCell}</td>
+            <td class="hw-status-${d.id}">${hwBadge}</td>
             <td><small class="text-muted">${fmtDate(d.last_seen)}</small></td>
             <td>${statusBadge(d.status)}</td>
             <td class="text-end">${actionsHtml}</td>
+        </tr>
+        <tr class="cred-row-${d.id}" style="display:none;" data-status="${d.status || 'new'}">
+            <td colspan="11" class="bg-light pb-3 pt-2">
+                <div class="ps-3 pe-3">
+                    <p class="mb-2 text-warning fw-semibold small">
+                        <i class="bi bi-key me-1"></i>Zugangsdaten erforderlich — bitte eingeben:
+                    </p>
+                    <div class="row g-2 align-items-end">
+                        <div class="col-auto">
+                            <label class="form-label form-label-sm mb-1">Methode</label>
+                            <select class="form-select form-select-sm" id="cred-method-${d.id}" style="width:100px;">
+                                <option value="wmi">WMI</option>
+                                <option value="ssh">SSH</option>
+                            </select>
+                        </div>
+                        <div class="col-auto">
+                            <label class="form-label form-label-sm mb-1">Benutzername</label>
+                            <input type="text" class="form-control form-control-sm" id="cred-user-${d.id}"
+                                   placeholder="administrator" style="width:140px;">
+                        </div>
+                        <div class="col-auto">
+                            <label class="form-label form-label-sm mb-1">Passwort</label>
+                            <input type="password" class="form-control form-control-sm" id="cred-pass-${d.id}"
+                                   style="width:140px;">
+                        </div>
+                        <div class="col-auto">
+                            <label class="form-label form-label-sm mb-1">Domain <span class="text-muted">(opt.)</span></label>
+                            <input type="text" class="form-control form-control-sm" id="cred-domain-${d.id}"
+                                   placeholder="WORKGROUP" style="width:120px;">
+                        </div>
+                        <div class="col-auto">
+                            <button class="btn btn-sm btn-primary" onclick="queryHardwareWithCreds(${d.id})">
+                                <i class="bi bi-arrow-right-circle me-1"></i>Abrufen
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary ms-1"
+                                    onclick="document.querySelector('.cred-row-${d.id}').style.display='none'">
+                                Abbrechen
+                            </button>
+                        </div>
+                    </div>
+                    <div class="hw-cred-error-${d.id} text-danger small mt-1" style="display:none;"></div>
+                </div>
+            </td>
         </tr>`;
     });
     tbody.innerHTML = html;
@@ -240,7 +338,14 @@ function renderTable(devices) {
 function buildActions(d) {
     const id = d.id;
     const status = d.status || 'new';
-    let html = '<div class="d-flex gap-1 justify-content-end">';
+    let html = '<div class="d-flex gap-1 justify-content-end flex-wrap">';
+
+    // Hardware query button
+    html += `
+        <button class="btn btn-sm btn-outline-info hw-btn-${id}" title="Hardware abfragen"
+                onclick="queryHardware(${id})">
+            <i class="bi bi-cpu"></i>
+        </button>`;
 
     if (status !== 'imported') {
         html += `
@@ -269,6 +374,145 @@ function buildActions(d) {
 
     html += '</div>';
     return html;
+}
+
+// -----------------------------------------------------------------------
+// Hardware query — single device (auto, no credentials)
+// -----------------------------------------------------------------------
+function queryHardware(id) {
+    const btn = document.querySelector(`.hw-btn-${id}`);
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    }
+    // Hide cred row if open
+    const credRow = document.querySelector(`.cred-row-${id}`);
+    if (credRow) credRow.style.display = 'none';
+
+    fetch(`/scan/hardware/${id}`, { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-cpu"></i>';
+            }
+            if (data.status === 'needs_credentials') {
+                // Show credentials form
+                if (credRow) credRow.style.display = '';
+                updateHwStatusCell(id, 'needs_credentials', null);
+            } else if (data.status === 'ok') {
+                updateHwCells(id, data.data);
+                updateHwStatusCell(id, 'ok', null);
+            } else if (data.status === 'error') {
+                updateHwStatusCell(id, 'error', data.error);
+            } else if (data.error) {
+                updateHwStatusCell(id, 'error', data.error);
+            }
+        })
+        .catch(err => {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-cpu"></i>';
+            }
+            updateHwStatusCell(id, 'error', 'Netzwerkfehler');
+            console.error('queryHardware error', err);
+        });
+}
+
+// -----------------------------------------------------------------------
+// Hardware query — with explicit credentials
+// -----------------------------------------------------------------------
+function queryHardwareWithCreds(id) {
+    const method = document.getElementById(`cred-method-${id}`)?.value || 'wmi';
+    const username = document.getElementById(`cred-user-${id}`)?.value || '';
+    const password = document.getElementById(`cred-pass-${id}`)?.value || '';
+    const domain   = document.getElementById(`cred-domain-${id}`)?.value || '';
+    const errDiv   = document.querySelector(`.hw-cred-error-${id}`);
+
+    if (errDiv) errDiv.style.display = 'none';
+
+    const body = new URLSearchParams({ method, username, password, domain });
+
+    fetch(`/scan/hardware/${id}`, { method: 'POST', body })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'ok') {
+                document.querySelector(`.cred-row-${id}`).style.display = 'none';
+                updateHwCells(id, data.data);
+                updateHwStatusCell(id, 'ok', null);
+            } else if (data.status === 'error') {
+                if (errDiv) { errDiv.textContent = data.error || 'Fehler'; errDiv.style.display = ''; }
+                updateHwStatusCell(id, 'error', data.error);
+            } else if (data.error) {
+                if (errDiv) { errDiv.textContent = data.error; errDiv.style.display = ''; }
+            }
+        })
+        .catch(err => {
+            if (errDiv) { errDiv.textContent = 'Netzwerkfehler: ' + err; errDiv.style.display = ''; }
+            console.error('queryHardwareWithCreds error', err);
+        });
+}
+
+// -----------------------------------------------------------------------
+// Update individual cells after hardware query
+// -----------------------------------------------------------------------
+function updateHwCells(id, hw) {
+    const cpuCell = document.querySelector(`.hw-cpu-${id}`);
+    const ramCell = document.querySelector(`.hw-ram-${id}`);
+    const modelCell = document.querySelector(`.hw-model-${id}`);
+
+    if (cpuCell && hw.cpu) {
+        const short = hw.cpu.length > 24 ? hw.cpu.substring(0, 24) + '…' : hw.cpu;
+        cpuCell.innerHTML = `<span class="small" title="${escHtml(hw.cpu)}">${escHtml(short)}</span>`;
+    }
+    if (ramCell && hw.ram_gb) {
+        ramCell.innerHTML = `<span class="small">${hw.ram_gb} GB</span>`;
+    }
+    if (modelCell) {
+        const parts = [hw.manufacturer, hw.model].filter(Boolean);
+        if (parts.length > 0) {
+            modelCell.innerHTML = `<span class="small">${escHtml(parts.join(' '))}</span>`;
+        }
+    }
+}
+
+function updateHwStatusCell(id, hwStatus, hwError) {
+    const cell = document.querySelector(`.hw-status-${id}`);
+    if (cell) {
+        cell.innerHTML = hwStatusBadge(hwStatus, hwError);
+    }
+}
+
+// -----------------------------------------------------------------------
+// Query all hardware (sequential, auto)
+// -----------------------------------------------------------------------
+function queryAllHardware() {
+    const btn = document.getElementById('btnHwAll');
+    const statusDiv = document.getElementById('hwAllStatus');
+    const statusText = document.getElementById('hwAllStatusText');
+
+    btn.disabled = true;
+    statusDiv.style.display = '';
+    statusDiv.className = 'alert alert-info py-2 mb-3';
+    statusText.textContent = 'Hardware-Abfrage für alle Geräte läuft …';
+
+    fetch('/scan/hardware/all', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            btn.disabled = false;
+            const msg = `Hardware-Abfrage abgeschlossen: ${data.ok || 0} OK, ` +
+                        `${data.needs_credentials || 0} Credentials nötig, ` +
+                        `${data.error || 0} Fehler (von ${data.total || 0} Geräten).`;
+            statusText.textContent = msg;
+            statusDiv.className = 'alert alert-success py-2 mb-3';
+            loadDiscovered();
+        })
+        .catch(err => {
+            btn.disabled = false;
+            statusText.textContent = 'Fehler bei der Hardware-Abfrage: ' + err;
+            statusDiv.className = 'alert alert-danger py-2 mb-3';
+            console.error('queryAllHardware error', err);
+        });
 }
 
 // -----------------------------------------------------------------------

@@ -109,7 +109,11 @@ CREATE TABLE IF NOT EXISTS devices (
     purchase_date    TEXT,
     warranty_expiry  TEXT,
     notes            TEXT,
-    created_at       TEXT DEFAULT (datetime('now'))
+    created_at       TEXT DEFAULT (datetime('now')),
+    cpu_info         TEXT,
+    ram_info         TEXT,
+    manufacturer     TEXT,
+    model            TEXT
 );
 
 CREATE TABLE IF NOT EXISTS discovered_devices (
@@ -123,7 +127,20 @@ CREATE TABLE IF NOT EXISTS discovered_devices (
     first_seen         TEXT,
     last_seen          TEXT,
     status             TEXT DEFAULT 'new',
-    imported_device_id INTEGER
+    imported_device_id INTEGER,
+    cpu                TEXT,
+    cpu_cores          INTEGER,
+    ram_gb             REAL,
+    disks              TEXT,
+    manufacturer       TEXT,
+    model              TEXT,
+    serial_number      TEXT,
+    os_caption         TEXT,
+    os_build           TEXT,
+    last_boot          TEXT,
+    hw_status          TEXT DEFAULT 'pending',
+    hw_error           TEXT,
+    hw_queried_at      TEXT
 );
 
 CREATE TABLE IF NOT EXISTS app_users (
@@ -138,11 +155,41 @@ CREATE TABLE IF NOT EXISTS app_users (
 );
 """
 
+def migrate_db():
+    """Add missing columns to existing tables without dropping data."""
+    db = get_db()
+    discovered_new_cols = [
+        ('cpu', 'TEXT'), ('cpu_cores', 'INTEGER'), ('ram_gb', 'REAL'),
+        ('disks', 'TEXT'), ('manufacturer', 'TEXT'), ('model', 'TEXT'),
+        ('serial_number', 'TEXT'), ('os_caption', 'TEXT'), ('os_build', 'TEXT'),
+        ('last_boot', 'TEXT'), ('hw_status', "TEXT DEFAULT 'pending'"),
+        ('hw_error', 'TEXT'), ('hw_queried_at', 'TEXT'),
+    ]
+    for col, col_type in discovered_new_cols:
+        try:
+            db.execute(f'ALTER TABLE discovered_devices ADD COLUMN {col} {col_type}')
+            db.commit()
+        except:
+            pass  # column already exists
+
+    devices_new_cols = [
+        ('cpu_info', 'TEXT'), ('ram_info', 'TEXT'),
+        ('manufacturer', 'TEXT'), ('model', 'TEXT'),
+    ]
+    for col, col_type in devices_new_cols:
+        try:
+            db.execute(f'ALTER TABLE devices ADD COLUMN {col} {col_type}')
+            db.commit()
+        except:
+            pass  # column already exists
+
+
 def init_db():
     with app.app_context():
         db = get_db()
         db.executescript(SCHEMA)
         db.commit()
+        migrate_db()
 
         # Create default admin if no users exist
         existing = db.execute("SELECT COUNT(*) FROM app_users").fetchone()[0]
@@ -794,8 +841,9 @@ def device_new():
             """INSERT INTO devices
                (name, category, serial_number, mac_address, ip_address,
                 operating_system, status, location_id,
-                purchase_date, warranty_expiry, notes)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                purchase_date, warranty_expiry, notes,
+                cpu_info, ram_info, manufacturer, model)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 name,
                 request.form.get('category', 'Other'),
@@ -808,6 +856,10 @@ def device_new():
                 request.form.get('purchase_date') or None,
                 request.form.get('warranty_expiry') or None,
                 request.form.get('notes', '').strip() or None,
+                request.form.get('cpu_info', '').strip() or None,
+                request.form.get('ram_info', '').strip() or None,
+                request.form.get('manufacturer', '').strip() or None,
+                request.form.get('model', '').strip() or None,
             )
         )
         flash('Gerät wurde erfolgreich hinzugefügt.', 'success')
@@ -819,6 +871,11 @@ def device_new():
         'mac_address':      request.args.get('mac', ''),
         'name':             request.args.get('name', ''),
         'operating_system': request.args.get('os', ''),
+        'manufacturer':     request.args.get('manufacturer', ''),
+        'model':            request.args.get('model', ''),
+        'serial_number':    request.args.get('serial', ''),
+        'cpu_info':         request.args.get('cpu', ''),
+        'ram_info':         request.args.get('ram', ''),
     }
 
     return render_template('device_form.html', device=prefill, locations=locations,
@@ -867,7 +924,8 @@ def device_edit(device_id):
             """UPDATE devices SET
                name=?, category=?, serial_number=?, mac_address=?, ip_address=?,
                operating_system=?, status=?, location_id=?,
-               purchase_date=?, warranty_expiry=?, notes=?
+               purchase_date=?, warranty_expiry=?, notes=?,
+               cpu_info=?, ram_info=?, manufacturer=?, model=?
                WHERE id=?""",
             (
                 name,
@@ -881,6 +939,10 @@ def device_edit(device_id):
                 request.form.get('purchase_date') or None,
                 request.form.get('warranty_expiry') or None,
                 request.form.get('notes', '').strip() or None,
+                request.form.get('cpu_info', '').strip() or None,
+                request.form.get('ram_info', '').strip() or None,
+                request.form.get('manufacturer', '').strip() or None,
+                request.form.get('model', '').strip() or None,
                 device_id,
             )
         )
@@ -1097,12 +1159,18 @@ def scan_import(disc_id):
         "UPDATE discovered_devices SET status='imported' WHERE id=?",
         (disc_id,)
     )
+    disc_d = dict(disc)
     return redirect(url_for(
         'device_new',
-        ip=disc['ip'] or '',
-        mac=disc['mac'] or '',
-        name=disc['hostname'] or '',
-        os=disc['os'] or '',
+        ip=disc_d.get('ip') or '',
+        mac=disc_d.get('mac') or '',
+        name=disc_d.get('hostname') or '',
+        os=disc_d.get('os_caption') or disc_d.get('os') or '',
+        manufacturer=disc_d.get('manufacturer') or '',
+        model=disc_d.get('model') or '',
+        serial=disc_d.get('serial_number') or '',
+        cpu=disc_d.get('cpu') or '',
+        ram=str(disc_d.get('ram_gb') or ''),
     ))
 
 
@@ -1134,6 +1202,135 @@ def scan_reset(disc_id):
         (disc_id,)
     )
     return jsonify({'ok': True})
+
+
+@app.route('/scan/hardware/<int:disc_id>', methods=['POST'])
+@login_required
+def scan_hardware(disc_id):
+    device = query_db("SELECT * FROM discovered_devices WHERE id=?", (disc_id,), one=True)
+    if not device:
+        return jsonify({'error': 'not found'}), 404
+
+    ip = device['ip']
+    username = request.form.get('username') or None
+    password = request.form.get('password') or None
+    domain   = request.form.get('domain') or ''
+    method   = request.form.get('method', 'auto')  # auto, wmi, ssh
+
+    hw = {}
+
+    # Step 1: SMB/NetBIOS info (no credentials, always try)
+    smb = scanner.get_smb_info(ip)
+    if smb.get('hostname'):
+        execute_db("UPDATE discovered_devices SET hostname=? WHERE id=?",
+                   (smb['hostname'], disc_id))
+    if smb.get('os') and not device['os']:
+        execute_db("UPDATE discovered_devices SET os=? WHERE id=?",
+                   (smb['os'], disc_id))
+
+    # Step 2: WMI (try without credentials first, then with)
+    if method in ('auto', 'wmi'):
+        hw = scanner.query_hardware_wmi(ip, username, password, domain)
+        if hw.get('error') == 'access_denied' and not username:
+            execute_db(
+                "UPDATE discovered_devices SET hw_status='needs_credentials', hw_error=? WHERE id=?",
+                ('Credentials erforderlich', disc_id))
+            return jsonify({'status': 'needs_credentials', 'ip': ip})
+
+    # Step 3: SSH fallback
+    if method == 'ssh' and username:
+        hw = scanner.query_hardware_ssh(ip, username, password)
+
+    if hw.get('error') and hw['error'] not in (None, ''):
+        error_map = {
+            'wmi_not_installed':      'pip install wmi pywin32 erforderlich',
+            'paramiko_not_installed': 'pip install paramiko erforderlich',
+            'access_denied':          'Zugriff verweigert — Credentials eingeben',
+            'unreachable':            'Host nicht erreichbar (RPC/WMI blockiert)',
+        }
+        err_msg = error_map.get(hw['error'], hw['error'])
+        execute_db(
+            "UPDATE discovered_devices SET hw_status=?, hw_error=?, hw_queried_at=datetime('now') WHERE id=?",
+            ('error', err_msg, disc_id))
+        return jsonify({'status': 'error', 'error': err_msg})
+
+    # Save hardware info
+    now = datetime.utcnow().strftime('%Y-%m-%d %H:%M')
+    execute_db("""
+        UPDATE discovered_devices SET
+            cpu=?, cpu_cores=?, ram_gb=?, disks=?, manufacturer=?, model=?,
+            serial_number=?, os_caption=?, os_build=?, last_boot=?,
+            hw_status='ok', hw_error=NULL, hw_queried_at=?
+        WHERE id=?
+    """, (
+        hw.get('cpu'), hw.get('cpu_cores'), hw.get('ram_gb'),
+        hw.get('disks'), hw.get('manufacturer'), hw.get('model'),
+        hw.get('serial'), hw.get('os_caption'), hw.get('os_build'),
+        hw.get('last_boot'), now, disc_id
+    ))
+
+    return jsonify({'status': 'ok', 'data': hw})
+
+
+@app.route('/scan/hardware/all', methods=['POST'])
+@login_required
+def scan_hardware_all():
+    devices = query_db(
+        "SELECT * FROM discovered_devices WHERE status IN ('new', 'imported') ORDER BY ip ASC"
+    )
+    results = {'ok': 0, 'error': 0, 'needs_credentials': 0, 'total': len(devices)}
+
+    for device in devices:
+        ip = device['ip']
+        disc_id = device['id']
+
+        # SMB first
+        smb = scanner.get_smb_info(ip)
+        if smb.get('hostname'):
+            execute_db("UPDATE discovered_devices SET hostname=? WHERE id=?",
+                       (smb['hostname'], disc_id))
+        if smb.get('os') and not device['os']:
+            execute_db("UPDATE discovered_devices SET os=? WHERE id=?",
+                       (smb['os'], disc_id))
+
+        # WMI without credentials
+        hw = scanner.query_hardware_wmi(ip)
+        if hw.get('error') == 'access_denied':
+            execute_db(
+                "UPDATE discovered_devices SET hw_status='needs_credentials', hw_error=? WHERE id=?",
+                ('Credentials erforderlich', disc_id))
+            results['needs_credentials'] += 1
+            continue
+
+        if hw.get('error') and hw['error'] not in (None, ''):
+            error_map = {
+                'wmi_not_installed':      'pip install wmi pywin32 erforderlich',
+                'paramiko_not_installed': 'pip install paramiko erforderlich',
+                'unreachable':            'Host nicht erreichbar (RPC/WMI blockiert)',
+            }
+            err_msg = error_map.get(hw['error'], hw['error'])
+            execute_db(
+                "UPDATE discovered_devices SET hw_status=?, hw_error=?, hw_queried_at=datetime('now') WHERE id=?",
+                ('error', err_msg, disc_id))
+            results['error'] += 1
+            continue
+
+        now = datetime.utcnow().strftime('%Y-%m-%d %H:%M')
+        execute_db("""
+            UPDATE discovered_devices SET
+                cpu=?, cpu_cores=?, ram_gb=?, disks=?, manufacturer=?, model=?,
+                serial_number=?, os_caption=?, os_build=?, last_boot=?,
+                hw_status='ok', hw_error=NULL, hw_queried_at=?
+            WHERE id=?
+        """, (
+            hw.get('cpu'), hw.get('cpu_cores'), hw.get('ram_gb'),
+            hw.get('disks'), hw.get('manufacturer'), hw.get('model'),
+            hw.get('serial'), hw.get('os_caption'), hw.get('os_build'),
+            hw.get('last_boot'), now, disc_id
+        ))
+        results['ok'] += 1
+
+    return jsonify(results)
 
 
 # ---------------------------------------------------------------------------
