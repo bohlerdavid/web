@@ -1,0 +1,421 @@
+{% extends 'base.html' %}
+
+{% block title %}Netzwerkscan — IT Geräteverwaltung{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
+<li class="breadcrumb-item active">Netzwerkscan</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">
+            <i class="bi bi-radar me-2 text-accent"></i>Netzwerkscan
+        </h1>
+        <p class="text-muted mb-0">Aktive Geräte im Netzwerk erkennen und verwalten</p>
+    </div>
+</div>
+
+<!-- Scan Control Card -->
+<div class="card shadow-sm mb-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-sliders me-2"></i>Scan-Einstellungen</h5>
+    </div>
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-12 col-md-5">
+                <label for="inputNetwork" class="form-label">Netzwerkbereich</label>
+                <input type="text" id="inputNetwork" class="form-control"
+                       placeholder="z. B. 192.168.1.0/24 — leer lassen für automatische Erkennung">
+            </div>
+            <div class="col-12 col-md-4 d-flex align-items-end">
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="checkNmap" checked>
+                    <label class="form-check-label" for="checkNmap">
+                        OS-Erkennung via nmap (langsamer)
+                        <small class="text-muted d-block">Erfordert Root-/Administratorrechte</small>
+                    </label>
+                </div>
+            </div>
+            <div class="col-12 col-md-3 d-flex gap-2">
+                <button class="btn btn-primary" id="btnStart" onclick="startScan()">
+                    <i class="bi bi-play-fill me-1"></i>Scan starten
+                </button>
+                <button class="btn btn-success" id="btnSave" disabled onclick="saveScan()">
+                    <i class="bi bi-floppy me-1"></i>Speichern
+                </button>
+            </div>
+        </div>
+
+        <!-- Progress -->
+        <div id="scanProgressContainer" class="mt-3" style="display:none;">
+            <div class="d-flex justify-content-between mb-1">
+                <small id="scanStatus" class="text-muted">Initialisiere …</small>
+                <small id="scanPct" class="text-muted">0%</small>
+            </div>
+            <div class="progress" style="height: 8px;">
+                <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+                     id="scanProgress" role="progressbar" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <!-- nmap note -->
+        <div class="alert alert-warning alert-sm mt-3 mb-0 py-2" role="alert">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            <strong>Hinweis:</strong> Die nmap OS-Erkennung erfordert Root- bzw. Administratorrechte.
+            Ohne diese Rechte wird die OS-Erkennung ohne Fehlermeldung übersprungen.
+        </div>
+    </div>
+</div>
+
+<!-- Stats Row -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card text-center shadow-sm h-100">
+            <div class="card-body py-3">
+                <div class="fs-2 fw-bold text-primary" id="statTotal">—</div>
+                <div class="small text-muted">Gefunden gesamt</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card text-center shadow-sm h-100">
+            <div class="card-body py-3">
+                <div class="fs-2 fw-bold text-info" id="statNew">—</div>
+                <div class="small text-muted">Neu</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card text-center shadow-sm h-100">
+            <div class="card-body py-3">
+                <div class="fs-2 fw-bold text-success" id="statImported">—</div>
+                <div class="small text-muted">Importiert</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card text-center shadow-sm h-100">
+            <div class="card-body py-3">
+                <div class="fs-2 fw-bold text-secondary" id="statIgnored">—</div>
+                <div class="small text-muted">Ignoriert</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Results Card -->
+<div class="card shadow-sm">
+    <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <h5 class="mb-0"><i class="bi bi-list-ul me-2"></i>Erkannte Geräte</h5>
+        <!-- Filter Tabs -->
+        <ul class="nav nav-pills nav-sm" id="filterTabs">
+            <li class="nav-item">
+                <button class="nav-link active py-1 px-3" data-filter="all" onclick="setFilter('all', this)">Alle</button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link py-1 px-3" data-filter="new" onclick="setFilter('new', this)">Neu</button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link py-1 px-3" data-filter="imported" onclick="setFilter('imported', this)">Importiert</button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link py-1 px-3" data-filter="ignored" onclick="setFilter('ignored', this)">Ignoriert</button>
+            </li>
+        </ul>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0" id="discoveredTable">
+                <thead class="table-light">
+                    <tr>
+                        <th>IP-Adresse</th>
+                        <th>MAC-Adresse</th>
+                        <th>Hersteller</th>
+                        <th>Hostname</th>
+                        <th>Betriebssystem</th>
+                        <th>Genauigkeit</th>
+                        <th>Zuletzt gesehen</th>
+                        <th>Status</th>
+                        <th class="text-end">Aktionen</th>
+                    </tr>
+                </thead>
+                <tbody id="discoveredBody">
+                    <tr id="emptyRow">
+                        <td colspan="9" class="text-center text-muted py-4">
+                            <i class="bi bi-inbox fs-3 d-block mb-2"></i>
+                            Noch keine Ergebnisse. Scan starten oder vorherige Ergebnisse werden geladen …
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Current filter
+let currentFilter = 'all';
+// Poll interval handle
+let pollHandle = null;
+
+// -----------------------------------------------------------------------
+// Utility
+// -----------------------------------------------------------------------
+function statusBadge(status) {
+    const map = {
+        'new':      '<span class="badge bg-primary">Neu</span>',
+        'imported': '<span class="badge bg-success">Importiert</span>',
+        'ignored':  '<span class="badge bg-secondary">Ignoriert</span>',
+    };
+    return map[status] || `<span class="badge bg-light text-dark">${status}</span>`;
+}
+
+function fmtDate(val) {
+    if (!val) return '—';
+    return val.replace('T', ' ').substring(0, 16);
+}
+
+// -----------------------------------------------------------------------
+// Filter tabs
+// -----------------------------------------------------------------------
+function setFilter(filter, btn) {
+    currentFilter = filter;
+    document.querySelectorAll('#filterTabs .nav-link').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    applyFilter();
+}
+
+function applyFilter() {
+    const rows = document.querySelectorAll('#discoveredBody tr[data-status]');
+    rows.forEach(row => {
+        const status = row.getAttribute('data-status');
+        if (currentFilter === 'all' || status === currentFilter) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
+
+// -----------------------------------------------------------------------
+// Render table from data array
+// -----------------------------------------------------------------------
+function renderTable(devices) {
+    const tbody = document.getElementById('discoveredBody');
+    if (!devices || devices.length === 0) {
+        tbody.innerHTML = `
+            <tr id="emptyRow">
+                <td colspan="9" class="text-center text-muted py-4">
+                    <i class="bi bi-inbox fs-3 d-block mb-2"></i>
+                    Keine Geräte gefunden.
+                </td>
+            </tr>`;
+        return;
+    }
+
+    let html = '';
+    devices.forEach(d => {
+        const actionsHtml = buildActions(d);
+        html += `
+        <tr data-id="${d.id}" data-status="${d.status || 'new'}">
+            <td><code>${d.ip || '—'}</code></td>
+            <td><code class="text-muted small">${d.mac || '—'}</code></td>
+            <td>${d.vendor || '<span class="text-muted">—</span>'}</td>
+            <td>${d.hostname || '<span class="text-muted">—</span>'}</td>
+            <td>${d.os || '<span class="text-muted">—</span>'}</td>
+            <td>${d.os_accuracy ? d.os_accuracy + '%' : '<span class="text-muted">—</span>'}</td>
+            <td><small class="text-muted">${fmtDate(d.last_seen)}</small></td>
+            <td>${statusBadge(d.status)}</td>
+            <td class="text-end">${actionsHtml}</td>
+        </tr>`;
+    });
+    tbody.innerHTML = html;
+    applyFilter();
+}
+
+function buildActions(d) {
+    const id = d.id;
+    const status = d.status || 'new';
+    let html = '<div class="d-flex gap-1 justify-content-end">';
+
+    if (status !== 'imported') {
+        html += `
+            <form method="post" action="/scan/import/${id}" style="display:inline;">
+                <button type="submit" class="btn btn-sm btn-success" title="Aufnehmen">
+                    <i class="bi bi-plus-circle"></i>
+                </button>
+            </form>`;
+    }
+
+    if (status === 'new') {
+        html += `
+            <button class="btn btn-sm btn-outline-secondary" title="Ignorieren"
+                    onclick="dismissDevice(${id})">
+                <i class="bi bi-eye-slash"></i>
+            </button>`;
+    }
+
+    if (status === 'ignored' || status === 'imported') {
+        html += `
+            <button class="btn btn-sm btn-outline-warning" title="Zurücksetzen"
+                    onclick="resetDevice(${id})">
+                <i class="bi bi-arrow-counterclockwise"></i>
+            </button>`;
+    }
+
+    html += '</div>';
+    return html;
+}
+
+// -----------------------------------------------------------------------
+// AJAX helpers
+// -----------------------------------------------------------------------
+function dismissDevice(id) {
+    fetch(`/scan/dismiss/${id}`, { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.ok) loadDiscovered();
+        })
+        .catch(err => console.error('dismiss error', err));
+}
+
+function resetDevice(id) {
+    fetch(`/scan/reset/${id}`, { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.ok) loadDiscovered();
+        })
+        .catch(err => console.error('reset error', err));
+}
+
+// -----------------------------------------------------------------------
+// loadDiscovered — fetch /scan/list and update table + stats
+// -----------------------------------------------------------------------
+function loadDiscovered() {
+    fetch('/scan/list')
+        .then(r => r.json())
+        .then(devices => {
+            renderTable(devices);
+            updateStats(devices);
+        })
+        .catch(err => console.error('loadDiscovered error', err));
+}
+
+function updateStats(devices) {
+    const total    = devices.length;
+    const newCount = devices.filter(d => d.status === 'new').length;
+    const imported = devices.filter(d => d.status === 'imported').length;
+    const ignored  = devices.filter(d => d.status === 'ignored').length;
+
+    document.getElementById('statTotal').textContent    = total;
+    document.getElementById('statNew').textContent      = newCount;
+    document.getElementById('statImported').textContent = imported;
+    document.getElementById('statIgnored').textContent  = ignored;
+}
+
+// -----------------------------------------------------------------------
+// startScan
+// -----------------------------------------------------------------------
+function startScan() {
+    const network  = document.getElementById('inputNetwork').value.trim();
+    const useNmap  = document.getElementById('checkNmap').checked;
+    const btnStart = document.getElementById('btnStart');
+    const btnSave  = document.getElementById('btnSave');
+
+    // Show progress UI
+    document.getElementById('scanProgressContainer').style.display = 'block';
+    document.getElementById('scanStatus').textContent = 'Starte Scan …';
+    document.getElementById('scanProgress').style.width = '0%';
+    document.getElementById('scanPct').textContent = '0%';
+    btnStart.disabled = true;
+    btnSave.disabled  = true;
+
+    const body = new URLSearchParams();
+    if (network) body.append('network', network);
+    body.append('use_nmap', useNmap ? 'true' : 'false');
+
+    fetch('/scan/start', { method: 'POST', body: body })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                alert(data.error);
+                btnStart.disabled = false;
+                return;
+            }
+            // Start polling
+            if (pollHandle) clearInterval(pollHandle);
+            pollHandle = setInterval(pollStatus, 1500);
+        })
+        .catch(err => {
+            console.error('startScan error', err);
+            btnStart.disabled = false;
+        });
+}
+
+// -----------------------------------------------------------------------
+// pollStatus — called every 1.5s during scan
+// -----------------------------------------------------------------------
+function pollStatus() {
+    fetch('/scan/status')
+        .then(r => r.json())
+        .then(state => {
+            const pct  = state.progress || 0;
+            const text = state.status_text || '';
+            const bar  = document.getElementById('scanProgress');
+
+            bar.style.width = pct + '%';
+            document.getElementById('scanPct').textContent = pct + '%';
+            document.getElementById('scanStatus').textContent = text;
+
+            if (!state.running && pct >= 100) {
+                // Scan finished
+                clearInterval(pollHandle);
+                pollHandle = null;
+
+                bar.classList.remove('progress-bar-animated');
+                document.getElementById('btnStart').disabled = false;
+                document.getElementById('btnSave').disabled  = false;
+
+                const count = (state.results || []).length;
+                document.getElementById('scanStatus').textContent =
+                    `Fertig! ${count} Geräte gefunden.`;
+
+                // Auto-save and reload list
+                saveScan();
+            } else if (!state.running && state.error) {
+                clearInterval(pollHandle);
+                pollHandle = null;
+                document.getElementById('btnStart').disabled = false;
+                document.getElementById('scanStatus').textContent =
+                    'Fehler: ' + (state.error || 'Unbekannter Fehler');
+                document.getElementById('scanProgress').classList.add('bg-danger');
+                document.getElementById('scanProgress').classList.remove('progress-bar-animated');
+            }
+        })
+        .catch(err => console.error('pollStatus error', err));
+}
+
+// -----------------------------------------------------------------------
+// saveScan
+// -----------------------------------------------------------------------
+function saveScan() {
+    fetch('/scan/save', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            loadDiscovered();
+        })
+        .catch(err => console.error('saveScan error', err));
+}
+
+// -----------------------------------------------------------------------
+// On page load
+// -----------------------------------------------------------------------
+document.addEventListener('DOMContentLoaded', function () {
+    loadDiscovered();
+});
+</script>
+{% endblock %}

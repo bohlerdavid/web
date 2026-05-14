@@ -39,6 +39,11 @@
                     <span>Geräte</span>
                 </a>
             </li>
+            <li class="sidebar-item {% if request.endpoint == 'scan' %}active{% endif %}">
+                <a class="sidebar-link" href="{{ url_for('scan') }}">
+                    <i class="bi bi-radar"></i><span>Netzwerkscan</span>
+                </a>
+            </li>
             <li class="sidebar-item {% if request.endpoint in ['users','user_new','user_edit'] %}active{% endif %}">
                 <a href="{{ url_for('users') }}" class="sidebar-link">
                     <i class="bi bi-people"></i>

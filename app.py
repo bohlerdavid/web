@@ -5,8 +5,9 @@ import os
 from datetime import datetime, date, timedelta
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    flash, g, Response, abort
+    flash, g, Response, abort, jsonify
 )
+import scanner
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'it-device-mgmt-secret-2024')
@@ -93,6 +94,20 @@ CREATE TABLE IF NOT EXISTS devices (
     warranty_expiry  TEXT,
     notes            TEXT,
     created_at       TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS discovered_devices (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    ip                 TEXT,
+    mac                TEXT,
+    hostname           TEXT,
+    vendor             TEXT,
+    os                 TEXT,
+    os_accuracy        TEXT,
+    first_seen         TEXT,
+    last_seen          TEXT,
+    status             TEXT DEFAULT 'new',
+    imported_device_id INTEGER
 );
 """
 
@@ -446,7 +461,15 @@ def device_new():
         flash('Gerät wurde erfolgreich hinzugefügt.', 'success')
         return redirect(url_for('devices'))
 
-    return render_template('device_form.html', device={}, locations=locations,
+    # Pre-fill from query params (e.g. when importing from scanner)
+    prefill = {
+        'ip_address':       request.args.get('ip', ''),
+        'mac_address':      request.args.get('mac', ''),
+        'name':             request.args.get('name', ''),
+        'operating_system': request.args.get('os', ''),
+    }
+
+    return render_template('device_form.html', device=prefill, locations=locations,
                            users=users, categories=CATEGORIES, statuses=STATUSES,
                            category_labels=CATEGORY_LABELS,
                            status_labels=STATUS_LABELS, edit=False)
@@ -698,6 +721,142 @@ def location_delete(location_id):
     execute_db("DELETE FROM locations WHERE id = ?", (location_id,))
     flash('Standort wurde erfolgreich gelöscht.', 'success')
     return redirect(url_for('locations'))
+
+
+# ---------------------------------------------------------------------------
+# Network Scanner
+# ---------------------------------------------------------------------------
+
+@app.route('/scan')
+def scan():
+    return render_template('scan.html')
+
+
+@app.route('/scan/start', methods=['POST'])
+def scan_start():
+    state = scanner.get_scan_state()
+    if state.get('running'):
+        return jsonify({'error': 'Scan läuft bereits'})
+
+    network = request.form.get('network', '').strip() or None
+    use_nmap = request.form.get('use_nmap', 'true').lower() not in ('false', '0', '')
+
+    scanner.start_scan(network=network, use_nmap=use_nmap)
+    return jsonify({'ok': True})
+
+
+@app.route('/scan/status')
+def scan_status():
+    return jsonify(scanner.get_scan_state())
+
+
+@app.route('/scan/save', methods=['POST'])
+def scan_save():
+    state = scanner.get_scan_state()
+    results = state.get('results', [])
+    saved = 0
+    db = get_db()
+    now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    for r in results:
+        existing = db.execute(
+            "SELECT id, status, imported_device_id FROM discovered_devices WHERE ip = ?",
+            (r['ip'],)
+        ).fetchone()
+
+        if existing:
+            # Preserve status and imported_device_id, update last_seen and other fields
+            db.execute(
+                """UPDATE discovered_devices
+                   SET mac=?, hostname=?, vendor=?, os=?, os_accuracy=?,
+                       last_seen=?
+                   WHERE ip=?""",
+                (
+                    r.get('mac', ''),
+                    r.get('hostname', ''),
+                    r.get('vendor', ''),
+                    r.get('os', ''),
+                    r.get('os_accuracy', ''),
+                    now_str,
+                    r['ip'],
+                )
+            )
+        else:
+            db.execute(
+                """INSERT INTO discovered_devices
+                   (ip, mac, hostname, vendor, os, os_accuracy, first_seen, last_seen, status)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                (
+                    r.get('ip', ''),
+                    r.get('mac', ''),
+                    r.get('hostname', ''),
+                    r.get('vendor', ''),
+                    r.get('os', ''),
+                    r.get('os_accuracy', ''),
+                    r.get('first_seen', now_str),
+                    now_str,
+                    'new',
+                )
+            )
+        saved += 1
+
+    db.commit()
+    return jsonify({'saved': saved})
+
+
+@app.route('/scan/list')
+def scan_list():
+    rows = query_db("SELECT * FROM discovered_devices ORDER BY ip ASC")
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route('/scan/import/<int:disc_id>', methods=['POST'])
+def scan_import(disc_id):
+    disc = query_db(
+        "SELECT * FROM discovered_devices WHERE id = ?", (disc_id,), one=True
+    )
+    if not disc:
+        abort(404)
+    # Mark as imported
+    execute_db(
+        "UPDATE discovered_devices SET status='imported' WHERE id=?",
+        (disc_id,)
+    )
+    return redirect(url_for(
+        'device_new',
+        ip=disc['ip'] or '',
+        mac=disc['mac'] or '',
+        name=disc['hostname'] or '',
+        os=disc['os'] or '',
+    ))
+
+
+@app.route('/scan/dismiss/<int:disc_id>', methods=['POST'])
+def scan_dismiss(disc_id):
+    disc = query_db(
+        "SELECT id FROM discovered_devices WHERE id = ?", (disc_id,), one=True
+    )
+    if not disc:
+        abort(404)
+    execute_db(
+        "UPDATE discovered_devices SET status='ignored' WHERE id=?",
+        (disc_id,)
+    )
+    return jsonify({'ok': True})
+
+
+@app.route('/scan/reset/<int:disc_id>', methods=['POST'])
+def scan_reset(disc_id):
+    disc = query_db(
+        "SELECT id FROM discovered_devices WHERE id = ?", (disc_id,), one=True
+    )
+    if not disc:
+        abort(404)
+    execute_db(
+        "UPDATE discovered_devices SET status='new' WHERE id=?",
+        (disc_id,)
+    )
+    return jsonify({'ok': True})
 
 
 # ---------------------------------------------------------------------------
