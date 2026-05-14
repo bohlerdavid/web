@@ -372,8 +372,8 @@ def profile_change_password():
         (new_hash, session['user_id'])
     )
     session['must_change_pw'] = False
-    flash('Passwort wurde erfolgreich geändert.', 'success')
-    return redirect(url_for('dashboard'))
+    flash('✓ Passwort wurde erfolgreich geändert.', 'success')
+    return redirect(url_for('profile'))
 
 
 # ---------------------------------------------------------------------------

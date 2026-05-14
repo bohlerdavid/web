@@ -54,7 +54,7 @@
         setTimeout(function () {
             const bsAlert = bootstrap.Alert.getOrCreateInstance(alert);
             if (bsAlert) bsAlert.close();
-        }, 4000);
+        }, 8000);
     });
 })();
 
