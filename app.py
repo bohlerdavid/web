@@ -5,7 +5,7 @@ import os
 import secrets
 import time
 from functools import wraps
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from flask import (
     Flask, render_template, request, redirect, url_for,
     flash, g, Response, abort, jsonify, session
@@ -294,7 +294,7 @@ def status_badge(status):
 @app.context_processor
 def inject_globals():
     return {
-        'now': datetime.utcnow(),
+        'now': datetime.now(timezone.utc).replace(tzinfo=None),
         'csrf_token': generate_csrf,
     }
 
@@ -1255,7 +1255,7 @@ def scan_hardware(disc_id):
         return jsonify({'status': 'error', 'error': err_msg})
 
     # Save hardware info
-    now = datetime.utcnow().strftime('%Y-%m-%d %H:%M')
+    now = datetime.now(timezone.utc).replace(tzinfo=None).strftime('%Y-%m-%d %H:%M')
     execute_db("""
         UPDATE discovered_devices SET
             cpu=?, cpu_cores=?, ram_gb=?, disks=?, manufacturer=?, model=?,
@@ -1315,7 +1315,7 @@ def scan_hardware_all():
             results['error'] += 1
             continue
 
-        now = datetime.utcnow().strftime('%Y-%m-%d %H:%M')
+        now = datetime.now(timezone.utc).replace(tzinfo=None).strftime('%Y-%m-%d %H:%M')
         execute_db("""
             UPDATE discovered_devices SET
                 cpu=?, cpu_cores=?, ram_gb=?, disks=?, manufacturer=?, model=?,
