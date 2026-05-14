@@ -2,17 +2,33 @@ import sqlite3
 import csv
 import io
 import os
+import secrets
+import time
+from functools import wraps
 from datetime import datetime, date, timedelta
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    flash, g, Response, abort, jsonify
+    flash, g, Response, abort, jsonify, session
 )
+from werkzeug.security import generate_password_hash, check_password_hash
 import scanner
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'it-device-mgmt-secret-2024')
 
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
 DATABASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'devices.db')
+
+# ---------------------------------------------------------------------------
+# Brute-force protection
+# ---------------------------------------------------------------------------
+
+_login_attempts = {}  # {ip: {'count': N, 'locked_until': timestamp}}
+LOGIN_MAX_ATTEMPTS = 5
+LOGIN_LOCKOUT_SECONDS = 300  # 5 minutes
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +125,17 @@ CREATE TABLE IF NOT EXISTS discovered_devices (
     status             TEXT DEFAULT 'new',
     imported_device_id INTEGER
 );
+
+CREATE TABLE IF NOT EXISTS app_users (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    username      TEXT    NOT NULL UNIQUE,
+    password_hash TEXT    NOT NULL,
+    full_name     TEXT,
+    role          TEXT    NOT NULL DEFAULT 'viewer',
+    must_change_pw INTEGER DEFAULT 0,
+    created_at    TEXT    DEFAULT (datetime('now')),
+    last_login    TEXT
+);
 """
 
 def init_db():
@@ -116,6 +143,77 @@ def init_db():
         db = get_db()
         db.executescript(SCHEMA)
         db.commit()
+
+        # Create default admin if no users exist
+        existing = db.execute("SELECT COUNT(*) FROM app_users").fetchone()[0]
+        if existing == 0:
+            pw_hash = generate_password_hash('Admin1234!')
+            db.execute(
+                "INSERT INTO app_users (username, password_hash, full_name, role, must_change_pw) VALUES (?,?,?,?,?)",
+                ('admin', pw_hash, 'Administrator', 'admin', 1)
+            )
+            db.commit()
+            print("=" * 50)
+            print("Standard-Admin erstellt:")
+            print("  Benutzername: admin")
+            print("  Passwort:     Admin1234!")
+            print("  Bitte sofort ändern!")
+            print("=" * 50)
+
+
+# ---------------------------------------------------------------------------
+# CSRF helpers
+# ---------------------------------------------------------------------------
+
+def generate_csrf():
+    if 'csrf_token' not in session:
+        session['csrf_token'] = secrets.token_hex(32)
+    return session['csrf_token']
+
+
+def validate_csrf(token):
+    return token and token == session.get('csrf_token')
+
+
+# ---------------------------------------------------------------------------
+# Auth decorators
+# ---------------------------------------------------------------------------
+
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login', next=request.path))
+        return f(*args, **kwargs)
+    return decorated
+
+
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login', next=request.path))
+        if session.get('role') != 'admin':
+            flash('Zugriff verweigert. Administratorrechte erforderlich.', 'danger')
+            return redirect(url_for('dashboard'))
+        return f(*args, **kwargs)
+    return decorated
+
+
+# ---------------------------------------------------------------------------
+# Before-request: force password change middleware
+# ---------------------------------------------------------------------------
+
+@app.before_request
+def check_must_change_pw():
+    exempt = {'login', 'logout', 'static'}
+    if request.endpoint in exempt:
+        return
+    if 'user_id' not in session:
+        return
+    if session.get('must_change_pw') and request.endpoint != 'profile':
+        flash('Bitte ändern Sie Ihr Passwort, bevor Sie fortfahren.', 'warning')
+        return redirect(url_for('profile'))
 
 
 # ---------------------------------------------------------------------------
@@ -147,8 +245,263 @@ def status_badge(status):
 
 
 @app.context_processor
-def inject_now():
-    return {'now': datetime.utcnow()}
+def inject_globals():
+    return {
+        'now': datetime.utcnow(),
+        'csrf_token': generate_csrf,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Login / Logout
+# ---------------------------------------------------------------------------
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+
+    if request.method == 'POST':
+        token = request.form.get('csrf_token', '')
+        if not validate_csrf(token):
+            flash('Ungültige Anfrage. Bitte versuchen Sie es erneut.', 'danger')
+            return render_template('login.html', csrf_token=generate_csrf())
+
+        ip = request.remote_addr
+        now = time.time()
+
+        # Check lockout
+        attempt_info = _login_attempts.get(ip, {'count': 0, 'locked_until': 0})
+        if attempt_info['locked_until'] > now:
+            remaining_minutes = int((attempt_info['locked_until'] - now) / 60) + 1
+            flash(f'Zu viele Fehlversuche. Bitte {remaining_minutes} Minute(n) warten.', 'danger')
+            return render_template('login.html', csrf_token=generate_csrf())
+
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+
+        user = query_db("SELECT * FROM app_users WHERE username = ?", (username,), one=True)
+
+        if user and check_password_hash(user['password_hash'], password):
+            # Success — reset attempts
+            _login_attempts.pop(ip, None)
+
+            session.permanent = True
+            session['user_id'] = user['id']
+            session['username'] = user['username']
+            session['role'] = user['role']
+            session['full_name'] = user['full_name'] or user['username']
+            session['must_change_pw'] = bool(user['must_change_pw'])
+
+            # Update last_login
+            execute_db(
+                "UPDATE app_users SET last_login = datetime('now') WHERE id = ?",
+                (user['id'],)
+            )
+
+            next_url = request.form.get('next') or request.args.get('next') or url_for('dashboard')
+            return redirect(next_url)
+        else:
+            # Failure — increment attempts
+            count = attempt_info['count'] + 1
+            locked_until = 0
+            if count >= LOGIN_MAX_ATTEMPTS:
+                locked_until = now + LOGIN_LOCKOUT_SECONDS
+                flash(f'Zu viele Fehlversuche. Bitte {LOGIN_LOCKOUT_SECONDS // 60} Minuten warten.', 'danger')
+            else:
+                remaining = LOGIN_MAX_ATTEMPTS - count
+                flash(f'Ungültiger Benutzername oder Passwort. Noch {remaining} Versuch(e).', 'danger')
+            _login_attempts[ip] = {'count': count, 'locked_until': locked_until}
+            return render_template('login.html', csrf_token=generate_csrf())
+
+    return render_template('login.html', csrf_token=generate_csrf())
+
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+
+# ---------------------------------------------------------------------------
+# Profile
+# ---------------------------------------------------------------------------
+
+@app.route('/profile')
+@login_required
+def profile():
+    user = query_db("SELECT * FROM app_users WHERE id = ?", (session['user_id'],), one=True)
+    return render_template('profile.html', user=user)
+
+
+@app.route('/profile/change-password', methods=['POST'])
+@login_required
+def profile_change_password():
+    token = request.form.get('csrf_token', '')
+    if not validate_csrf(token):
+        flash('Ungültige Anfrage.', 'danger')
+        return redirect(url_for('profile'))
+
+    current_pw = request.form.get('current_password', '')
+    new_pw = request.form.get('new_password', '')
+    confirm_pw = request.form.get('confirm_password', '')
+
+    user = query_db("SELECT * FROM app_users WHERE id = ?", (session['user_id'],), one=True)
+
+    if not check_password_hash(user['password_hash'], current_pw):
+        flash('Aktuelles Passwort ist falsch.', 'danger')
+        return redirect(url_for('profile'))
+
+    if len(new_pw) < 8:
+        flash('Neues Passwort muss mindestens 8 Zeichen lang sein.', 'danger')
+        return redirect(url_for('profile'))
+
+    has_letter = any(c.isalpha() for c in new_pw)
+    has_digit = any(c.isdigit() for c in new_pw)
+    if not (has_letter and has_digit):
+        flash('Neues Passwort muss mindestens einen Buchstaben und eine Zahl enthalten.', 'danger')
+        return redirect(url_for('profile'))
+
+    if new_pw != confirm_pw:
+        flash('Passwörter stimmen nicht überein.', 'danger')
+        return redirect(url_for('profile'))
+
+    new_hash = generate_password_hash(new_pw)
+    execute_db(
+        "UPDATE app_users SET password_hash = ?, must_change_pw = 0 WHERE id = ?",
+        (new_hash, session['user_id'])
+    )
+    session['must_change_pw'] = False
+    flash('Passwort wurde erfolgreich geändert.', 'success')
+    return redirect(url_for('dashboard'))
+
+
+# ---------------------------------------------------------------------------
+# App User Management (admin only)
+# ---------------------------------------------------------------------------
+
+@app.route('/users')
+@admin_required
+def users():
+    user_list = query_db("SELECT * FROM app_users ORDER BY username ASC")
+    return render_template('users.html', users=user_list)
+
+
+@app.route('/users/new', methods=['GET', 'POST'])
+@admin_required
+def user_new():
+    if request.method == 'POST':
+        token = request.form.get('csrf_token', '')
+        if not validate_csrf(token):
+            flash('Ungültige Anfrage.', 'danger')
+            return render_template('user_form.html', user=request.form, edit=False)
+
+        username = request.form.get('username', '').strip()
+        full_name = request.form.get('full_name', '').strip()
+        role = request.form.get('role', 'viewer')
+        password = request.form.get('password', '')
+        confirm_password = request.form.get('confirm_password', '')
+
+        error = None
+        if not username:
+            error = 'Benutzername ist erforderlich.'
+        elif len(password) < 8:
+            error = 'Passwort muss mindestens 8 Zeichen lang sein.'
+        elif password != confirm_password:
+            error = 'Passwörter stimmen nicht überein.'
+        else:
+            existing = query_db("SELECT id FROM app_users WHERE username = ?", (username,), one=True)
+            if existing:
+                error = f'Benutzername "{username}" ist bereits vergeben.'
+
+        if error:
+            flash(error, 'danger')
+            return render_template('user_form.html', user=request.form, edit=False)
+
+        pw_hash = generate_password_hash(password)
+        execute_db(
+            "INSERT INTO app_users (username, password_hash, full_name, role, must_change_pw) VALUES (?,?,?,?,?)",
+            (username, pw_hash, full_name or None, role, 1)
+        )
+        flash(f'Benutzer "{username}" wurde erfolgreich erstellt.', 'success')
+        return redirect(url_for('users'))
+
+    return render_template('user_form.html', user={}, edit=False)
+
+
+@app.route('/users/<int:user_id>/edit', methods=['GET', 'POST'])
+@admin_required
+def user_edit(user_id):
+    app_user = row_to_dict(query_db("SELECT * FROM app_users WHERE id = ?", (user_id,), one=True))
+    if not app_user:
+        abort(404)
+
+    if request.method == 'POST':
+        token = request.form.get('csrf_token', '')
+        if not validate_csrf(token):
+            flash('Ungültige Anfrage.', 'danger')
+            return render_template('user_form.html', user=app_user, edit=True, user_id=user_id)
+
+        username = request.form.get('username', '').strip()
+        full_name = request.form.get('full_name', '').strip()
+        role = request.form.get('role', 'viewer')
+        new_password = request.form.get('new_password', '')
+        confirm_password = request.form.get('confirm_password', '')
+
+        if not username:
+            flash('Benutzername ist erforderlich.', 'danger')
+            return render_template('user_form.html', user=request.form, edit=True, user_id=user_id)
+
+        # Check username uniqueness (excluding current user)
+        existing = query_db(
+            "SELECT id FROM app_users WHERE username = ? AND id != ?", (username, user_id), one=True
+        )
+        if existing:
+            flash(f'Benutzername "{username}" ist bereits vergeben.', 'danger')
+            return render_template('user_form.html', user=request.form, edit=True, user_id=user_id)
+
+        if new_password:
+            if len(new_password) < 8:
+                flash('Passwort muss mindestens 8 Zeichen lang sein.', 'danger')
+                return render_template('user_form.html', user=request.form, edit=True, user_id=user_id)
+            if new_password != confirm_password:
+                flash('Passwörter stimmen nicht überein.', 'danger')
+                return render_template('user_form.html', user=request.form, edit=True, user_id=user_id)
+            pw_hash = generate_password_hash(new_password)
+            execute_db(
+                "UPDATE app_users SET username=?, full_name=?, role=?, password_hash=?, must_change_pw=1 WHERE id=?",
+                (username, full_name or None, role, pw_hash, user_id)
+            )
+        else:
+            execute_db(
+                "UPDATE app_users SET username=?, full_name=?, role=? WHERE id=?",
+                (username, full_name or None, role, user_id)
+            )
+
+        flash(f'Benutzer "{username}" wurde erfolgreich aktualisiert.', 'success')
+        return redirect(url_for('users'))
+
+    return render_template('user_form.html', user=app_user, edit=True, user_id=user_id)
+
+
+@app.route('/users/<int:user_id>/delete', methods=['POST'])
+@admin_required
+def user_delete(user_id):
+    token = request.form.get('csrf_token', '')
+    if not validate_csrf(token):
+        flash('Ungültige Anfrage.', 'danger')
+        return redirect(url_for('users'))
+
+    if user_id == session.get('user_id'):
+        flash('Sie können Ihren eigenen Account nicht löschen.', 'danger')
+        return redirect(url_for('users'))
+
+    app_user = query_db("SELECT * FROM app_users WHERE id = ?", (user_id,), one=True)
+    if not app_user:
+        abort(404)
+    execute_db("DELETE FROM app_users WHERE id = ?", (user_id,))
+    flash(f'Benutzer "{app_user["username"]}" wurde erfolgreich gelöscht.', 'success')
+    return redirect(url_for('users'))
 
 
 # ---------------------------------------------------------------------------
@@ -156,6 +509,7 @@ def inject_now():
 # ---------------------------------------------------------------------------
 
 @app.route('/seed')
+@login_required
 def seed():
     db = get_db()
 
@@ -172,7 +526,7 @@ def seed():
             loc
         )
 
-    # Users
+    # Users (legacy employee users — kept for DB compatibility)
     users = [
         ('Anna Müller',   'a.mueller@firma.de',   'IT',         '+49 30 12345-10'),
         ('Ben Schmidt',   'b.schmidt@firma.de',   'Buchhaltung','+49 30 12345-11'),
@@ -242,6 +596,7 @@ def seed():
 # ---------------------------------------------------------------------------
 
 @app.route('/')
+@login_required
 def dashboard():
     total = query_db("SELECT COUNT(*) as c FROM devices", one=True)['c']
 
@@ -254,20 +609,18 @@ def dashboard():
     )
 
     recent = query_db(
-        """SELECT d.*, l.name as location_name, u.name as user_name
+        """SELECT d.*, l.name as location_name
            FROM devices d
            LEFT JOIN locations l ON d.location_id = l.id
-           LEFT JOIN users u     ON d.user_id     = u.id
            ORDER BY d.created_at DESC LIMIT 5"""
     )
 
     ninety_days = (date.today() + timedelta(days=90)).strftime('%Y-%m-%d')
     today_str   = date.today().strftime('%Y-%m-%d')
     expiring = query_db(
-        """SELECT d.*, l.name as location_name, u.name as user_name
+        """SELECT d.*, l.name as location_name
            FROM devices d
            LEFT JOIN locations l ON d.location_id = l.id
-           LEFT JOIN users u     ON d.user_id     = u.id
            WHERE d.warranty_expiry BETWEEN ? AND ?
            ORDER BY d.warranty_expiry ASC""",
         (today_str, ninety_days)
@@ -313,16 +666,16 @@ CATEGORY_LABELS = {
 
 
 @app.route('/devices')
+@login_required
 def devices():
     search   = request.args.get('search', '').strip()
     status   = request.args.get('status', '')
     category = request.args.get('category', '')
     location = request.args.get('location', '')
 
-    query  = """SELECT d.*, l.name as location_name, u.name as user_name
+    query  = """SELECT d.*, l.name as location_name
                 FROM devices d
                 LEFT JOIN locations l ON d.location_id = l.id
-                LEFT JOIN users u     ON d.user_id     = u.id
                 WHERE 1=1"""
     params = []
 
@@ -362,6 +715,7 @@ def devices():
 
 
 @app.route('/devices/export')
+@login_required
 def devices_export():
     search   = request.args.get('search', '').strip()
     status   = request.args.get('status', '')
@@ -370,11 +724,10 @@ def devices_export():
 
     query  = """SELECT d.name, d.category, d.serial_number, d.mac_address,
                        d.ip_address, d.operating_system, d.status,
-                       l.name as location_name, u.name as user_name,
+                       l.name as location_name,
                        d.purchase_date, d.warranty_expiry, d.notes
                 FROM devices d
                 LEFT JOIN locations l ON d.location_id = l.id
-                LEFT JOIN users u     ON d.user_id     = u.id
                 WHERE 1=1"""
     params = []
 
@@ -400,7 +753,7 @@ def devices_export():
     writer.writerow([
         'Name', 'Kategorie', 'Seriennummer', 'MAC-Adresse',
         'IP-Adresse', 'Betriebssystem', 'Status',
-        'Standort', 'Benutzer', 'Kaufdatum', 'Garantie bis', 'Notizen'
+        'Standort', 'Kaufdatum', 'Garantie bis', 'Notizen'
     ])
     for row in rows:
         writer.writerow([
@@ -408,7 +761,7 @@ def devices_export():
             row['serial_number'] or '', row['mac_address'] or '',
             row['ip_address'] or '', row['operating_system'] or '',
             STATUS_LABELS.get(row['status'], row['status']),
-            row['location_name'] or '', row['user_name'] or '',
+            row['location_name'] or '',
             row['purchase_date'] or '', row['warranty_expiry'] or '',
             row['notes'] or ''
         ])
@@ -423,16 +776,16 @@ def devices_export():
 
 
 @app.route('/devices/new', methods=['GET', 'POST'])
+@login_required
 def device_new():
     locations = query_db("SELECT * FROM locations ORDER BY name")
-    users     = query_db("SELECT * FROM users ORDER BY name")
 
     if request.method == 'POST':
         name      = request.form.get('name', '').strip()
         if not name:
             flash('Gerätename ist erforderlich.', 'danger')
             return render_template('device_form.html', device=request.form,
-                                   locations=locations, users=users,
+                                   locations=locations,
                                    categories=CATEGORIES, statuses=STATUSES,
                                    category_labels=CATEGORY_LABELS,
                                    status_labels=STATUS_LABELS, edit=False)
@@ -440,9 +793,9 @@ def device_new():
         execute_db(
             """INSERT INTO devices
                (name, category, serial_number, mac_address, ip_address,
-                operating_system, status, location_id, user_id,
+                operating_system, status, location_id,
                 purchase_date, warranty_expiry, notes)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 name,
                 request.form.get('category', 'Other'),
@@ -452,7 +805,6 @@ def device_new():
                 request.form.get('operating_system', '').strip() or None,
                 request.form.get('status', 'active'),
                 request.form.get('location_id') or None,
-                request.form.get('user_id') or None,
                 request.form.get('purchase_date') or None,
                 request.form.get('warranty_expiry') or None,
                 request.form.get('notes', '').strip() or None,
@@ -470,20 +822,18 @@ def device_new():
     }
 
     return render_template('device_form.html', device=prefill, locations=locations,
-                           users=users, categories=CATEGORIES, statuses=STATUSES,
+                           categories=CATEGORIES, statuses=STATUSES,
                            category_labels=CATEGORY_LABELS,
                            status_labels=STATUS_LABELS, edit=False)
 
 
 @app.route('/devices/<int:device_id>')
+@login_required
 def device_detail(device_id):
     device = query_db(
-        """SELECT d.*, l.name as location_name, l.building, l.floor, l.room,
-                  u.name as user_name, u.email as user_email,
-                  u.department as user_department
+        """SELECT d.*, l.name as location_name, l.building, l.floor, l.room
            FROM devices d
            LEFT JOIN locations l ON d.location_id = l.id
-           LEFT JOIN users u     ON d.user_id     = u.id
            WHERE d.id = ?""",
         (device_id,), one=True
     )
@@ -495,19 +845,19 @@ def device_detail(device_id):
 
 
 @app.route('/devices/<int:device_id>/edit', methods=['GET', 'POST'])
+@login_required
 def device_edit(device_id):
     device    = row_to_dict(query_db("SELECT * FROM devices WHERE id = ?", (device_id,), one=True))
     if not device:
         abort(404)
     locations = query_db("SELECT * FROM locations ORDER BY name")
-    users     = query_db("SELECT * FROM users ORDER BY name")
 
     if request.method == 'POST':
         name = request.form.get('name', '').strip()
         if not name:
             flash('Gerätename ist erforderlich.', 'danger')
             return render_template('device_form.html', device=request.form,
-                                   locations=locations, users=users,
+                                   locations=locations,
                                    categories=CATEGORIES, statuses=STATUSES,
                                    category_labels=CATEGORY_LABELS,
                                    status_labels=STATUS_LABELS, edit=True,
@@ -516,7 +866,7 @@ def device_edit(device_id):
         execute_db(
             """UPDATE devices SET
                name=?, category=?, serial_number=?, mac_address=?, ip_address=?,
-               operating_system=?, status=?, location_id=?, user_id=?,
+               operating_system=?, status=?, location_id=?,
                purchase_date=?, warranty_expiry=?, notes=?
                WHERE id=?""",
             (
@@ -528,7 +878,6 @@ def device_edit(device_id):
                 request.form.get('operating_system', '').strip() or None,
                 request.form.get('status', 'active'),
                 request.form.get('location_id') or None,
-                request.form.get('user_id') or None,
                 request.form.get('purchase_date') or None,
                 request.form.get('warranty_expiry') or None,
                 request.form.get('notes', '').strip() or None,
@@ -539,7 +888,7 @@ def device_edit(device_id):
         return redirect(url_for('device_detail', device_id=device_id))
 
     return render_template('device_form.html', device=device,
-                           locations=locations, users=users,
+                           locations=locations,
                            categories=CATEGORIES, statuses=STATUSES,
                            category_labels=CATEGORY_LABELS,
                            status_labels=STATUS_LABELS,
@@ -547,6 +896,7 @@ def device_edit(device_id):
 
 
 @app.route('/devices/<int:device_id>/delete', methods=['POST'])
+@login_required
 def device_delete(device_id):
     device = query_db("SELECT * FROM devices WHERE id = ?", (device_id,), one=True)
     if not device:
@@ -557,93 +907,11 @@ def device_delete(device_id):
 
 
 # ---------------------------------------------------------------------------
-# Users
-# ---------------------------------------------------------------------------
-
-@app.route('/users')
-def users():
-    search = request.args.get('search', '').strip()
-    query  = """SELECT u.*, COUNT(d.id) as device_count
-                FROM users u
-                LEFT JOIN devices d ON d.user_id = u.id
-                WHERE 1=1"""
-    params = []
-    if search:
-        query += " AND (u.name LIKE ? OR u.email LIKE ? OR u.department LIKE ?)"
-        like = f'%{search}%'
-        params += [like, like, like]
-    query += " GROUP BY u.id ORDER BY u.name ASC"
-    user_list = query_db(query, params)
-    return render_template('users.html', users=user_list, search=search)
-
-
-@app.route('/users/new', methods=['GET', 'POST'])
-def user_new():
-    if request.method == 'POST':
-        name = request.form.get('name', '').strip()
-        if not name:
-            flash('Name ist erforderlich.', 'danger')
-            return render_template('user_form.html', user=request.form, edit=False)
-
-        execute_db(
-            "INSERT INTO users (name, email, department, phone) VALUES (?,?,?,?)",
-            (
-                name,
-                request.form.get('email', '').strip() or None,
-                request.form.get('department', '').strip() or None,
-                request.form.get('phone', '').strip() or None,
-            )
-        )
-        flash('Benutzer wurde erfolgreich hinzugefügt.', 'success')
-        return redirect(url_for('users'))
-
-    return render_template('user_form.html', user={}, edit=False)
-
-
-@app.route('/users/<int:user_id>/edit', methods=['GET', 'POST'])
-def user_edit(user_id):
-    user = row_to_dict(query_db("SELECT * FROM users WHERE id = ?", (user_id,), one=True))
-    if not user:
-        abort(404)
-
-    if request.method == 'POST':
-        name = request.form.get('name', '').strip()
-        if not name:
-            flash('Name ist erforderlich.', 'danger')
-            return render_template('user_form.html', user=request.form,
-                                   edit=True, user_id=user_id)
-
-        execute_db(
-            "UPDATE users SET name=?, email=?, department=?, phone=? WHERE id=?",
-            (
-                name,
-                request.form.get('email', '').strip() or None,
-                request.form.get('department', '').strip() or None,
-                request.form.get('phone', '').strip() or None,
-                user_id,
-            )
-        )
-        flash('Benutzer wurde erfolgreich aktualisiert.', 'success')
-        return redirect(url_for('users'))
-
-    return render_template('user_form.html', user=user, edit=True, user_id=user_id)
-
-
-@app.route('/users/<int:user_id>/delete', methods=['POST'])
-def user_delete(user_id):
-    user = query_db("SELECT * FROM users WHERE id = ?", (user_id,), one=True)
-    if not user:
-        abort(404)
-    execute_db("DELETE FROM users WHERE id = ?", (user_id,))
-    flash('Benutzer wurde erfolgreich gelöscht.', 'success')
-    return redirect(url_for('users'))
-
-
-# ---------------------------------------------------------------------------
 # Locations
 # ---------------------------------------------------------------------------
 
 @app.route('/locations')
+@login_required
 def locations():
     search = request.args.get('search', '').strip()
     query  = """SELECT l.*, COUNT(d.id) as device_count
@@ -661,6 +929,7 @@ def locations():
 
 
 @app.route('/locations/new', methods=['GET', 'POST'])
+@login_required
 def location_new():
     if request.method == 'POST':
         name = request.form.get('name', '').strip()
@@ -684,6 +953,7 @@ def location_new():
 
 
 @app.route('/locations/<int:location_id>/edit', methods=['GET', 'POST'])
+@login_required
 def location_edit(location_id):
     location = row_to_dict(query_db("SELECT * FROM locations WHERE id = ?", (location_id,), one=True))
     if not location:
@@ -714,6 +984,7 @@ def location_edit(location_id):
 
 
 @app.route('/locations/<int:location_id>/delete', methods=['POST'])
+@login_required
 def location_delete(location_id):
     location = query_db("SELECT * FROM locations WHERE id = ?", (location_id,), one=True)
     if not location:
@@ -728,11 +999,13 @@ def location_delete(location_id):
 # ---------------------------------------------------------------------------
 
 @app.route('/scan')
+@login_required
 def scan():
     return render_template('scan.html')
 
 
 @app.route('/scan/start', methods=['POST'])
+@login_required
 def scan_start():
     state = scanner.get_scan_state()
     if state.get('running'):
@@ -746,11 +1019,13 @@ def scan_start():
 
 
 @app.route('/scan/status')
+@login_required
 def scan_status():
     return jsonify(scanner.get_scan_state())
 
 
 @app.route('/scan/save', methods=['POST'])
+@login_required
 def scan_save():
     state = scanner.get_scan_state()
     results = state.get('results', [])
@@ -765,7 +1040,6 @@ def scan_save():
         ).fetchone()
 
         if existing:
-            # Preserve status and imported_device_id, update last_seen and other fields
             db.execute(
                 """UPDATE discovered_devices
                    SET mac=?, hostname=?, vendor=?, os=?, os_accuracy=?,
@@ -805,19 +1079,20 @@ def scan_save():
 
 
 @app.route('/scan/list')
+@login_required
 def scan_list():
     rows = query_db("SELECT * FROM discovered_devices ORDER BY ip ASC")
     return jsonify([dict(r) for r in rows])
 
 
 @app.route('/scan/import/<int:disc_id>', methods=['POST'])
+@login_required
 def scan_import(disc_id):
     disc = query_db(
         "SELECT * FROM discovered_devices WHERE id = ?", (disc_id,), one=True
     )
     if not disc:
         abort(404)
-    # Mark as imported
     execute_db(
         "UPDATE discovered_devices SET status='imported' WHERE id=?",
         (disc_id,)
@@ -832,6 +1107,7 @@ def scan_import(disc_id):
 
 
 @app.route('/scan/dismiss/<int:disc_id>', methods=['POST'])
+@login_required
 def scan_dismiss(disc_id):
     disc = query_db(
         "SELECT id FROM discovered_devices WHERE id = ?", (disc_id,), one=True
@@ -846,6 +1122,7 @@ def scan_dismiss(disc_id):
 
 
 @app.route('/scan/reset/<int:disc_id>', methods=['POST'])
+@login_required
 def scan_reset(disc_id):
     disc = query_db(
         "SELECT id FROM discovered_devices WHERE id = ?", (disc_id,), one=True

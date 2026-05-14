@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+
+{% block title %}Mein Profil — IT Geräteverwaltung{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
+<li class="breadcrumb-item active">Mein Profil</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">
+            <i class="bi bi-person-circle me-2 text-accent"></i>Mein Profil
+        </h1>
+    </div>
+</div>
+
+<div class="row g-4">
+
+    <!-- ===== USER INFO CARD ===== -->
+    <div class="col-12 col-md-5 col-lg-4">
+        <div class="form-card">
+            <div class="form-section-title">Kontoinformationen</div>
+
+            {% if user['must_change_pw'] %}
+            <div class="alert alert-warning d-flex align-items-center gap-2 py-2" style="font-size:.87rem;">
+                <i class="bi bi-exclamation-triangle-fill flex-shrink-0"></i>
+                <div><strong>Bitte ändern Sie Ihr Passwort sofort!</strong><br>Ihr Passwort wurde vom Administrator gesetzt.</div>
+            </div>
+            {% endif %}
+
+            <div class="d-flex align-items-center gap-3 mb-4">
+                <div style="width:60px;height:60px;border-radius:50%;
+                            background:linear-gradient(135deg,#4f9cf9,#3a82e0);
+                            display:flex;align-items:center;justify-content:center;
+                            color:#fff;font-weight:700;font-size:1.5rem;flex-shrink:0;">
+                    {{ (user['full_name'] or user['username'])[0]|upper }}
+                </div>
+                <div>
+                    <div class="fw-bold fs-6">{{ user['full_name'] or user['username'] }}</div>
+                    <div class="text-muted" style="font-size:.85rem;">@{{ user['username'] }}</div>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <div class="detail-label">Benutzername</div>
+                <div class="detail-value">{{ user['username'] }}</div>
+            </div>
+            <div class="mb-3">
+                <div class="detail-label">Vollständiger Name</div>
+                <div class="detail-value {% if not user['full_name'] %}empty{% endif %}">
+                    {{ user['full_name'] or 'Nicht angegeben' }}
+                </div>
+            </div>
+            <div class="mb-3">
+                <div class="detail-label">Rolle</div>
+                <div class="detail-value">
+                    {% if user['role'] == 'admin' %}
+                    <span class="badge bg-primary">Administrator</span>
+                    {% else %}
+                    <span class="badge bg-secondary">Betrachter</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="mb-3">
+                <div class="detail-label">Konto erstellt</div>
+                <div class="detail-value text-muted" style="font-size:.85rem;">
+                    {{ user['created_at'][:10]|de_date if user['created_at'] else '—' }}
+                </div>
+            </div>
+            <div class="mb-3">
+                <div class="detail-label">Letzter Login</div>
+                <div class="detail-value text-muted" style="font-size:.85rem;">
+                    {{ user['last_login'][:16].replace('T',' ') if user['last_login'] else '—' }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== CHANGE PASSWORD CARD ===== -->
+    <div class="col-12 col-md-7 col-lg-6">
+        <div class="form-card">
+            <div class="form-section-title">Passwort ändern</div>
+
+            <form method="post" action="{{ url_for('profile_change_password') }}" autocomplete="off">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <div class="mb-3">
+                    <label class="form-label">Aktuelles Passwort <span class="text-danger">*</span></label>
+                    <input type="password" name="current_password" class="form-control"
+                           placeholder="Ihr aktuelles Passwort" autocomplete="current-password" required>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Neues Passwort <span class="text-danger">*</span></label>
+                    <input type="password" name="new_password" class="form-control"
+                           placeholder="Mindestens 8 Zeichen" autocomplete="new-password" required>
+                    <div class="form-text text-muted" style="font-size:.78rem;">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Min. 8 Zeichen, mindestens ein Buchstabe und eine Zahl erforderlich.
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label">Neues Passwort bestätigen <span class="text-danger">*</span></label>
+                    <input type="password" name="confirm_password" class="form-control"
+                           placeholder="Passwort wiederholen" autocomplete="new-password" required>
+                </div>
+
+                <div class="d-grid">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg me-1"></i>Passwort ändern
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

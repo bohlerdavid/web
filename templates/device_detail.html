@@ -125,22 +125,6 @@
                         <div class="detail-value empty">Nicht zugewiesen</div>
                         {% endif %}
                     </div>
-                    <div class="mb-3">
-                        <div class="detail-label">Benutzer</div>
-                        {% if device['user_name'] %}
-                        <div class="detail-value">
-                            <i class="bi bi-person me-1 text-accent"></i>{{ device['user_name'] }}
-                            {% if device['user_department'] %}
-                            <div class="text-muted" style="font-size:.8rem;">{{ device['user_department'] }}</div>
-                            {% endif %}
-                            {% if device['user_email'] %}
-                            <div style="font-size:.82rem;"><a href="mailto:{{ device['user_email'] }}">{{ device['user_email'] }}</a></div>
-                            {% endif %}
-                        </div>
-                        {% else %}
-                        <div class="detail-value empty">Nicht zugewiesen</div>
-                        {% endif %}
-                    </div>
                 </div>
             </div>
 

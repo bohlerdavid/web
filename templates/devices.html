@@ -88,7 +88,6 @@
                     <th>IP-Adresse</th>
                     <th>Status</th>
                     <th>Standort</th>
-                    <th>Benutzer</th>
                     <th>Garantie bis</th>
                     <th style="width:100px;">Aktionen</th>
                 </tr>
@@ -116,7 +115,6 @@
                     <td class="text-muted" style="font-size:.83rem;font-family:monospace;">{{ d['ip_address'] or '—' }}</td>
                     <td>{{ d['status']|status_badge|safe }}</td>
                     <td>{{ d['location_name'] or '—' }}</td>
-                    <td>{{ d['user_name'] or '—' }}</td>
                     <td>
                         {% if d['warranty_expiry'] %}
                         <span data-warranty="{{ d['warranty_expiry'] }}">{{ d['warranty_expiry']|de_date }}</span>

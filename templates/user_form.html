@@ -4,7 +4,7 @@
 
 {% block breadcrumb %}
 <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
-<li class="breadcrumb-item"><a href="{{ url_for('users') }}">Benutzer</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('users') }}">Benutzerverwaltung</a></li>
 <li class="breadcrumb-item active">{% if edit %}Bearbeiten{% else %}Neuer Benutzer{% endif %}</li>
 {% endblock %}
 
@@ -13,7 +13,7 @@
     <div>
         <h1 class="page-title">
             <i class="bi bi-person-{% if edit %}gear{% else %}plus{% endif %} me-2 text-accent"></i>
-            {% if edit %}Benutzer bearbeiten{% else %}Neuen Benutzer hinzufügen{% endif %}
+            {% if edit %}Benutzer bearbeiten{% else %}Neuen Benutzer anlegen{% endif %}
         </h1>
     </div>
     <a href="{{ url_for('users') }}" class="btn btn-outline-secondary btn-sm">
@@ -25,42 +25,77 @@
     <div class="col-12 col-md-8 col-lg-6">
         <div class="form-card">
             <form method="post"
-                  action="{% if edit %}{{ url_for('user_edit', user_id=user_id) }}{% else %}{{ url_for('user_new') }}{% endif %}">
+                  action="{% if edit %}{{ url_for('user_edit', user_id=user_id) }}{% else %}{{ url_for('user_new') }}{% endif %}"
+                  autocomplete="off">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-                <div class="form-section-title">Benutzerinformationen</div>
+                <div class="form-section-title">Kontoinformationen</div>
 
                 <div class="mb-3">
-                    <label class="form-label">Name <span class="text-danger">*</span></label>
-                    <input type="text" name="name" class="form-control"
-                           value="{{ user.get('name', '') }}" required
+                    <label class="form-label">Benutzername <span class="text-danger">*</span></label>
+                    <input type="text" name="username" class="form-control"
+                           value="{{ user.get('username', '') }}" required
+                           placeholder="z. B. jdoe" autocomplete="off">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Vollständiger Name</label>
+                    <input type="text" name="full_name" class="form-control"
+                           value="{{ user.get('full_name', '') or '' }}"
                            placeholder="Vor- und Nachname">
                 </div>
 
-                <div class="mb-3">
-                    <label class="form-label">E-Mail-Adresse</label>
-                    <input type="email" name="email" class="form-control"
-                           value="{{ user.get('email', '') or '' }}"
-                           placeholder="name@firma.de">
+                <div class="mb-4">
+                    <label class="form-label">Rolle <span class="text-danger">*</span></label>
+                    <select name="role" class="form-select">
+                        <option value="viewer" {% if user.get('role', 'viewer') == 'viewer' %}selected{% endif %}>
+                            Betrachter — kann Geräte sehen, aber nicht verwalten
+                        </option>
+                        <option value="admin" {% if user.get('role') == 'admin' %}selected{% endif %}>
+                            Administrator — voller Zugriff inkl. Benutzerverwaltung
+                        </option>
+                    </select>
                 </div>
 
+                <div class="form-section-title">
+                    {% if edit %}Passwort zurücksetzen{% else %}Passwort{% endif %}
+                </div>
+                {% if edit %}
+                <p class="text-muted mb-3" style="font-size:.83rem;">
+                    <i class="bi bi-info-circle me-1"></i>
+                    Felder leer lassen, um das Passwort unverändert zu behalten.
+                    Bei Eingabe eines neuen Passworts muss der Benutzer es beim nächsten Login ändern.
+                </p>
+                {% endif %}
+
                 <div class="mb-3">
-                    <label class="form-label">Abteilung</label>
-                    <input type="text" name="department" class="form-control"
-                           value="{{ user.get('department', '') or '' }}"
-                           placeholder="z. B. IT, Buchhaltung, Vertrieb">
+                    <label class="form-label">
+                        {% if edit %}Neues Passwort{% else %}Passwort{% endif %}
+                        {% if not edit %}<span class="text-danger">*</span>{% endif %}
+                    </label>
+                    <input type="password" name="{% if edit %}new_password{% else %}password{% endif %}"
+                           class="form-control" placeholder="Mindestens 8 Zeichen"
+                           autocomplete="new-password"
+                           {% if not edit %}required{% endif %}>
                 </div>
 
                 <div class="mb-4">
-                    <label class="form-label">Telefon</label>
-                    <input type="text" name="phone" class="form-control"
-                           value="{{ user.get('phone', '') or '' }}"
-                           placeholder="+49 30 12345-00">
+                    <label class="form-label">
+                        Passwort bestätigen
+                        {% if not edit %}<span class="text-danger">*</span>{% endif %}
+                    </label>
+                    <input type="password" name="confirm_password" class="form-control"
+                           placeholder="Passwort wiederholen" autocomplete="new-password"
+                           {% if not edit %}required{% endif %}>
+                    <div class="form-text text-muted" style="font-size:.78rem;">
+                        <i class="bi bi-shield-lock me-1"></i>Min. 8 Zeichen erforderlich.
+                    </div>
                 </div>
 
                 <div class="d-grid gap-2">
                     <button type="submit" class="btn btn-primary">
                         <i class="bi bi-{% if edit %}check-lg{% else %}person-plus{% endif %} me-1"></i>
-                        {% if edit %}Änderungen speichern{% else %}Benutzer hinzufügen{% endif %}
+                        {% if edit %}Änderungen speichern{% else %}Benutzer anlegen{% endif %}
                     </button>
                     <a href="{{ url_for('users') }}" class="btn btn-outline-secondary">Abbrechen</a>
                 </div>

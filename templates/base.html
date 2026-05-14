@@ -46,7 +46,7 @@
             </li>
             <li class="sidebar-item {% if request.endpoint in ['users','user_new','user_edit'] %}active{% endif %}">
                 <a href="{{ url_for('users') }}" class="sidebar-link">
-                    <i class="bi bi-people"></i>
+                    <i class="bi bi-person-lock"></i>
                     <span>Benutzer</span>
                 </a>
             </li>
@@ -78,13 +78,49 @@
                     {% endblock %}
                 </ol>
             </nav>
-            <div class="topbar-actions">
-                <a href="{{ url_for('devices') }}" class="btn btn-sm btn-outline-primary me-2">
-                    <i class="bi bi-pc-display me-1"></i>Geräte
-                </a>
+            <div class="topbar-actions d-flex align-items-center gap-2">
                 <a href="{{ url_for('device_new') }}" class="btn btn-sm btn-primary">
                     <i class="bi bi-plus-lg me-1"></i>Neues Gerät
                 </a>
+                <!-- User menu -->
+                <div class="dropdown">
+                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle d-flex align-items-center gap-2"
+                            type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <span style="width:26px;height:26px;border-radius:50%;
+                                     background:linear-gradient(135deg,#4f9cf9,#3a82e0);
+                                     display:inline-flex;align-items:center;justify-content:center;
+                                     color:#fff;font-weight:700;font-size:.72rem;flex-shrink:0;">
+                            {{ (session.get('full_name') or session.get('username', '?'))[0]|upper }}
+                        </span>
+                        <span class="d-none d-sm-inline">{{ session.get('username', '') }}</span>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li>
+                            <div class="dropdown-item-text py-1">
+                                <div class="fw-semibold" style="font-size:.88rem;">{{ session.get('full_name') or session.get('username') }}</div>
+                                <div class="text-muted" style="font-size:.75rem;">
+                                    {% if session.get('role') == 'admin' %}
+                                    <span class="badge bg-primary" style="font-size:.65rem;">Administrator</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary" style="font-size:.65rem;">Betrachter</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </li>
+                        <li><hr class="dropdown-divider my-1"></li>
+                        <li>
+                            <a class="dropdown-item" href="{{ url_for('profile') }}">
+                                <i class="bi bi-person-circle me-2"></i>Mein Profil
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider my-1"></li>
+                        <li>
+                            <a class="dropdown-item text-danger" href="{{ url_for('logout') }}">
+                                <i class="bi bi-box-arrow-right me-2"></i>Abmelden
+                            </a>
+                        </li>
+                    </ul>
+                </div>
             </div>
         </header>
 

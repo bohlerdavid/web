@@ -149,18 +149,6 @@
                         {% endfor %}
                     </select>
                 </div>
-                <div>
-                    <label class="form-label">Benutzer / Verantwortlicher</label>
-                    <select name="user_id" class="form-select form-select-sm">
-                        <option value="">— Kein Benutzer —</option>
-                        {% for u in users %}
-                        <option value="{{ u['id'] }}"
-                                {% if device.get('user_id')|string == u['id']|string %}selected{% endif %}>
-                            {{ u['name'] }}{% if u['department'] %} ({{ u['department'] }}){% endif %}
-                        </option>
-                        {% endfor %}
-                    </select>
-                </div>
             </div>
 
             <!-- Submit -->
