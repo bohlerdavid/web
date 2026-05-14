@@ -211,7 +211,7 @@ def check_must_change_pw():
         return
     if 'user_id' not in session:
         return
-    if session.get('must_change_pw') and request.endpoint != 'profile':
+    if session.get('must_change_pw') and request.endpoint not in {'profile', 'profile_change_password'}:
         flash('Bitte ändern Sie Ihr Passwort, bevor Sie fortfahren.', 'warning')
         return redirect(url_for('profile'))
 
