@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}Standorte — IT Geräteverwaltung{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
+<li class="breadcrumb-item active">Standorte</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title"><i class="bi bi-geo-alt me-2 text-primary"></i>Standorte</h1>
+  <a href="{{ url_for('location_new') }}" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-lg me-1"></i>Neuer Standort
+  </a>
+</div>
+
+<!-- Suche -->
+<form method="get" action="{{ url_for('locations') }}" class="filter-bar">
+  <div class="row g-2 align-items-end">
+    <div class="col-12 col-md-6">
+      <div class="input-group input-group-sm">
+        <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
+        <input type="text" name="search" class="form-control"
+               placeholder="Name, Gebäude oder Raum …" value="{{ search }}">
+      </div>
+    </div>
+    <div class="col-auto d-flex gap-1">
+      <button type="submit" class="btn btn-primary btn-sm">
+        <i class="bi bi-search me-1"></i>Suchen
+      </button>
+      <a href="{{ url_for('locations') }}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-x-lg"></i>
+      </a>
+    </div>
+  </div>
+</form>
+
+<div class="table-card">
+  {% if locations %}
+  <div class="table-responsive">
+    <table class="table table-hover">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Gebäude</th>
+          <th>Etage</th>
+          <th>Raum</th>
+          <th class="text-center">Geräte</th>
+          <th class="text-end">Aktionen</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for loc in locations %}
+        <tr>
+          <td class="fw-medium">
+            <i class="bi bi-geo-alt me-1 text-primary"></i>{{ loc['name'] }}
+          </td>
+          <td>{{ loc['building'] or '—' }}</td>
+          <td>{{ loc['floor'] or '—' }}</td>
+          <td>{{ loc['room'] or '—' }}</td>
+          <td class="text-center">
+            {% if loc['device_count'] > 0 %}
+            <a href="{{ url_for('devices') }}?location={{ loc['id'] }}" class="badge bg-primary text-decoration-none">
+              {{ loc['device_count'] }}
+            </a>
+            {% else %}
+            <span class="text-muted small">0</span>
+            {% endif %}
+          </td>
+          <td class="text-end">
+            <a href="{{ url_for('location_edit', location_id=loc['id']) }}"
+               class="btn btn-outline-primary btn-action me-1" title="Bearbeiten">
+              <i class="bi bi-pencil"></i>
+            </a>
+            <form method="post" action="{{ url_for('location_delete', location_id=loc['id']) }}"
+                  class="d-inline"
+                  data-confirm="Standort '{{ loc['name'] }}' wirklich löschen?">
+              <button type="submit" class="btn btn-outline-danger btn-action" title="Löschen">
+                <i class="bi bi-trash"></i>
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="px-3 py-2 text-muted small border-top">
+    {{ locations | length }} Standort{% if locations | length != 1 %}e{% endif %} gefunden
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <i class="bi bi-geo-alt"></i>
+    <p class="mb-3">Keine Standorte gefunden.</p>
+    <a href="{{ url_for('location_new') }}" class="btn btn-primary btn-sm">
+      <i class="bi bi-plus-lg me-1"></i>Standort hinzufügen
+    </a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

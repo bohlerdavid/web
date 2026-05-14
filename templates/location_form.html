@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}{% if edit %}Standort bearbeiten{% else %}Neuer Standort{% endif %} — IT Geräteverwaltung{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('locations') }}">Standorte</a></li>
+<li class="breadcrumb-item active">{% if edit %}Bearbeiten{% else %}Neu{% endif %}</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">
+    <i class="bi bi-geo-alt-fill me-2 text-primary"></i>
+    {% if edit %}Standort bearbeiten{% else %}Neuer Standort{% endif %}
+  </h1>
+  <a href="{{ url_for('locations') }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left me-1"></i>Zurück
+  </a>
+</div>
+
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+    <div class="form-card">
+      <form method="post"
+            action="{% if edit %}{{ url_for('location_edit', location_id=location_id) }}{% else %}{{ url_for('location_new') }}{% endif %}">
+
+        <div class="form-section-title">Standortinformationen</div>
+        <div class="mb-3">
+          <label class="form-label">Bezeichnung <span class="text-danger">*</span></label>
+          <input type="text" name="name" class="form-control"
+                 value="{{ location.get('name', '') }}" required
+                 placeholder="z. B. Büro 1. OG oder Serverraum">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Gebäude</label>
+          <input type="text" name="building" class="form-control"
+                 value="{{ location.get('building', '') or '' }}"
+                 placeholder="z. B. Hauptgebäude, Nebengebäude">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Etage</label>
+          <input type="text" name="floor" class="form-control"
+                 value="{{ location.get('floor', '') or '' }}"
+                 placeholder="z. B. EG, 1. OG, UG">
+        </div>
+        <div class="mb-4">
+          <label class="form-label">Raum / Raumnummer</label>
+          <input type="text" name="room" class="form-control"
+                 value="{{ location.get('room', '') or '' }}"
+                 placeholder="z. B. 101, SR-01, Labor">
+        </div>
+
+        <div class="d-flex gap-2">
+          <button type="submit" class="btn btn-primary flex-fill">
+            <i class="bi bi-check-lg me-1"></i>
+            {% if edit %}Änderungen speichern{% else %}Standort hinzufügen{% endif %}
+          </button>
+          <a href="{{ url_for('locations') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-x me-1"></i>Abbrechen
+          </a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

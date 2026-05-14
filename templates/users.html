@@ -1,0 +1,129 @@
+{% extends 'base.html' %}
+
+{% block title %}Benutzer — IT Geräteverwaltung{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
+<li class="breadcrumb-item active">Benutzer</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Benutzer</h1>
+        <div class="text-muted" style="font-size:.85rem;">{{ users|length }} Benutzer(in) gefunden</div>
+    </div>
+    <a href="{{ url_for('user_new') }}" class="btn btn-primary btn-sm">
+        <i class="bi bi-person-plus me-1"></i>Neuer Benutzer
+    </a>
+</div>
+
+<!-- Filter -->
+<div class="filter-bar">
+    <form id="filterForm" method="get" action="{{ url_for('users') }}">
+        <div class="row g-2 align-items-end">
+            <div class="col-12 col-md-6 col-lg-4">
+                <label class="form-label mb-1" style="font-size:.78rem;font-weight:600;color:#5a6a7e;">SUCHE</label>
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
+                    <input type="text" name="search" class="form-control"
+                           placeholder="Name, E-Mail, Abteilung …" value="{{ search }}">
+                </div>
+            </div>
+            <div class="col-auto d-flex gap-2">
+                <button type="submit" class="btn btn-primary btn-sm">
+                    <i class="bi bi-search me-1"></i>Suchen
+                </button>
+                {% if search %}
+                <a href="{{ url_for('users') }}" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-x-lg"></i>
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Table -->
+<div class="table-card">
+    {% if users %}
+    <div class="table-responsive">
+        <table class="table mb-0">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>E-Mail</th>
+                    <th>Abteilung</th>
+                    <th>Telefon</th>
+                    <th>Geräte</th>
+                    <th style="width:100px;">Aktionen</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in users %}
+                <tr>
+                    <td>
+                        <div class="d-flex align-items-center gap-2">
+                            <div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#4f9cf9,#3a82e0);
+                                        display:flex;align-items:center;justify-content:center;color:#fff;
+                                        font-weight:700;font-size:.85rem;flex-shrink:0;">
+                                {{ u['name'][0]|upper }}
+                            </div>
+                            <span class="fw-semibold">{{ u['name'] }}</span>
+                        </div>
+                    </td>
+                    <td>
+                        {% if u['email'] %}
+                        <a href="mailto:{{ u['email'] }}" class="text-decoration-none text-muted">
+                            <i class="bi bi-envelope me-1"></i>{{ u['email'] }}
+                        </a>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td>
+                        {% if u['department'] %}
+                        <span class="badge" style="background:#eef2ff;color:#4338ca;font-size:.72rem;">{{ u['department'] }}</span>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td class="text-muted" style="font-size:.85rem;">{{ u['phone'] or '—' }}</td>
+                    <td>
+                        <a href="{{ url_for('devices', user=u['id']) }}" class="badge bg-primary text-decoration-none">
+                            {{ u['device_count'] }}
+                        </a>
+                    </td>
+                    <td>
+                        <div class="d-flex gap-1">
+                            <a href="{{ url_for('user_edit', user_id=u['id']) }}"
+                               class="btn btn-outline-primary btn-action btn-icon" title="Bearbeiten" data-bs-toggle="tooltip">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            <form method="post" action="{{ url_for('user_delete', user_id=u['id']) }}"
+                                  data-confirm="Benutzer '{{ u['name'] }}' wirklich löschen?">
+                                <button type="submit" class="btn btn-outline-danger btn-action btn-icon"
+                                        data-confirm="Benutzer '{{ u['name'] }}' wirklich löschen?"
+                                        title="Löschen" data-bs-toggle="tooltip">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="table-footer">
+        <span>{{ users|length }} Ergebnis(se)</span>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <i class="bi bi-people"></i>
+        <p class="mb-2">Keine Benutzer gefunden.</p>
+        {% if search %}
+        <a href="{{ url_for('users') }}" class="btn btn-sm btn-outline-secondary">Suche zurücksetzen</a>
+        {% else %}
+        <a href="{{ url_for('user_new') }}" class="btn btn-sm btn-primary">Benutzer hinzufügen</a>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

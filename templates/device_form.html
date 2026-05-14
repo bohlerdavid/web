@@ -1,0 +1,180 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if edit %}Gerät bearbeiten{% else %}Neues Gerät{% endif %} — IT Geräteverwaltung{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('devices') }}">Geräte</a></li>
+<li class="breadcrumb-item active">{% if edit %}Bearbeiten{% else %}Neues Gerät{% endif %}</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">
+            <i class="bi bi-{% if edit %}pencil-square{% else %}plus-circle{% endif %} me-2 text-accent"></i>
+            {% if edit %}Gerät bearbeiten{% else %}Neues Gerät hinzufügen{% endif %}
+        </h1>
+    </div>
+    <a href="{{ url_for('devices') }}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left me-1"></i>Zurück
+    </a>
+</div>
+
+<form method="post"
+      action="{% if edit %}{{ url_for('device_edit', device_id=device_id) }}{% else %}{{ url_for('device_new') }}{% endif %}">
+
+    <div class="row g-3">
+
+        <!-- ===== LEFT COLUMN ===== -->
+        <div class="col-12 col-lg-8">
+
+            <!-- Basic Info -->
+            <div class="form-card mb-3">
+                <div class="form-section-title">Basisinformationen</div>
+                <div class="row g-3">
+                    <div class="col-12 col-md-8">
+                        <label class="form-label">Gerätename <span class="text-danger">*</span></label>
+                        <input type="text" name="name" class="form-control"
+                               value="{{ device.get('name', '') }}" required placeholder="z. B. Laptop-Sales-01">
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label class="form-label">Kategorie</label>
+                        <select name="category" class="form-select">
+                            {% for c in categories %}
+                            <option value="{{ c }}" {% if device.get('category', 'Other') == c %}selected{% endif %}>
+                                {{ category_labels[c] }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Seriennummer</label>
+                        <input type="text" name="serial_number" class="form-control"
+                               value="{{ device.get('serial_number', '') or '' }}" placeholder="z. B. SN-ABC-12345">
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Betriebssystem</label>
+                        <input type="text" name="operating_system" class="form-control"
+                               value="{{ device.get('operating_system', '') or '' }}" placeholder="z. B. Windows 11 Pro">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Network -->
+            <div class="form-card mb-3">
+                <div class="form-section-title">Netzwerk</div>
+                <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">MAC-Adresse</label>
+                        <input type="text" name="mac_address" class="form-control"
+                               value="{{ device.get('mac_address', '') or '' }}"
+                               placeholder="AA:BB:CC:DD:EE:FF">
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">IP-Adresse</label>
+                        <input type="text" name="ip_address" class="form-control"
+                               value="{{ device.get('ip_address', '') or '' }}"
+                               placeholder="192.168.1.100">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dates -->
+            <div class="form-card mb-3">
+                <div class="form-section-title">Kauf &amp; Garantie</div>
+                <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Kaufdatum</label>
+                        <input type="date" name="purchase_date" class="form-control"
+                               value="{{ device.get('purchase_date', '') or '' }}">
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Garantie bis</label>
+                        <input type="date" name="warranty_expiry" class="form-control"
+                               value="{{ device.get('warranty_expiry', '') or '' }}">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Notes -->
+            <div class="form-card">
+                <div class="form-section-title">Notizen</div>
+                <textarea name="notes" class="form-control" rows="4"
+                          placeholder="Weitere Informationen zum Gerät …">{{ device.get('notes', '') or '' }}</textarea>
+            </div>
+
+        </div><!-- /left col -->
+
+        <!-- ===== RIGHT COLUMN ===== -->
+        <div class="col-12 col-lg-4">
+
+            <!-- Status -->
+            <div class="form-card mb-3">
+                <div class="form-section-title">Status</div>
+                <div class="d-flex flex-column gap-2">
+                    {% set status_colors = {
+                        'active':         'success',
+                        'inactive':       'secondary',
+                        'maintenance':    'warning',
+                        'decommissioned': 'danger'
+                    } %}
+                    {% for s in statuses %}
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="status"
+                               id="status_{{ s }}" value="{{ s }}"
+                               {% if device.get('status', 'active') == s %}checked{% endif %}>
+                        <label class="form-check-label d-flex align-items-center gap-2" for="status_{{ s }}">
+                            <span class="badge bg-{{ status_colors[s] }}{% if s == 'maintenance' %} text-dark{% endif %}">
+                                {{ status_labels[s] }}
+                            </span>
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Assignment -->
+            <div class="form-card mb-3">
+                <div class="form-section-title">Zuweisung</div>
+                <div class="mb-3">
+                    <label class="form-label">Standort</label>
+                    <select name="location_id" class="form-select form-select-sm">
+                        <option value="">— Kein Standort —</option>
+                        {% for loc in locations %}
+                        <option value="{{ loc['id'] }}"
+                                {% if device.get('location_id')|string == loc['id']|string %}selected{% endif %}>
+                            {{ loc['name'] }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">Benutzer / Verantwortlicher</label>
+                    <select name="user_id" class="form-select form-select-sm">
+                        <option value="">— Kein Benutzer —</option>
+                        {% for u in users %}
+                        <option value="{{ u['id'] }}"
+                                {% if device.get('user_id')|string == u['id']|string %}selected{% endif %}>
+                            {{ u['name'] }}{% if u['department'] %} ({{ u['department'] }}){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <!-- Submit -->
+            <div class="d-grid gap-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-{% if edit %}check-lg{% else %}plus-lg{% endif %} me-1"></i>
+                    {% if edit %}Änderungen speichern{% else %}Gerät hinzufügen{% endif %}
+                </button>
+                <a href="{{ url_for('devices') }}" class="btn btn-outline-secondary">
+                    Abbrechen
+                </a>
+            </div>
+
+        </div><!-- /right col -->
+    </div><!-- /row -->
+</form>
+{% endblock %}

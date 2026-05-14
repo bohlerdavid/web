@@ -1,0 +1,193 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ device['name'] }} — IT Geräteverwaltung{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('devices') }}">Geräte</a></li>
+<li class="breadcrumb-item active">{{ device['name'] }}</li>
+{% endblock %}
+
+{% block content %}
+{% set cat_icons = {
+    'PC':'bi-pc-display','Laptop':'bi-laptop','Server':'bi-server',
+    'Printer':'bi-printer','Network':'bi-router','Phone':'bi-phone',
+    'Tablet':'bi-tablet','Monitor':'bi-display','Other':'bi-box'
+} %}
+{% set cat_labels = {
+    'PC':'PC','Laptop':'Laptop','Server':'Server',
+    'Printer':'Drucker','Network':'Netzwerk','Phone':'Telefon',
+    'Tablet':'Tablet','Monitor':'Monitor','Other':'Sonstiges'
+} %}
+
+<!-- ===== DEVICE HERO ===== -->
+<div class="detail-card mb-3">
+    <div class="detail-header">
+        <div class="d-flex align-items-center gap-4 flex-wrap">
+            <div class="device-icon">
+                <i class="bi {{ cat_icons.get(device['category'], 'bi-box') }}"></i>
+            </div>
+            <div class="flex-grow-1">
+                <h2 class="mb-1 fw-bold">{{ device['name'] }}</h2>
+                <div class="d-flex align-items-center gap-3 flex-wrap" style="opacity:.85;font-size:.9rem;">
+                    <span>
+                        <span class="badge bg-light text-dark">{{ cat_labels.get(device['category'], device['category']) }}</span>
+                    </span>
+                    <span>{{ device['status']|status_badge|safe }}</span>
+                    {% if device['serial_number'] %}
+                    <span><i class="bi bi-upc-scan me-1"></i>{{ device['serial_number'] }}</span>
+                    {% endif %}
+                    {% if device['ip_address'] %}
+                    <span><i class="bi bi-ethernet me-1"></i>{{ device['ip_address'] }}</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="d-flex gap-2 flex-shrink-0">
+                <a href="{{ url_for('device_edit', device_id=device['id']) }}" class="btn btn-light btn-sm">
+                    <i class="bi bi-pencil me-1"></i>Bearbeiten
+                </a>
+                <form method="post" action="{{ url_for('device_delete', device_id=device['id']) }}"
+                      data-confirm="Gerät '{{ device['name'] }}' wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.">
+                    <button type="submit" class="btn btn-danger btn-sm"
+                            data-confirm="Gerät '{{ device['name'] }}' wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.">
+                        <i class="bi bi-trash me-1"></i>Löschen
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== DETAIL BODY ===== -->
+    <div class="detail-body">
+        <div class="row g-4">
+
+            <!-- Column 1: Tech Details -->
+            <div class="col-12 col-md-6 col-lg-4">
+                <div class="detail-section">
+                    <div class="form-section-title">Technische Details</div>
+                    <div class="mb-3">
+                        <div class="detail-label">Kategorie</div>
+                        <div class="detail-value">{{ cat_labels.get(device['category'], device['category']) }}</div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="detail-label">Seriennummer</div>
+                        <div class="detail-value {% if not device['serial_number'] %}empty{% endif %}" style="font-family:monospace;">
+                            {{ device['serial_number'] or 'Nicht angegeben' }}
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="detail-label">Betriebssystem</div>
+                        <div class="detail-value {% if not device['operating_system'] %}empty{% endif %}">
+                            {{ device['operating_system'] or 'Nicht angegeben' }}
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="detail-label">Status</div>
+                        <div class="detail-value">{{ device['status']|status_badge|safe }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Column 2: Network -->
+            <div class="col-12 col-md-6 col-lg-4">
+                <div class="detail-section">
+                    <div class="form-section-title">Netzwerk</div>
+                    <div class="mb-3">
+                        <div class="detail-label">MAC-Adresse</div>
+                        <div class="detail-value {% if not device['mac_address'] %}empty{% endif %}" style="font-family:monospace;">
+                            {{ device['mac_address'] or 'Nicht angegeben' }}
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="detail-label">IP-Adresse</div>
+                        <div class="detail-value {% if not device['ip_address'] %}empty{% endif %}" style="font-family:monospace;">
+                            {{ device['ip_address'] or 'Nicht angegeben' }}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="detail-section">
+                    <div class="form-section-title">Zuweisung</div>
+                    <div class="mb-3">
+                        <div class="detail-label">Standort</div>
+                        {% if device['location_name'] %}
+                        <div class="detail-value">
+                            <i class="bi bi-geo-alt me-1 text-accent"></i>{{ device['location_name'] }}
+                            {% if device['building'] and device['building'] != '—' %}
+                            <div class="text-muted" style="font-size:.8rem;">
+                                {{ device['building'] }}
+                                {% if device['floor'] and device['floor'] != '—' %}, {{ device['floor'] }}{% endif %}
+                                {% if device['room'] and device['room'] != '—' %}, Raum {{ device['room'] }}{% endif %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% else %}
+                        <div class="detail-value empty">Nicht zugewiesen</div>
+                        {% endif %}
+                    </div>
+                    <div class="mb-3">
+                        <div class="detail-label">Benutzer</div>
+                        {% if device['user_name'] %}
+                        <div class="detail-value">
+                            <i class="bi bi-person me-1 text-accent"></i>{{ device['user_name'] }}
+                            {% if device['user_department'] %}
+                            <div class="text-muted" style="font-size:.8rem;">{{ device['user_department'] }}</div>
+                            {% endif %}
+                            {% if device['user_email'] %}
+                            <div style="font-size:.82rem;"><a href="mailto:{{ device['user_email'] }}">{{ device['user_email'] }}</a></div>
+                            {% endif %}
+                        </div>
+                        {% else %}
+                        <div class="detail-value empty">Nicht zugewiesen</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Column 3: Dates & Notes -->
+            <div class="col-12 col-md-6 col-lg-4">
+                <div class="detail-section">
+                    <div class="form-section-title">Kauf &amp; Garantie</div>
+                    <div class="mb-3">
+                        <div class="detail-label">Kaufdatum</div>
+                        <div class="detail-value {% if not device['purchase_date'] %}empty{% endif %}">
+                            {{ device['purchase_date']|de_date if device['purchase_date'] else 'Nicht angegeben' }}
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="detail-label">Garantie bis</div>
+                        <div class="detail-value {% if not device['warranty_expiry'] %}empty{% endif %}">
+                            {% if device['warranty_expiry'] %}
+                            <span data-warranty="{{ device['warranty_expiry'] }}">
+                                {{ device['warranty_expiry']|de_date }}
+                            </span>
+                            {% else %}
+                            Nicht angegeben
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="detail-label">Hinzugefügt am</div>
+                        <div class="detail-value text-muted">{{ device['created_at'][:10]|de_date }}</div>
+                    </div>
+                </div>
+
+                <div class="detail-section">
+                    <div class="form-section-title">Notizen</div>
+                    {% if device['notes'] %}
+                    <div class="detail-value" style="white-space:pre-wrap;font-size:.87rem;line-height:1.6;">{{ device['notes'] }}</div>
+                    {% else %}
+                    <div class="detail-value empty">Keine Notizen vorhanden</div>
+                    {% endif %}
+                </div>
+            </div>
+
+        </div><!-- /row -->
+    </div><!-- /detail-body -->
+</div><!-- /detail-card -->
+
+<!-- Back -->
+<a href="{{ url_for('devices') }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left me-1"></i>Zurück zur Geräteliste
+</a>
+{% endblock %}

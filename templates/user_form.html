@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if edit %}Benutzer bearbeiten{% else %}Neuer Benutzer{% endif %} — IT Geräteverwaltung{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
+<li class="breadcrumb-item"><a href="{{ url_for('users') }}">Benutzer</a></li>
+<li class="breadcrumb-item active">{% if edit %}Bearbeiten{% else %}Neuer Benutzer{% endif %}</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">
+            <i class="bi bi-person-{% if edit %}gear{% else %}plus{% endif %} me-2 text-accent"></i>
+            {% if edit %}Benutzer bearbeiten{% else %}Neuen Benutzer hinzufügen{% endif %}
+        </h1>
+    </div>
+    <a href="{{ url_for('users') }}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left me-1"></i>Zurück
+    </a>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-12 col-md-8 col-lg-6">
+        <div class="form-card">
+            <form method="post"
+                  action="{% if edit %}{{ url_for('user_edit', user_id=user_id) }}{% else %}{{ url_for('user_new') }}{% endif %}">
+
+                <div class="form-section-title">Benutzerinformationen</div>
+
+                <div class="mb-3">
+                    <label class="form-label">Name <span class="text-danger">*</span></label>
+                    <input type="text" name="name" class="form-control"
+                           value="{{ user.get('name', '') }}" required
+                           placeholder="Vor- und Nachname">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">E-Mail-Adresse</label>
+                    <input type="email" name="email" class="form-control"
+                           value="{{ user.get('email', '') or '' }}"
+                           placeholder="name@firma.de">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Abteilung</label>
+                    <input type="text" name="department" class="form-control"
+                           value="{{ user.get('department', '') or '' }}"
+                           placeholder="z. B. IT, Buchhaltung, Vertrieb">
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label">Telefon</label>
+                    <input type="text" name="phone" class="form-control"
+                           value="{{ user.get('phone', '') or '' }}"
+                           placeholder="+49 30 12345-00">
+                </div>
+
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-{% if edit %}check-lg{% else %}person-plus{% endif %} me-1"></i>
+                        {% if edit %}Änderungen speichern{% else %}Benutzer hinzufügen{% endif %}
+                    </button>
+                    <a href="{{ url_for('users') }}" class="btn btn-outline-secondary">Abbrechen</a>
+                </div>
+
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

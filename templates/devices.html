@@ -1,0 +1,169 @@
+{% extends 'base.html' %}
+
+{% block title %}Geräte — IT Geräteverwaltung{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
+<li class="breadcrumb-item active">Geräte</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Geräte</h1>
+        <div class="text-muted" style="font-size:.85rem;">{{ devices|length }} Gerät(e) gefunden</div>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{{ url_for('devices_export', search=search, status=sel_status, category=sel_category, location=sel_location) }}"
+           class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-download me-1"></i>CSV Export
+        </a>
+        <a href="{{ url_for('device_new') }}" class="btn btn-primary btn-sm">
+            <i class="bi bi-plus-lg me-1"></i>Neues Gerät
+        </a>
+    </div>
+</div>
+
+<!-- ===== FILTER BAR ===== -->
+<div class="filter-bar">
+    <form id="filterForm" method="get" action="{{ url_for('devices') }}">
+        <div class="row g-2 align-items-end">
+            <div class="col-12 col-md-4">
+                <label class="form-label mb-1" style="font-size:.78rem;font-weight:600;color:#5a6a7e;">SUCHE</label>
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
+                    <input type="text" name="search" class="form-control" placeholder="Name, Seriennummer, IP, MAC …"
+                           value="{{ search }}">
+                </div>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label mb-1" style="font-size:.78rem;font-weight:600;color:#5a6a7e;">STATUS</label>
+                <select name="status" class="form-select form-select-sm">
+                    <option value="">Alle</option>
+                    {% for s in statuses %}
+                    <option value="{{ s }}" {% if sel_status == s %}selected{% endif %}>{{ status_labels[s] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label mb-1" style="font-size:.78rem;font-weight:600;color:#5a6a7e;">KATEGORIE</label>
+                <select name="category" class="form-select form-select-sm">
+                    <option value="">Alle</option>
+                    {% for c in categories %}
+                    <option value="{{ c }}" {% if sel_category == c %}selected{% endif %}>{{ category_labels[c] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label mb-1" style="font-size:.78rem;font-weight:600;color:#5a6a7e;">STANDORT</label>
+                <select name="location" class="form-select form-select-sm">
+                    <option value="">Alle</option>
+                    {% for loc in locations %}
+                    <option value="{{ loc['id'] }}" {% if sel_location == loc['id']|string %}selected{% endif %}>{{ loc['name'] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-6 col-md-2 d-flex gap-2">
+                <button type="submit" class="btn btn-primary btn-sm flex-grow-1">
+                    <i class="bi bi-funnel me-1"></i>Filtern
+                </button>
+                <a href="{{ url_for('devices') }}" class="btn btn-outline-secondary btn-sm" title="Filter zurücksetzen">
+                    <i class="bi bi-x-lg"></i>
+                </a>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- ===== DEVICES TABLE ===== -->
+<div class="table-card">
+    {% if devices %}
+    <div class="table-responsive">
+        <table class="table mb-0">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Kategorie</th>
+                    <th>Seriennummer</th>
+                    <th>IP-Adresse</th>
+                    <th>Status</th>
+                    <th>Standort</th>
+                    <th>Benutzer</th>
+                    <th>Garantie bis</th>
+                    <th style="width:100px;">Aktionen</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% set cat_icons = {
+                    'PC':'bi-pc-display','Laptop':'bi-laptop','Server':'bi-server',
+                    'Printer':'bi-printer','Network':'bi-router','Phone':'bi-phone',
+                    'Tablet':'bi-tablet','Monitor':'bi-display','Other':'bi-box'
+                } %}
+                {% for d in devices %}
+                <tr data-href="{{ url_for('device_detail', device_id=d['id']) }}">
+                    <td>
+                        <a href="{{ url_for('device_detail', device_id=d['id']) }}" class="text-decoration-none fw-semibold text-dark">
+                            <i class="bi {{ cat_icons.get(d['category'], 'bi-box') }} me-1" style="color:var(--accent)"></i>
+                            {{ d['name'] }}
+                        </a>
+                    </td>
+                    <td>
+                        <span class="badge" style="background:#eef2ff;color:#4338ca;font-size:.72rem;">
+                            {{ category_labels.get(d['category'], d['category']) }}
+                        </span>
+                    </td>
+                    <td class="text-muted" style="font-size:.83rem;font-family:monospace;">{{ d['serial_number'] or '—' }}</td>
+                    <td class="text-muted" style="font-size:.83rem;font-family:monospace;">{{ d['ip_address'] or '—' }}</td>
+                    <td>{{ d['status']|status_badge|safe }}</td>
+                    <td>{{ d['location_name'] or '—' }}</td>
+                    <td>{{ d['user_name'] or '—' }}</td>
+                    <td>
+                        {% if d['warranty_expiry'] %}
+                        <span data-warranty="{{ d['warranty_expiry'] }}">{{ d['warranty_expiry']|de_date }}</span>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td>
+                        <div class="d-flex gap-1">
+                            <a href="{{ url_for('device_detail', device_id=d['id']) }}"
+                               class="btn btn-outline-secondary btn-action btn-icon" title="Details" data-bs-toggle="tooltip">
+                                <i class="bi bi-eye"></i>
+                            </a>
+                            <a href="{{ url_for('device_edit', device_id=d['id']) }}"
+                               class="btn btn-outline-primary btn-action btn-icon" title="Bearbeiten" data-bs-toggle="tooltip">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            <form method="post" action="{{ url_for('device_delete', device_id=d['id']) }}"
+                                  data-confirm="Gerät '{{ d['name'] }}' wirklich löschen?">
+                                <button type="submit" class="btn btn-outline-danger btn-action btn-icon"
+                                        data-confirm="Gerät '{{ d['name'] }}' wirklich löschen?" title="Löschen" data-bs-toggle="tooltip">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="table-footer">
+        <span>{{ devices|length }} Ergebnis(se)</span>
+        {% if sel_status or sel_category or sel_location or search %}
+        <a href="{{ url_for('devices') }}" class="text-muted text-decoration-none" style="font-size:.8rem;">
+            <i class="bi bi-x-circle me-1"></i>Filter zurücksetzen
+        </a>
+        {% endif %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <i class="bi bi-pc-display"></i>
+        <p class="mb-2">Keine Geräte gefunden.</p>
+        {% if search or sel_status or sel_category or sel_location %}
+        <a href="{{ url_for('devices') }}" class="btn btn-sm btn-outline-secondary">Filter zurücksetzen</a>
+        {% else %}
+        <a href="{{ url_for('device_new') }}" class="btn btn-sm btn-primary">Gerät hinzufügen</a>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
