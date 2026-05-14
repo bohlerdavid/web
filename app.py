@@ -560,6 +560,11 @@ def user_delete(user_id):
 def seed():
     db = get_db()
 
+    # Guard: only seed if no devices exist yet
+    if db.execute("SELECT COUNT(*) FROM devices").fetchone()[0] > 0:
+        flash('Beispieldaten bereits vorhanden — Seed wurde nicht erneut ausgeführt.', 'warning')
+        return redirect(url_for('dashboard'))
+
     # Locations
     locations = [
         ('Hauptgebäude Büro 1', 'Hauptgebäude', 'EG', '101'),
