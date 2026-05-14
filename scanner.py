@@ -578,7 +578,7 @@ def query_hardware_wmi(ip, username=None, password=None, domain=''):
         except Exception:
             pass
         err = str(e)
-        if 'Access denied' in err or '0x80070005' in err:
+        if any(x in err for x in ('Access denied', 'Zugriff verweigert', '0x80070005', '-2147024891')):
             return {'error': 'access_denied', 'method': 'wmi'}
         elif 'RPC' in err or 'connect' in err.lower() or '0x800706ba' in err:
             return {'error': 'unreachable', 'method': 'wmi'}
