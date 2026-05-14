@@ -511,6 +511,8 @@ def query_hardware_wmi(ip, username=None, password=None, domain=''):
     """
     try:
         import wmi
+        import pythoncom
+        pythoncom.CoInitialize()
 
         connect_kwargs = {'computer': ip}
         if username:
@@ -565,11 +567,16 @@ def query_hardware_wmi(ip, username=None, password=None, domain=''):
                     result['last_boot'] = lb[:4]+'-'+lb[4:6]+'-'+lb[6:8]+' '+lb[8:10]+':'+lb[10:12]
         except: pass
 
+        pythoncom.CoUninitialize()
         return result
 
     except ImportError:
         return {'error': 'wmi_not_installed', 'method': 'wmi'}
     except Exception as e:
+        try:
+            pythoncom.CoUninitialize()
+        except Exception:
+            pass
         err = str(e)
         if 'Access denied' in err or '0x80070005' in err:
             return {'error': 'access_denied', 'method': 'wmi'}
