@@ -48,6 +48,13 @@ def execute_db(query, args=()):
     return cur.lastrowid
 
 
+def row_to_dict(row):
+    """Convert a sqlite3.Row to a plain dict so templates can use .get()."""
+    if row is None:
+        return {}
+    return dict(row)
+
+
 # ---------------------------------------------------------------------------
 # Database initialisation
 # ---------------------------------------------------------------------------
@@ -466,7 +473,7 @@ def device_detail(device_id):
 
 @app.route('/devices/<int:device_id>/edit', methods=['GET', 'POST'])
 def device_edit(device_id):
-    device    = query_db("SELECT * FROM devices WHERE id = ?", (device_id,), one=True)
+    device    = row_to_dict(query_db("SELECT * FROM devices WHERE id = ?", (device_id,), one=True))
     if not device:
         abort(404)
     locations = query_db("SELECT * FROM locations ORDER BY name")
@@ -572,7 +579,7 @@ def user_new():
 
 @app.route('/users/<int:user_id>/edit', methods=['GET', 'POST'])
 def user_edit(user_id):
-    user = query_db("SELECT * FROM users WHERE id = ?", (user_id,), one=True)
+    user = row_to_dict(query_db("SELECT * FROM users WHERE id = ?", (user_id,), one=True))
     if not user:
         abort(404)
 
@@ -655,7 +662,7 @@ def location_new():
 
 @app.route('/locations/<int:location_id>/edit', methods=['GET', 'POST'])
 def location_edit(location_id):
-    location = query_db("SELECT * FROM locations WHERE id = ?", (location_id,), one=True)
+    location = row_to_dict(query_db("SELECT * FROM locations WHERE id = ?", (location_id,), one=True))
     if not location:
         abort(404)
 

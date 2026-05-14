@@ -331,9 +331,41 @@ body {
 
 /* ----- Action buttons in table ----- */
 .btn-action { padding: 3px 8px; font-size: .8rem; }
+.btn-icon {
+  width: 32px; height: 32px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 6px;
+}
 
 /* ----- Category icon map ----- */
 .cat-icon { font-size: 1.1rem; }
+
+/* ----- Table footer ----- */
+.table-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+  font-size: .8rem;
+  color: #64748b;
+}
+
+/* ----- Warranty colours ----- */
+.warranty-critical { color: #dc2626 !important; font-weight: 600; }
+.warranty-warning  { color: #d97706 !important; font-weight: 600; }
+
+/* ----- Empty state ----- */
+.empty-state {
+  text-align: center;
+  padding: 60px 24px;
+  color: #94a3b8;
+}
+.empty-state i { font-size: 3.5rem; opacity: .35; display: block; margin-bottom: 12px; }
+
+/* ----- Accent colour util ----- */
+.text-accent { color: var(--accent) !important; }
 
 /* ----- Responsive ----- */
 @media (max-width: 768px) {
