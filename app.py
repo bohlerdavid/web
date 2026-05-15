@@ -204,6 +204,11 @@ CREATE TABLE IF NOT EXISTS system_list_options (
     created_at TEXT DEFAULT (datetime('now')),
     UNIQUE(list_name, value)
 );
+
+CREATE TABLE IF NOT EXISTS app_settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL DEFAULT '1'
+);
 """
 
 def migrate_db():
@@ -315,6 +320,14 @@ def migrate_db():
     """)
     db.commit()
     _seed_system_lists(db)
+
+    db.executescript("""
+    CREATE TABLE IF NOT EXISTS app_settings (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL DEFAULT '1'
+    );
+    """)
+    db.commit()
 
 
 def _seed_system_lists(db):
@@ -951,6 +964,16 @@ CORE_FIELDS = [
 ]
 
 
+def get_core_visible():
+    """Return dict {field_key: bool} for all core fields. Default: visible."""
+    CORE_KEYS = ['category','status','location_id','purchase_date','warranty_expiry','created_at',
+                 'serial_number','operating_system','ip_address','mac_address',
+                 'manufacturer','model','cpu_info','ram_info','notes']
+    rows = query_db("SELECT key, value FROM app_settings WHERE key LIKE 'core_vis_%'") or []
+    stored = {r['key'].replace('core_vis_', ''): r['value'] == '1' for r in rows}
+    return {k: stored.get(k, True) for k in CORE_KEYS}
+
+
 def get_system_list(list_name):
     """Load system list options from DB, returning list of (value, label) tuples."""
     rows = query_db(
@@ -1176,6 +1199,8 @@ def device_detail(device_id):
         list_options_by_field[lf['id']] = [dict(o) for o in opts]
     import json as _json
     list_options_json = _json.dumps({str(k): v for k, v in list_options_by_field.items()})
+    core_visible = get_core_visible()
+    core_visible_json = _json.dumps(core_visible)
     return render_template('device_detail.html', device=device,
                            category_labels=CATEGORY_LABELS,
                            status_labels=STATUS_LABELS,
@@ -1186,6 +1211,8 @@ def device_detail(device_id):
                            fields_by_section=fields_by_section,
                            list_options_by_field=list_options_by_field,
                            list_options_json=list_options_json,
+                           core_visible=core_visible,
+                           core_visible_json=core_visible_json,
                            is_admin=is_admin)
 
 
@@ -2153,6 +2180,28 @@ def settings_list_reorder_options():
         db.execute("UPDATE field_list_options SET position=? WHERE id=?", (pos, oid))
     db.commit()
     return jsonify({'ok': True})
+
+
+# ---------------------------------------------------------------------------
+# Core field visibility
+# ---------------------------------------------------------------------------
+
+@app.route('/layout/core-fields/<field_key>/toggle-visible', methods=['POST'])
+@admin_required
+def core_field_toggle_visible(field_key):
+    if not validate_csrf_flexible():
+        return jsonify({'error': 'CSRF validation failed'}), 403
+    db = get_db()
+    setting_key = f'core_vis_{field_key}'
+    row = db.execute("SELECT value FROM app_settings WHERE key=?", (setting_key,)).fetchone()
+    current = (row['value'] == '1') if row else True
+    new_val = '0' if current else '1'
+    db.execute(
+        "INSERT INTO app_settings (key, value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=?",
+        (setting_key, new_val, new_val)
+    )
+    db.commit()
+    return jsonify({'ok': True, 'visible': new_val == '1'})
 
 
 # ---------------------------------------------------------------------------
