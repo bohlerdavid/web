@@ -173,8 +173,9 @@ CREATE TABLE IF NOT EXISTS detail_fields (
     field_type  TEXT NOT NULL DEFAULT 'text',
     position    INTEGER DEFAULT 0,
     visible     INTEGER DEFAULT 1,
-    field_width TEXT DEFAULT 'third',
-    created_at  TEXT DEFAULT (datetime('now'))
+    field_width   TEXT DEFAULT 'third',
+    display_style TEXT DEFAULT 'stacked',
+    created_at    TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS device_field_values (
@@ -233,8 +234,9 @@ def migrate_db():
         field_type  TEXT NOT NULL DEFAULT 'text',
         position    INTEGER DEFAULT 0,
         visible     INTEGER DEFAULT 1,
-        field_width TEXT DEFAULT 'third',
-        created_at  TEXT DEFAULT (datetime('now'))
+        field_width   TEXT DEFAULT 'third',
+        display_style TEXT DEFAULT 'stacked',
+        created_at    TEXT DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS device_field_values (
         id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -262,6 +264,7 @@ def migrate_db():
     fields_new_cols = [
         ('visible', 'INTEGER DEFAULT 1'),
         ('field_width', "TEXT DEFAULT 'third'"),
+        ('display_style', "TEXT DEFAULT 'stacked'"),
     ]
     for col, col_type in fields_new_cols:
         try:
@@ -1055,6 +1058,7 @@ def device_detail(device_id):
                       f.position, f.created_at,
                       COALESCE(f.visible, 1) as visible,
                       COALESCE(f.field_width, 'third') as field_width,
+                      COALESCE(f.display_style, 'stacked') as display_style,
                       COALESCE(v.value,'') as value
                FROM detail_fields f
                LEFT JOIN device_field_values v ON v.field_id=f.id AND v.device_id=?
@@ -1709,6 +1713,19 @@ def layout_field_width(field_id):
     return jsonify({'ok': True})
 
 
+@app.route('/layout/fields/<int:field_id>/display-style', methods=['POST'])
+@admin_required
+def layout_field_display_style(field_id):
+    if not validate_csrf_flexible():
+        return jsonify({'error': 'CSRF validation failed'}), 403
+    data = request.get_json() or {}
+    style = data.get('display_style', 'stacked')
+    if style not in ('stacked', 'inline'):
+        style = 'stacked'
+    execute_db("UPDATE detail_fields SET display_style=? WHERE id=?", (style, field_id))
+    return jsonify({'ok': True, 'display_style': style})
+
+
 @app.route('/layout/sections/<int:section_id>/delete', methods=['POST'])
 @admin_required
 def layout_section_delete(section_id):
@@ -1822,6 +1839,16 @@ def layout_fields_reorder():
         db.execute("UPDATE detail_fields SET position=? WHERE id=?", (pos, fid))
     db.commit()
     return jsonify({'ok': True})
+
+
+# ---------------------------------------------------------------------------
+# Wiki
+# ---------------------------------------------------------------------------
+
+@app.route('/wiki')
+@login_required
+def wiki():
+    return render_template('wiki.html')
 
 
 # ---------------------------------------------------------------------------

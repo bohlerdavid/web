@@ -111,6 +111,25 @@ body.edit-mode .resize-handle { display: block; }
 /* ── Field hidden dim ── */
 .field-item.field-hidden { opacity: .4; }
 
+/* ── Inline display style ── */
+.field-item.ds-inline {
+    display: flex !important;
+    align-items: baseline;
+    gap: 8px;
+}
+.field-item.ds-inline .detail-label {
+    flex-shrink: 0;
+    margin-bottom: 0;
+    white-space: nowrap;
+    font-size: .72rem;
+}
+.field-item.ds-inline .detail-value,
+.field-item.ds-inline .field-view-value {
+    flex: 1;
+    min-width: 0;
+}
+.ds-btn.active { background: #4f9cf9; color: #fff; border-color: #4f9cf9; }
+
 /* ── Edit mode bar ── */
 #editModeBar {
     background: #e0f2fe;
@@ -341,9 +360,11 @@ body.edit-mode .resize-handle { display: block; }
           {% if sec_fields %}
           {% for field in sec_fields %}
           {% set fw_class = {'third':'fw-third','half':'fw-half','full':'fw-full'}.get(field.get('field_width','third'), 'fw-third') %}
-          <div class="field-item {{ fw_class }}{% if not field['visible'] %} field-hidden{% endif %}"
+          {% set ds_class = 'ds-inline' if field.get('display_style') == 'inline' else '' %}
+          <div class="field-item {{ fw_class }} {{ ds_class }}{% if not field['visible'] %} field-hidden{% endif %}"
                data-field-id="{{ field['id'] }}"
                data-field-width="{{ field.get('field_width','third') }}"
+               data-display-style="{{ field.get('display_style','stacked') }}"
                draggable="false">
 
             <!-- Field edit controls (shown in edit mode) -->
@@ -357,6 +378,13 @@ body.edit-mode .resize-handle { display: block; }
                         onclick="setFieldWidth({{ field['id'] }}, 'half', this)" title="1/2">1/2</button>
                 <button class="btn btn-outline-secondary py-0 fw-btn {% if field.get('field_width') == 'full' %}active{% endif %}"
                         onclick="setFieldWidth({{ field['id'] }}, 'full', this)" title="Voll">Voll</button>
+              </div>
+              <!-- Display style toggle -->
+              <div class="btn-group btn-group-sm ms-1">
+                <button class="btn btn-outline-secondary py-0 ds-btn {% if field.get('display_style','stacked') == 'stacked' %}active{% endif %}"
+                        onclick="setDisplayStyle({{ field['id'] }}, 'stacked', this)" title="Titel oben, Wert unten"><i class="bi bi-list-ul"></i></button>
+                <button class="btn btn-outline-secondary py-0 ds-btn {% if field.get('display_style') == 'inline' %}active{% endif %}"
+                        onclick="setDisplayStyle({{ field['id'] }}, 'inline', this)" title="Titel links, Wert rechts"><i class="bi bi-layout-text-sidebar"></i></button>
               </div>
               <!-- Visibility toggle -->
               <button class="btn btn-sm py-0 ms-1 {% if field['visible'] %}btn-outline-secondary{% else %}btn-warning{% endif %}"
@@ -659,6 +687,26 @@ async function setFieldWidth(fieldId, fw, btn) {
             body: JSON.stringify({field_width: fw})
         });
     } catch (e) { showToast('Fehler beim Speichern der Feldbreite', 'danger'); }
+}
+
+/* ── Field display style ── */
+async function setDisplayStyle(fieldId, style, btn) {
+    const item = btn.closest('.field-item');
+    if (style === 'inline') {
+        item.classList.add('ds-inline');
+    } else {
+        item.classList.remove('ds-inline');
+    }
+    item.dataset.displayStyle = style;
+    btn.closest('.btn-group').querySelectorAll('.ds-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    try {
+        await fetch(`/layout/fields/${fieldId}/display-style`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+            body: JSON.stringify({display_style: style})
+        });
+    } catch (e) { showToast('Fehler beim Speichern', 'danger'); }
 }
 
 /* ── Field visibility ── */

@@ -65,6 +65,12 @@
                     <span>Standorte</span>
                 </a>
             </li>
+            <li class="sidebar-item {% if request.endpoint == 'wiki' %}active{% endif %}">
+                <a href="{{ url_for('wiki') }}" class="sidebar-link">
+                    <i class="bi bi-book"></i>
+                    <span>Wiki</span>
+                </a>
+            </li>
         </ul>
 
         <div class="sidebar-footer">

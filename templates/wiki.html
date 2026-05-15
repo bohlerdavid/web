@@ -1,0 +1,425 @@
+{% extends 'base.html' %}
+
+{% block title %}Wiki — IT Geräteverwaltung{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
+<li class="breadcrumb-item active">Wiki</li>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+.wiki-nav .nav-link { color: #4f9cf9; font-size: .9rem; padding: .25rem .5rem; }
+.wiki-nav .nav-link:hover { text-decoration: underline; }
+.wiki-section { scroll-margin-top: 80px; }
+.wiki-card {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    padding: 24px 28px;
+    margin-bottom: 24px;
+}
+.wiki-card h2 {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #1e2a3b;
+    border-bottom: 2px solid #e2e8f0;
+    padding-bottom: 10px;
+    margin-bottom: 18px;
+}
+.wiki-card h3 { font-size: 1rem; font-weight: 600; margin-top: 18px; color: #334155; }
+.wiki-card p, .wiki-card li { font-size: .92rem; color: #475569; line-height: 1.6; }
+pre {
+    background: #1e2a3b;
+    color: #e2e8f0;
+    border-radius: 8px;
+    padding: 14px 18px;
+    font-size: .82rem;
+    overflow-x: auto;
+    margin: 10px 0 16px;
+}
+code { font-size: .82rem; background: #f1f5f9; padding: 1px 5px; border-radius: 4px; color: #e11d48; }
+.badge-step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: #4f9cf9;
+    color: #fff;
+    font-size: .78rem;
+    font-weight: 700;
+    flex-shrink: 0;
+    margin-right: 8px;
+}
+.step-row { display: flex; align-items: flex-start; margin-bottom: 10px; }
+.info-box { background: #eff6ff; border-left: 4px solid #4f9cf9; border-radius: 6px; padding: 12px 16px; margin: 12px 0; font-size:.88rem; color:#1e40af; }
+.warn-box { background: #fffbeb; border-left: 4px solid #f59e0b; border-radius: 6px; padding: 12px 16px; margin: 12px 0; font-size:.88rem; color:#92400e; }
+.changelog-item { padding: 6px 0; border-bottom: 1px solid #f1f5f9; font-size: .88rem; }
+.changelog-item:last-child { border-bottom: none; }
+.tag-new  { background: #dcfce7; color: #166534; padding: 1px 7px; border-radius: 99px; font-size: .72rem; font-weight: 600; }
+.tag-fix  { background: #fef9c3; color: #854d0e; padding: 1px 7px; border-radius: 99px; font-size: .72rem; font-weight: 600; }
+.tag-impr { background: #eff6ff; color: #1e40af; padding: 1px 7px; border-radius: 99px; font-size: .72rem; font-weight: 600; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header mb-4">
+    <div>
+        <h1 class="page-title"><i class="bi bi-book me-2 text-accent"></i>Wiki &amp; Dokumentation</h1>
+        <p class="text-muted mb-0" style="font-size:.9rem;">Installationsanleitungen, Konfiguration und Änderungsprotokoll</p>
+    </div>
+</div>
+
+<div class="row g-3">
+
+    <!-- ── Sidebar TOC ── -->
+    <div class="col-12 col-lg-3">
+        <div class="wiki-card p-3" style="position:sticky;top:80px;">
+            <div class="fw-semibold mb-2" style="font-size:.85rem;color:#64748b;text-transform:uppercase;letter-spacing:.05em;">Inhalt</div>
+            <nav class="wiki-nav d-flex flex-column gap-1">
+                <a class="nav-link" href="#linux-install"><i class="bi bi-ubuntu me-1"></i>Linux Installation</a>
+                <a class="nav-link" href="#nginx"><i class="bi bi-server me-1"></i>Nginx + Gunicorn</a>
+                <a class="nav-link" href="#systemd"><i class="bi bi-gear me-1"></i>Systemd Service</a>
+                <a class="nav-link" href="#tools"><i class="bi bi-tools me-1"></i>Scanner-Tools</a>
+                <a class="nav-link" href="#firewall"><i class="bi bi-shield-check me-1"></i>Firewall</a>
+                <a class="nav-link" href="#first-run"><i class="bi bi-play-circle me-1"></i>Erststart</a>
+                <a class="nav-link" href="#update"><i class="bi bi-arrow-repeat me-1"></i>Updates</a>
+                <a class="nav-link" href="#windows-dev"><i class="bi bi-windows me-1"></i>Windows (Dev)</a>
+                <a class="nav-link" href="#changelog"><i class="bi bi-clock-history me-1"></i>Änderungsprotokoll</a>
+            </nav>
+        </div>
+    </div>
+
+    <!-- ── Content ── -->
+    <div class="col-12 col-lg-9">
+
+        <!-- Linux Installation -->
+        <div class="wiki-card wiki-section" id="linux-install">
+            <h2><i class="bi bi-terminal me-2 text-accent"></i>Linux-Installation (Ubuntu / Debian)</h2>
+
+            <div class="info-box"><i class="bi bi-info-circle me-2"></i>Empfohlen: <strong>Ubuntu 22.04 LTS</strong> oder <strong>Debian 12</strong>. Mindestanforderungen: 1 vCPU, 512 MB RAM, 5 GB Disk.</div>
+
+            <h3>1. System aktualisieren &amp; Python installieren</h3>
+<pre>sudo apt update && sudo apt upgrade -y
+sudo apt install -y python3 python3-pip python3-venv git</pre>
+
+            <h3>2. Benutzer anlegen (optional, empfohlen)</h3>
+<pre>sudo useradd -m -s /bin/bash itassets
+sudo su - itassets</pre>
+
+            <h3>3. Anwendung herunterladen</h3>
+<pre># Als itassets-Benutzer (oder in /opt/itassets)
+git clone https://github.com/bohlerdavid/web.git /opt/itassets
+cd /opt/itassets</pre>
+
+            <h3>4. Python Virtual Environment erstellen</h3>
+<pre>python3 -m venv venv
+source venv/bin/activate</pre>
+
+            <h3>5. Python-Pakete installieren</h3>
+<pre>pip install --upgrade pip
+pip install -r requirements.txt
+pip install gunicorn</pre>
+
+            <p>Inhalt der <code>requirements.txt</code>:</p>
+<pre>Flask==3.0.3
+Werkzeug==3.0.3
+python-nmap
+paramiko</pre>
+
+            <div class="warn-box"><i class="bi bi-exclamation-triangle me-2"></i><strong>Hinweis:</strong> Das <code>wmi</code>-Paket ist nur unter Windows verfügbar. Auf Linux wird ausschliesslich SSH für Hardware-Abfragen verwendet.</div>
+
+            <h3>6. Datenbank initialisieren &amp; ersten Admin anlegen</h3>
+<pre>source venv/bin/activate
+python create_user.py
+# Benutzername: admin
+# Vollständiger Name: Administrator
+# Passwort: (sicheres Passwort wählen)
+# Rolle: admin</pre>
+        </div>
+
+        <!-- Nginx + Gunicorn -->
+        <div class="wiki-card wiki-section" id="nginx">
+            <h2><i class="bi bi-server me-2 text-accent"></i>Nginx + Gunicorn (Produktionsbetrieb)</h2>
+
+            <h3>1. Nginx installieren</h3>
+<pre>sudo apt install -y nginx</pre>
+
+            <h3>2. Gunicorn testen</h3>
+<pre>cd /opt/itassets
+source venv/bin/activate
+gunicorn --bind 127.0.0.1:5000 app:app</pre>
+
+            <h3>3. Nginx-Konfiguration erstellen</h3>
+<pre>sudo nano /etc/nginx/sites-available/itassets</pre>
+
+            <p>Inhalt der Konfigurationsdatei:</p>
+<pre>server {
+    listen 80;
+    server_name DEINE-IP-ODER-DOMAIN;   # z. B. 192.168.1.50 oder it.firma.local
+
+    client_max_body_size 10M;
+
+    location /static/ {
+        alias /opt/itassets/static/;
+        expires 7d;
+        add_header Cache-Control "public";
+    }
+
+    location / {
+        proxy_pass         http://127.0.0.1:5000;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;
+    }
+}</pre>
+
+            <h3>4. Site aktivieren</h3>
+<pre>sudo ln -s /etc/nginx/sites-available/itassets /etc/nginx/sites-enabled/
+sudo nginx -t        # Konfiguration testen
+sudo systemctl reload nginx</pre>
+
+            <div class="info-box"><i class="bi bi-lock me-2"></i><strong>HTTPS empfohlen:</strong> Mit <code>sudo apt install certbot python3-certbot-nginx</code> und <code>sudo certbot --nginx -d deine-domain.ch</code> kann Let's Encrypt kostenlos eingerichtet werden (nur bei öffentlicher Domain).</div>
+        </div>
+
+        <!-- Systemd -->
+        <div class="wiki-card wiki-section" id="systemd">
+            <h2><i class="bi bi-gear me-2 text-accent"></i>Systemd Service (Autostart)</h2>
+
+            <h3>1. Service-Datei erstellen</h3>
+<pre>sudo nano /etc/systemd/system/itassets.service</pre>
+
+            <p>Inhalt:</p>
+<pre>[Unit]
+Description=IT Assets Verwaltung (Flask/Gunicorn)
+After=network.target
+
+[Service]
+User=itassets
+Group=www-data
+WorkingDirectory=/opt/itassets
+Environment="PATH=/opt/itassets/venv/bin"
+Environment="SECRET_KEY=AENDERN-AUF-LANGEN-ZUFAELLIGEN-STRING"
+ExecStart=/opt/itassets/venv/bin/gunicorn \
+    --workers 2 \
+    --bind 127.0.0.1:5000 \
+    --timeout 120 \
+    --access-logfile /var/log/itassets/access.log \
+    --error-logfile /var/log/itassets/error.log \
+    app:app
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target</pre>
+
+            <h3>2. Log-Verzeichnis erstellen &amp; Service starten</h3>
+<pre>sudo mkdir -p /var/log/itassets
+sudo chown itassets:www-data /var/log/itassets
+
+sudo systemctl daemon-reload
+sudo systemctl enable itassets
+sudo systemctl start itassets
+sudo systemctl status itassets</pre>
+
+            <h3>Nützliche Service-Befehle</h3>
+<pre># Status anzeigen
+sudo systemctl status itassets
+
+# Logs anzeigen (live)
+sudo journalctl -u itassets -f
+
+# Neustart
+sudo systemctl restart itassets
+
+# Stoppen
+sudo systemctl stop itassets</pre>
+        </div>
+
+        <!-- Scanner Tools -->
+        <div class="wiki-card wiki-section" id="tools">
+            <h2><i class="bi bi-tools me-2 text-accent"></i>Netzwerk-Scanner Tools installieren</h2>
+
+            <div class="info-box"><i class="bi bi-info-circle me-2"></i>Alle drei Tools werden vom Netzwerkscanner automatisch erkannt. Je mehr installiert sind, desto besser die Scan-Ergebnisse.</div>
+
+            <h3>nmap (OS-Erkennung, Ports)</h3>
+<pre>sudo apt install -y nmap</pre>
+
+            <h3>arp-scan (schnelle MAC-Erkennung im LAN)</h3>
+<pre>sudo apt install -y arp-scan
+
+# Dem itassets-Benutzer erlauben arp-scan ohne sudo auszuführen:
+sudo setcap cap_net_raw+ep /usr/sbin/arp-scan</pre>
+
+            <h3>masscan (schneller Port-Scanner für grosse Netzwerke)</h3>
+<pre>sudo apt install -y masscan
+
+# Dem itassets-Benutzer erlauben:
+sudo setcap cap_net_raw+ep /usr/bin/masscan</pre>
+
+            <h3>SSH-Zugriff für Hardware-Abfragen (Linux-Clients)</h3>
+            <p>Der Server verbindet sich via SSH auf Linux-Clients um CPU, RAM und Disk-Daten abzufragen. Dafür braucht es:</p>
+            <ul>
+                <li>SSH-Zugang mit Benutzername/Passwort (im Scanner-Tab eingebbar)</li>
+                <li>Auf dem Ziel-Client: <code>sudo apt install -y openssh-server</code></li>
+                <li>Für dmidecode ohne sudo: <code>sudo chmod +s /usr/sbin/dmidecode</code></li>
+            </ul>
+        </div>
+
+        <!-- Firewall -->
+        <div class="wiki-card wiki-section" id="firewall">
+            <h2><i class="bi bi-shield-check me-2 text-accent"></i>Firewall (UFW)</h2>
+<pre>sudo apt install -y ufw
+
+# Wichtige Ports freigeben
+sudo ufw allow OpenSSH        # SSH (Port 22)
+sudo ufw allow 80/tcp         # HTTP (Nginx)
+sudo ufw allow 443/tcp        # HTTPS (optional, für SSL)
+
+# Nur aus dem internen Netz (empfohlen):
+# sudo ufw allow from 192.168.1.0/24 to any port 80
+
+sudo ufw enable
+sudo ufw status</pre>
+
+            <div class="warn-box"><i class="bi bi-exclamation-triangle me-2"></i>Die Anwendung sollte <strong>nicht</strong> direkt aus dem Internet erreichbar sein — nur im internen Firmennetz oder via VPN.</div>
+        </div>
+
+        <!-- Erststart -->
+        <div class="wiki-card wiki-section" id="first-run">
+            <h2><i class="bi bi-play-circle me-2 text-accent"></i>Erststart &amp; Konfiguration</h2>
+
+            <div class="step-row"><span class="badge-step">1</span><div>Browser öffnen und <code>http://SERVER-IP</code> aufrufen</div></div>
+            <div class="step-row"><span class="badge-step">2</span><div>Mit dem zuvor erstellten Admin-Benutzer anmelden</div></div>
+            <div class="step-row"><span class="badge-step">3</span><div>Unter <strong>Standorte</strong> die Gebäude/Räume anlegen</div></div>
+            <div class="step-row"><span class="badge-step">4</span><div>Unter <strong>Layout</strong> (Admin) eigene Sektionen und Felder für die Gerätdetailseite definieren</div></div>
+            <div class="step-row"><span class="badge-step">5</span><div>Ersten Netzwerkscan unter <strong>Netzwerkscan</strong> starten und Geräte importieren</div></div>
+            <div class="step-row"><span class="badge-step">6</span><div>Benutzer für Kollegen unter <strong>Benutzer</strong> anlegen (Rolle: Betrachter für Nur-Lesen)</div></div>
+
+            <h3>Sicherheits-Checkliste</h3>
+            <ul>
+                <li>Standard-Admin-Passwort sofort ändern</li>
+                <li><code>SECRET_KEY</code> in der systemd-Umgebungsvariable auf einen langen Zufallswert setzen: <code>python3 -c "import secrets; print(secrets.token_hex(32))"</code></li>
+                <li>Zugriff auf die Anwendung auf das interne Netz beschränken (Firewall)</li>
+                <li>Regelmässige Backups der <code>devices.db</code> einrichten</li>
+            </ul>
+
+            <h3>Datenbank-Backup</h3>
+<pre># Manuell
+cp /opt/itassets/devices.db /backup/devices_$(date +%Y%m%d).db
+
+# Automatisch täglich mit Cron (als root):
+echo "0 2 * * * cp /opt/itassets/devices.db /backup/devices_\$(date +\%Y\%m\%d).db" | sudo crontab -</pre>
+        </div>
+
+        <!-- Updates -->
+        <div class="wiki-card wiki-section" id="update">
+            <h2><i class="bi bi-arrow-repeat me-2 text-accent"></i>Anwendung aktualisieren</h2>
+<pre>cd /opt/itassets
+
+# 1. Backup der Datenbank
+cp devices.db devices_backup_$(date +%Y%m%d).db
+
+# 2. Neueste Version laden
+git pull origin claude/device-management-system-uQhWP
+
+# 3. Abhängigkeiten aktualisieren
+source venv/bin/activate
+pip install -r requirements.txt
+
+# 4. Service neustarten
+sudo systemctl restart itassets</pre>
+            <div class="info-box"><i class="bi bi-info-circle me-2"></i>Die Datenbank wird beim Start automatisch migriert — bestehende Daten bleiben erhalten.</div>
+        </div>
+
+        <!-- Windows Dev -->
+        <div class="wiki-card wiki-section" id="windows-dev">
+            <h2><i class="bi bi-windows me-2 text-accent"></i>Windows (Entwicklung / lokaler Test)</h2>
+
+            <h3>Voraussetzungen</h3>
+            <ul>
+                <li>Python 3.10+ von <a href="https://python.org" target="_blank">python.org</a> (mit "Add to PATH" installieren)</li>
+                <li>Git von <a href="https://git-scm.com" target="_blank">git-scm.com</a></li>
+                <li>Nmap von <a href="https://nmap.org/download.html" target="_blank">nmap.org</a> (WinPcap mitinstallieren)</li>
+            </ul>
+
+            <h3>Installation</h3>
+<pre>git clone https://github.com/bohlerdavid/web.git it-verwaltung
+cd it-verwaltung
+pip install -r requirements.txt
+pip install wmi pywin32 paramiko</pre>
+
+            <h3>Starten</h3>
+<pre>python app.py</pre>
+            <p>Danach im Browser: <code>http://localhost:5000</code></p>
+
+            <div class="warn-box"><i class="bi bi-exclamation-triangle me-2"></i>Das <code>wmi</code>-Paket (Windows-Hardware-Abfragen) ist nur unter Windows verfügbar und wird auf Linux automatisch übersprungen.</div>
+        </div>
+
+        <!-- Changelog -->
+        <div class="wiki-card wiki-section" id="changelog">
+            <h2><i class="bi bi-clock-history me-2 text-accent"></i>Änderungsprotokoll</h2>
+
+            <div class="changelog-item">
+                <span class="text-muted me-2" style="font-size:.78rem;">2026-05-15</span>
+                <span class="tag-new me-2">NEU</span>
+                Wiki-Seite mit Installations- und Konfigurationsdokumentation
+            </div>
+            <div class="changelog-item">
+                <span class="text-muted me-2" style="font-size:.78rem;">2026-05-15</span>
+                <span class="tag-new me-2">NEU</span>
+                Inline-Anzeigestil für Felder (Titel links, Wert rechts)
+            </div>
+            <div class="changelog-item">
+                <span class="text-muted me-2" style="font-size:.78rem;">2026-05-15</span>
+                <span class="tag-fix me-2">FIX</span>
+                Zurück-Button in Gerät bearbeiten führt jetzt zur Detailseite statt zur Geräteliste
+            </div>
+            <div class="changelog-item">
+                <span class="text-muted me-2" style="font-size:.78rem;">2026-05-15</span>
+                <span class="tag-new me-2">NEU</span>
+                Drag &amp; Drop für Sektionen und Felder auf der Gerätdetailseite im Bearbeitungsmodus
+            </div>
+            <div class="changelog-item">
+                <span class="text-muted me-2" style="font-size:.78rem;">2026-05-15</span>
+                <span class="tag-new me-2">NEU</span>
+                Feld-Sichtbarkeit, Feld-Breite und Sektion-Breite per Klick anpassbar
+            </div>
+            <div class="changelog-item">
+                <span class="text-muted me-2" style="font-size:.78rem;">2026-05-15</span>
+                <span class="tag-new me-2">NEU</span>
+                Layout-Editor: Sektionen und Felder selbst erstellen, bearbeiten, löschen
+            </div>
+            <div class="changelog-item">
+                <span class="text-muted me-2" style="font-size:.78rem;">2026-05-14</span>
+                <span class="tag-new me-2">NEU</span>
+                RDP-Verbindungsbutton und Wake-on-LAN für PCs/Laptops/Server
+            </div>
+            <div class="changelog-item">
+                <span class="text-muted me-2" style="font-size:.78rem;">2026-05-14</span>
+                <span class="tag-new me-2">NEU</span>
+                Netzwerkscanner mit nmap, arp-scan, masscan; Hardware-Abfrage via WMI (Windows) und SSH (Linux)
+            </div>
+            <div class="changelog-item">
+                <span class="text-muted me-2" style="font-size:.78rem;">2026-05-14</span>
+                <span class="tag-new me-2">NEU</span>
+                Spalten in der Geräteliste verschieben und ein-/ausblenden (per localStorage)
+            </div>
+            <div class="changelog-item">
+                <span class="text-muted me-2" style="font-size:.78rem;">2026-05-13</span>
+                <span class="tag-new me-2">NEU</span>
+                Login-System mit Brute-Force-Schutz, Rollen (Admin / Betrachter), CSRF-Schutz
+            </div>
+            <div class="changelog-item">
+                <span class="text-muted me-2" style="font-size:.78rem;">2026-05-13</span>
+                <span class="tag-new me-2">NEU</span>
+                Initiale Version: Geräteverwaltung mit Dashboard, CSV-Export, Standorte
+            </div>
+        </div>
+
+    </div><!-- /col content -->
+</div><!-- /row -->
+{% endblock %}
