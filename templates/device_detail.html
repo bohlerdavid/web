@@ -42,12 +42,25 @@
                     {% endif %}
                 </div>
             </div>
-            <div class="d-flex gap-2 flex-shrink-0">
+            <div class="d-flex gap-2 flex-shrink-0 flex-wrap">
+                {% if device['ip_address'] and device['category'] in ('PC', 'Laptop', 'Server') %}
+                <a href="{{ url_for('device_rdp', device_id=device['id']) }}"
+                   class="btn btn-info btn-sm text-white" title="RDP-Datei herunterladen">
+                    <i class="bi bi-display me-1"></i>RDP
+                </a>
+                {% endif %}
+                {% if device['mac_address'] %}
+                <button type="button" id="wolBtn" class="btn btn-warning btn-sm"
+                        onclick="sendWoL({{ device['id'] }})">
+                    <i class="bi bi-power me-1"></i>Wake-on-LAN
+                </button>
+                {% endif %}
                 <a href="{{ url_for('device_edit', device_id=device['id']) }}" class="btn btn-light btn-sm">
                     <i class="bi bi-pencil me-1"></i>Bearbeiten
                 </a>
                 <form method="post" action="{{ url_for('device_delete', device_id=device['id']) }}"
                       data-confirm="Gerät '{{ device['name'] }}' wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-danger btn-sm"
                             data-confirm="Gerät '{{ device['name'] }}' wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.">
                         <i class="bi bi-trash me-1"></i>Löschen
@@ -200,4 +213,37 @@
 <a href="{{ url_for('devices') }}" class="btn btn-outline-secondary btn-sm">
     <i class="bi bi-arrow-left me-1"></i>Zurück zur Geräteliste
 </a>
+
+{% if device['mac_address'] %}
+<script>
+function sendWoL(deviceId) {
+    const btn = document.getElementById('wolBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Sende...';
+    const fd = new FormData();
+    fd.append('csrf_token', '{{ csrf_token() }}');
+    fetch(`/devices/${deviceId}/wol`, {method: 'POST', body: fd})
+        .then(r => r.json())
+        .then(data => {
+            if (data.ok) {
+                btn.className = 'btn btn-success btn-sm';
+                btn.innerHTML = '<i class="bi bi-check-circle me-1"></i>Paket gesendet!';
+                setTimeout(() => {
+                    btn.disabled = false;
+                    btn.className = 'btn btn-warning btn-sm';
+                    btn.innerHTML = '<i class="bi bi-power me-1"></i>Wake-on-LAN';
+                }, 4000);
+            } else {
+                btn.disabled = false;
+                btn.className = 'btn btn-danger btn-sm';
+                btn.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>' + (data.error || 'Fehler');
+                setTimeout(() => {
+                    btn.className = 'btn btn-warning btn-sm';
+                    btn.innerHTML = '<i class="bi bi-power me-1"></i>Wake-on-LAN';
+                }, 4000);
+            }
+        });
+}
+</script>
+{% endif %}
 {% endblock %}

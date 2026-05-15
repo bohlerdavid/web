@@ -351,12 +351,113 @@ def get_mac_vendor(mac):
 # Background scan
 # ---------------------------------------------------------------------------
 
-def _do_scan(network_cidr, use_nmap):
+def _do_scan(network_cidr, use_nmap, tool='auto'):
     """Internal: performs the full scan, updates scan_state throughout."""
     try:
+        now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+        # ------------------------------------------------------------------
+        # arp-scan path
+        # ------------------------------------------------------------------
+        if tool == 'arp-scan':
+            with scan_lock:
+                scan_state['status_text'] = f'Starte arp-scan für {network_cidr} …'
+                scan_state['progress'] = 10
+                scan_state['tool_used'] = 'arp-scan'
+
+            arp_hosts = scan_with_arp_scan(network_cidr)
+            if arp_hosts is None:
+                with scan_lock:
+                    scan_state['error'] = 'arp-scan nicht verfügbar'
+                    scan_state['status_text'] = 'Fehler: arp-scan nicht installiert'
+                    scan_state['running'] = False
+                    scan_state['progress'] = 0
+                    scan_state['finished_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                return
+
+            with scan_lock:
+                scan_state['progress'] = 50
+                scan_state['status_text'] = f'arp-scan: {len(arp_hosts)} Hosts gefunden. Löse Hostnamen auf …'
+
+            results = []
+            for h in arp_hosts:
+                ip_str = h['ip']
+                mac = h.get('mac', '')
+                vendor = h.get('vendor', '') or (get_mac_vendor(mac) if mac else '')
+                hostname = resolve_hostname(ip_str)
+                results.append({
+                    'ip': ip_str,
+                    'mac': mac,
+                    'hostname': hostname,
+                    'vendor': vendor,
+                    'os': '',
+                    'os_accuracy': '',
+                    'first_seen': now_str,
+                })
+
+            with scan_lock:
+                scan_state['progress'] = 100
+                scan_state['running'] = False
+                scan_state['finished_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                scan_state['status_text'] = f'Fertig! {len(results)} Geräte gefunden (via arp-scan).'
+                scan_state['results'] = list(results)
+            return
+
+        # ------------------------------------------------------------------
+        # masscan path
+        # ------------------------------------------------------------------
+        if tool == 'masscan':
+            with scan_lock:
+                scan_state['status_text'] = f'Starte masscan für {network_cidr} …'
+                scan_state['progress'] = 10
+                scan_state['tool_used'] = 'masscan'
+
+            masscan_hosts = scan_with_masscan(network_cidr)
+            if masscan_hosts is None:
+                with scan_lock:
+                    scan_state['error'] = 'masscan nicht verfügbar'
+                    scan_state['status_text'] = 'Fehler: masscan nicht installiert'
+                    scan_state['running'] = False
+                    scan_state['progress'] = 0
+                    scan_state['finished_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                return
+
+            with scan_lock:
+                scan_state['progress'] = 50
+                scan_state['status_text'] = f'masscan: {len(masscan_hosts)} Hosts gefunden. Lese ARP + Hostnamen …'
+
+            arp_table = get_arp_table()
+            results = []
+            for h in masscan_hosts:
+                ip_str = h['ip']
+                mac = arp_table.get(ip_str, '')
+                vendor = get_mac_vendor(mac) if mac else ''
+                hostname = resolve_hostname(ip_str)
+                results.append({
+                    'ip': ip_str,
+                    'mac': mac,
+                    'hostname': hostname,
+                    'vendor': vendor,
+                    'os': '',
+                    'os_accuracy': '',
+                    'first_seen': now_str,
+                })
+
+            with scan_lock:
+                scan_state['progress'] = 100
+                scan_state['running'] = False
+                scan_state['finished_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                scan_state['status_text'] = f'Fertig! {len(results)} Geräte gefunden (via masscan).'
+                scan_state['results'] = list(results)
+            return
+
+        # ------------------------------------------------------------------
+        # Default: ping sweep (auto / nmap)
+        # ------------------------------------------------------------------
         with scan_lock:
             scan_state['status_text'] = f'Starte Ping-Sweep für {network_cidr} …'
             scan_state['progress'] = 0
+            scan_state['tool_used'] = 'nmap' if use_nmap else 'ping'
 
         network = ipaddress.ip_network(network_cidr, strict=False)
         hosts = list(network.hosts())
@@ -406,7 +507,6 @@ def _do_scan(network_cidr, use_nmap):
             scan_state['progress'] = 62
 
         results = []
-        now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
         for ip_str in sorted(alive_ips, key=lambda x: ipaddress.ip_address(x)):
             mac = arp_table.get(ip_str, '')
@@ -470,11 +570,105 @@ def _do_scan(network_cidr, use_nmap):
             scan_state['finished_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
 
-def start_scan(network=None, use_nmap=True):
+def wake_on_lan(mac_address):
+    """Send WoL magic packet to the given MAC address."""
+    import socket
+    mac = mac_address.replace(':', '').replace('-', '').replace('.', '')
+    if len(mac) != 12:
+        raise ValueError(f'Invalid MAC address: {mac_address}')
+    magic = bytes.fromhex('FF' * 6 + mac * 16)
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        s.connect(('<broadcast>', 9))
+        s.send(magic)
+        # Also send to port 7 as fallback
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        s.connect(('<broadcast>', 7))
+        s.send(magic)
+
+
+def check_tool(name):
+    """Check if a CLI tool is available on PATH."""
+    import shutil
+    return shutil.which(name) is not None
+
+
+def scan_with_arp_scan(network):
+    """
+    Discover hosts using arp-scan (Linux/Kali).
+    Returns list of dicts: {ip, mac, vendor}
+    Falls back to empty list if not available.
+    """
+    if not check_tool('arp-scan'):
+        return None  # not available
+    try:
+        result = subprocess.run(
+            ['arp-scan', '--localnet', '--retry=2'],
+            capture_output=True, text=True, timeout=60
+        )
+        hosts = []
+        for line in result.stdout.splitlines():
+            parts = line.split('\t')
+            if len(parts) >= 2 and re.match(r'\d+\.\d+\.\d+\.\d+', parts[0]):
+                ip = parts[0].strip()
+                mac = parts[1].strip().upper() if len(parts) > 1 else ''
+                vendor = parts[2].strip() if len(parts) > 2 else ''
+                hosts.append({'ip': ip, 'mac': mac, 'vendor': vendor})
+        return hosts
+    except Exception:
+        return None
+
+
+def scan_with_masscan(network, ports='22,80,135,139,443,445,3389'):
+    """
+    Discover hosts using masscan (fast scanner).
+    Returns list of dicts: {ip, open_ports}
+    Falls back to None if not available.
+    Requires root/admin on most systems.
+    """
+    if not check_tool('masscan'):
+        return None
+    try:
+        result = subprocess.run(
+            ['masscan', network, f'-p{ports}', '--rate=1000', '--open',
+             '-oL', '/tmp/masscan_out.txt'],
+            capture_output=True, text=True, timeout=120
+        )
+        hosts = {}
+        try:
+            with open('/tmp/masscan_out.txt') as f:
+                for line in f:
+                    if line.startswith('open'):
+                        parts = line.split()
+                        if len(parts) >= 4:
+                            ip = parts[3]
+                            port = parts[2]
+                            if ip not in hosts:
+                                hosts[ip] = {'ip': ip, 'open_ports': []}
+                            hosts[ip]['open_ports'].append(port)
+        except FileNotFoundError:
+            pass
+        return list(hosts.values()) if hosts else []
+    except Exception:
+        return None
+
+
+def get_available_tools():
+    """Return dict of available scanning tools."""
+    return {
+        'nmap':     check_tool('nmap'),
+        'arp-scan': check_tool('arp-scan'),
+        'masscan':  check_tool('masscan'),
+    }
+
+
+def start_scan(network=None, use_nmap=True, tool='auto'):
     """
     Start a background network scan.
     If network is None, auto-detect via get_local_network().
     Returns immediately; scan runs in a daemon thread.
+    tool: 'auto' | 'nmap' | 'arp-scan' | 'masscan'
     """
     if not network:
         _, network = get_local_network()
@@ -487,15 +681,18 @@ def start_scan(network=None, use_nmap=True):
         scan_state['started_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         scan_state['finished_at'] = None
         scan_state['error'] = None
+        scan_state['tool_used'] = tool
 
-    thread = threading.Thread(target=_do_scan, args=(network, use_nmap), daemon=True)
+    thread = threading.Thread(target=_do_scan, args=(network, use_nmap, tool), daemon=True)
     thread.start()
 
 
 def get_scan_state():
     """Return a thread-safe copy of scan_state."""
     with scan_lock:
-        return dict(scan_state)
+        state = dict(scan_state)
+        state['available_tools'] = get_available_tools()
+        return state
 
 
 # ---------------------------------------------------------------------------

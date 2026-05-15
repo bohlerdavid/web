@@ -962,6 +962,64 @@ def device_edit(device_id):
                            edit=True, device_id=device_id)
 
 
+@app.route('/devices/<int:device_id>/wol', methods=['POST'])
+@login_required
+def device_wol(device_id):
+    device = query_db("SELECT * FROM devices WHERE id=?", (device_id,), one=True)
+    if not device:
+        abort(404)
+    mac = device['mac_address']
+    if not mac:
+        return jsonify({'error': 'Keine MAC-Adresse für dieses Gerät gespeichert.'})
+    try:
+        scanner.wake_on_lan(mac)
+        return jsonify({'ok': True, 'msg': f'Magic Packet wurde an {mac} gesendet. PC startet in Kürze.'})
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+
+@app.route('/devices/<int:device_id>/rdp')
+@login_required
+def device_rdp(device_id):
+    device = query_db("SELECT * FROM devices WHERE id=?", (device_id,), one=True)
+    if not device:
+        abort(404)
+    ip = device['ip_address']
+    if not ip:
+        flash('Keine IP-Adresse für dieses Gerät gespeichert.', 'warning')
+        return redirect(url_for('device_detail', device_id=device_id))
+    name = device['name'].replace(' ', '_')
+    rdp_content = f"""full address:s:{ip}
+username:s:
+screen mode id:i:2
+use multimon:i:0
+desktopwidth:i:1920
+desktopheight:i:1080
+session bpp:i:32
+compression:i:1
+keyboardhook:i:2
+audiocapturemode:i:0
+videoplaybackmode:i:1
+connection type:i:7
+networkautodetect:i:1
+bandwidthautodetect:i:1
+displayconnectionbar:i:1
+autoreconnection enabled:i:1
+authentication level:i:2
+prompt for credentials:i:1
+negotiate security layer:i:1
+redirectclipboard:i:1
+redirectprinters:i:1
+redirectsmartcards:i:1
+bitmapcachepersistenable:i:1
+"""
+    return Response(
+        rdp_content,
+        mimetype='application/x-rdp',
+        headers={'Content-Disposition': f'attachment; filename="{name}.rdp"'}
+    )
+
+
 @app.route('/devices/<int:device_id>/delete', methods=['POST'])
 @login_required
 def device_delete(device_id):
@@ -1080,8 +1138,9 @@ def scan_start():
 
     network = request.form.get('network', '').strip() or None
     use_nmap = request.form.get('use_nmap', 'true').lower() not in ('false', '0', '')
+    tool = request.form.get('tool', 'auto')
 
-    scanner.start_scan(network=network, use_nmap=use_nmap)
+    scanner.start_scan(network=network, use_nmap=use_nmap, tool=tool)
     return jsonify({'ok': True})
 
 

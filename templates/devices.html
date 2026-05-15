@@ -164,6 +164,12 @@
                                class="btn btn-outline-primary btn-action btn-icon" title="Bearbeiten" data-bs-toggle="tooltip">
                                 <i class="bi bi-pencil"></i>
                             </a>
+                            {% if d['ip_address'] and d['category'] in ('PC', 'Laptop', 'Server') %}
+                            <a href="{{ url_for('device_rdp', device_id=d['id']) }}"
+                               class="btn btn-outline-info btn-action btn-icon" title="RDP verbinden" data-bs-toggle="tooltip">
+                                <i class="bi bi-display"></i>
+                            </a>
+                            {% endif %}
                             <form method="post" action="{{ url_for('device_delete', device_id=d['id']) }}"
                                   data-confirm="Gerät '{{ d['name'] }}' wirklich löschen?">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
