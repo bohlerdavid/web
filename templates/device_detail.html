@@ -199,6 +199,13 @@ body.edit-mode .field-quick-edit { display: none !important; }
     background: #e0f2fe;
     border: 1px solid #7dd3fc;
 }
+#coreEditBar {
+    background: #fef3c7;
+    border: 1px solid #fcd34d;
+}
+body.core-edit-mode #coreViewPanel { display: none !important; }
+#coreEditPanel { display: none; }
+body.core-edit-mode #coreEditPanel { display: block; }
 
 /* ── Legacy view-mode styles (for fixed info row) ── */
 .detail-section-card {
@@ -280,9 +287,9 @@ body.edit-mode .field-quick-edit { display: none !important; }
                     <i class="bi bi-power me-1"></i>Wake-on-LAN
                 </button>
                 {% endif %}
-                <a href="{{ url_for('device_edit', device_id=device['id']) }}" class="btn btn-light btn-sm">
+                <button class="btn btn-light btn-sm" id="btnCoreEdit" onclick="enterCoreEdit()">
                     <i class="bi bi-pencil me-1"></i>Bearbeiten
-                </a>
+                </button>
                 <form method="post" action="{{ url_for('device_delete', device_id=device['id']) }}"
                       data-confirm="Gerät '{{ device['name'] }}' wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -297,79 +304,158 @@ body.edit-mode .field-quick-edit { display: none !important; }
 
     <!-- ===== CORE DEVICE INFO ===== -->
     <div class="detail-body">
+
+      <!-- VIEW PANEL -->
+      <div id="coreViewPanel">
         <div class="row g-4">
-            <!-- Column 1: Tech Details -->
-            <div class="col-12 col-md-6 col-lg-4">
-                <div class="detail-section">
-                    <div class="form-section-title">Technische Details</div>
-                    <div class="mb-3">
-                        <div class="detail-label">Kategorie</div>
-                        <div class="detail-value">{{ cat_labels.get(device['category'], device['category']) }}</div>
-                    </div>
-                    <div class="mb-3">
-                        <div class="detail-label">Status</div>
-                        <div class="detail-value">{{ device['status']|status_badge|safe }}</div>
-                    </div>
-                </div>
+          <div class="col-12 col-md-6 col-lg-4">
+            <div class="detail-section">
+              <div class="form-section-title">Technische Details</div>
+              <div class="mb-3">
+                <div class="detail-label">Kategorie</div>
+                <div class="detail-value">{{ cat_labels.get(device['category'], device['category']) }}</div>
+              </div>
+              <div class="mb-3">
+                <div class="detail-label">Status</div>
+                <div class="detail-value">{{ device['status']|status_badge|safe }}</div>
+              </div>
             </div>
+          </div>
+          <div class="col-12 col-md-6 col-lg-4">
+            <div class="detail-section">
+              <div class="form-section-title">Zuweisung</div>
+              <div class="mb-3">
+                <div class="detail-label">Standort</div>
+                {% if device['location_name'] %}
+                <div class="detail-value">
+                  <i class="bi bi-geo-alt me-1 text-accent"></i>{{ device['location_name'] }}
+                  {% if device['building'] and device['building'] != '—' %}
+                  <div class="text-muted" style="font-size:.8rem;">{{ device['building'] }}{% if device['floor'] and device['floor'] != '—' %}, {{ device['floor'] }}{% endif %}{% if device['room'] and device['room'] != '—' %}, Raum {{ device['room'] }}{% endif %}</div>
+                  {% endif %}
+                </div>
+                {% else %}
+                <div class="detail-value empty">Nicht zugewiesen</div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          <div class="col-12 col-md-6 col-lg-4">
+            <div class="detail-section">
+              <div class="form-section-title">Kauf &amp; Garantie</div>
+              <div class="mb-3">
+                <div class="detail-label">Kaufdatum</div>
+                <div class="detail-value {% if not device['purchase_date'] %}empty{% endif %}">{{ device['purchase_date']|de_date if device['purchase_date'] else 'Nicht angegeben' }}</div>
+              </div>
+              <div class="mb-3">
+                <div class="detail-label">Garantie bis</div>
+                <div class="detail-value {% if not device['warranty_expiry'] %}empty{% endif %}">
+                  {% if device['warranty_expiry'] %}<span data-warranty="{{ device['warranty_expiry'] }}">{{ device['warranty_expiry']|de_date }}</span>{% else %}Nicht angegeben{% endif %}
+                </div>
+              </div>
+              <div class="mb-3">
+                <div class="detail-label">Hinzugefügt am</div>
+                <div class="detail-value text-muted">{{ device['created_at'][:10]|de_date }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div><!-- /coreViewPanel -->
 
-            <!-- Column 2: Location -->
-            <div class="col-12 col-md-6 col-lg-4">
-                <div class="detail-section">
-                    <div class="form-section-title">Zuweisung</div>
-                    <div class="mb-3">
-                        <div class="detail-label">Standort</div>
-                        {% if device['location_name'] %}
-                        <div class="detail-value">
-                            <i class="bi bi-geo-alt me-1 text-accent"></i>{{ device['location_name'] }}
-                            {% if device['building'] and device['building'] != '—' %}
-                            <div class="text-muted" style="font-size:.8rem;">
-                                {{ device['building'] }}
-                                {% if device['floor'] and device['floor'] != '—' %}, {{ device['floor'] }}{% endif %}
-                                {% if device['room'] and device['room'] != '—' %}, Raum {{ device['room'] }}{% endif %}
-                            </div>
-                            {% endif %}
-                        </div>
-                        {% else %}
-                        <div class="detail-value empty">Nicht zugewiesen</div>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
+      <!-- EDIT PANEL -->
+      <div id="coreEditPanel">
+        <div class="row g-3">
+          <div class="col-12 col-md-8">
+            <label class="form-label fw-semibold">Gerätename <span class="text-danger">*</span></label>
+            <input type="text" id="ce_name" class="form-control" value="{{ device['name'] }}">
+          </div>
+          <div class="col-12 col-md-4">
+            <label class="form-label fw-semibold">Kategorie</label>
+            <select id="ce_category" class="form-select">
+              {% for c in categories %}
+              <option value="{{ c }}" {% if device['category'] == c %}selected{% endif %}>{{ category_labels[c] }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-4">
+            <label class="form-label fw-semibold">Status</label>
+            <select id="ce_status" class="form-select">
+              {% for s in statuses %}
+              <option value="{{ s }}" {% if device['status'] == s %}selected{% endif %}>{{ status_labels[s] }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-4">
+            <label class="form-label fw-semibold">Standort</label>
+            <select id="ce_location_id" class="form-select">
+              <option value="">— Kein Standort —</option>
+              {% for loc in locations %}
+              <option value="{{ loc['id'] }}" {% if device['location_id']|string == loc['id']|string %}selected{% endif %}>{{ loc['name'] }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-4">
+            <label class="form-label fw-semibold">Seriennummer</label>
+            <input type="text" id="ce_serial" class="form-control" value="{{ device['serial_number'] or '' }}" placeholder="z.B. SN-ABC-12345">
+          </div>
+          <div class="col-12 col-md-4">
+            <label class="form-label fw-semibold">Betriebssystem</label>
+            <input type="text" id="ce_os" class="form-control" value="{{ device['operating_system'] or '' }}" placeholder="z.B. Windows 11 Pro">
+          </div>
+          <div class="col-12 col-md-4">
+            <label class="form-label fw-semibold">MAC-Adresse</label>
+            <input type="text" id="ce_mac" class="form-control" value="{{ device['mac_address'] or '' }}" placeholder="AA:BB:CC:DD:EE:FF">
+          </div>
+          <div class="col-12 col-md-4">
+            <label class="form-label fw-semibold">IP-Adresse</label>
+            <input type="text" id="ce_ip" class="form-control" value="{{ device['ip_address'] or '' }}" placeholder="192.168.1.100">
+          </div>
+          <div class="col-12 col-md-4">
+            <label class="form-label fw-semibold">Hersteller</label>
+            <input type="text" id="ce_manufacturer" class="form-control" value="{{ device['manufacturer'] or '' }}" placeholder="z.B. Dell">
+          </div>
+          <div class="col-12 col-md-4">
+            <label class="form-label fw-semibold">Modell</label>
+            <input type="text" id="ce_model" class="form-control" value="{{ device['model'] or '' }}" placeholder="z.B. OptiPlex 7090">
+          </div>
+          <div class="col-12 col-md-4">
+            <label class="form-label fw-semibold">CPU</label>
+            <input type="text" id="ce_cpu" class="form-control" value="{{ device['cpu_info'] or '' }}" placeholder="z.B. Intel Core i7">
+          </div>
+          <div class="col-12 col-md-4">
+            <label class="form-label fw-semibold">RAM</label>
+            <input type="text" id="ce_ram" class="form-control" value="{{ device['ram_info'] or '' }}" placeholder="z.B. 16 GB">
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label fw-semibold">Kaufdatum</label>
+            <input type="date" id="ce_purchase" class="form-control" value="{{ device['purchase_date'] or '' }}">
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label fw-semibold">Garantie bis</label>
+            <input type="date" id="ce_warranty" class="form-control" value="{{ device['warranty_expiry'] or '' }}">
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold">Notizen</label>
+            <textarea id="ce_notes" class="form-control" rows="3">{{ device['notes'] or '' }}</textarea>
+          </div>
+        </div>
+      </div><!-- /coreEditPanel -->
 
-            <!-- Column 3: Dates -->
-            <div class="col-12 col-md-6 col-lg-4">
-                <div class="detail-section">
-                    <div class="form-section-title">Kauf &amp; Garantie</div>
-                    <div class="mb-3">
-                        <div class="detail-label">Kaufdatum</div>
-                        <div class="detail-value {% if not device['purchase_date'] %}empty{% endif %}">
-                            {{ device['purchase_date']|de_date if device['purchase_date'] else 'Nicht angegeben' }}
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <div class="detail-label">Garantie bis</div>
-                        <div class="detail-value {% if not device['warranty_expiry'] %}empty{% endif %}">
-                            {% if device['warranty_expiry'] %}
-                            <span data-warranty="{{ device['warranty_expiry'] }}">
-                                {{ device['warranty_expiry']|de_date }}
-                            </span>
-                            {% else %}
-                            Nicht angegeben
-                            {% endif %}
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <div class="detail-label">Hinzugefügt am</div>
-                        <div class="detail-value text-muted">{{ device['created_at'][:10]|de_date }}</div>
-                    </div>
-                </div>
-            </div>
-        </div><!-- /row -->
     </div><!-- /detail-body -->
 </div><!-- /detail-card (hero) -->
 
 <div id="snapTooltip"></div>
+
+<!-- ===== CORE EDIT BAR ===== -->
+<div id="coreEditBar" style="display:none;" class="mb-3 p-3 rounded">
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+        <span class="fw-semibold" style="color:#92400e;"><i class="bi bi-pencil me-1"></i>Gerät bearbeiten</span>
+        <span class="text-muted small">Änderungen werden direkt gespeichert</span>
+        <div class="ms-auto d-flex gap-2">
+            <button class="btn btn-warning btn-sm" onclick="saveCoreDevice()"><i class="bi bi-check-lg me-1"></i>Speichern</button>
+            <button class="btn btn-outline-secondary btn-sm" onclick="cancelCoreEdit()"><i class="bi bi-x me-1"></i>Abbrechen</button>
+        </div>
+    </div>
+</div>
 
 <!-- ===== EDIT MODE BAR ===== -->
 <div id="editModeBar" style="display:none;" class="mb-3 p-3 rounded">
@@ -585,6 +671,53 @@ function cancelEdit() {
     document.querySelectorAll('.field-item').forEach(el => el.setAttribute('draggable', 'false'));
     const btn = document.getElementById('btnEditFields');
     if (btn) btn.style.display = '';
+}
+
+/* ── Core device edit (Bearbeiten button) ── */
+function enterCoreEdit() {
+    document.body.classList.add('core-edit-mode');
+    document.getElementById('coreEditBar').style.display = '';
+    document.getElementById('btnCoreEdit').style.display = 'none';
+}
+
+function cancelCoreEdit() {
+    document.body.classList.remove('core-edit-mode');
+    document.getElementById('coreEditBar').style.display = 'none';
+    document.getElementById('btnCoreEdit').style.display = '';
+}
+
+async function saveCoreDevice() {
+    const name = document.getElementById('ce_name').value.trim();
+    if (!name) { showToast('Gerätename ist erforderlich.', 'danger'); return; }
+    const payload = {
+        name,
+        category:      document.getElementById('ce_category').value,
+        status:        document.getElementById('ce_status').value,
+        location_id:   document.getElementById('ce_location_id').value || null,
+        serial_number: document.getElementById('ce_serial').value.trim(),
+        operating_system: document.getElementById('ce_os').value.trim(),
+        mac_address:   document.getElementById('ce_mac').value.trim(),
+        ip_address:    document.getElementById('ce_ip').value.trim(),
+        manufacturer:  document.getElementById('ce_manufacturer').value.trim(),
+        model:         document.getElementById('ce_model').value.trim(),
+        cpu_info:      document.getElementById('ce_cpu').value.trim(),
+        ram_info:      document.getElementById('ce_ram').value.trim(),
+        purchase_date: document.getElementById('ce_purchase').value,
+        warranty_expiry: document.getElementById('ce_warranty').value,
+        notes:         document.getElementById('ce_notes').value.trim(),
+    };
+    try {
+        const r = await fetch(`/devices/${DEVICE_ID}/update`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+            body: JSON.stringify(payload)
+        });
+        if (!r.ok) { const d = await r.json(); showToast(d.error || 'Fehler', 'danger'); return; }
+        showToast('Gespeichert — Seite wird aktualisiert…', 'success');
+        setTimeout(() => location.reload(), 800);
+    } catch(e) {
+        showToast('Netzwerkfehler: ' + e.message, 'danger');
+    }
 }
 
 /* ── Save field values ── */

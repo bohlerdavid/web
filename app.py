@@ -1073,12 +1073,57 @@ def device_detail(device_id):
         fields_by_section[s['id']] = [dict(row) for row in fields]
 
     is_admin = session.get('role') == 'admin'
+    locations = query_db("SELECT * FROM locations ORDER BY name")
     return render_template('device_detail.html', device=device,
                            category_labels=CATEGORY_LABELS,
                            status_labels=STATUS_LABELS,
+                           categories=CATEGORIES,
+                           statuses=STATUSES,
+                           locations=locations,
                            sections=sections,
                            fields_by_section=fields_by_section,
                            is_admin=is_admin)
+
+
+@app.route('/devices/<int:device_id>/update', methods=['POST'])
+@login_required
+def device_update_ajax(device_id):
+    if not validate_csrf_flexible():
+        return jsonify({'error': 'CSRF validation failed'}), 403
+    device = query_db("SELECT id FROM devices WHERE id=?", (device_id,), one=True)
+    if not device:
+        abort(404)
+    data = request.get_json() or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'Gerätename ist erforderlich.'}), 400
+    execute_db(
+        """UPDATE devices SET
+           name=?, category=?, serial_number=?, mac_address=?, ip_address=?,
+           operating_system=?, status=?, location_id=?,
+           purchase_date=?, warranty_expiry=?, notes=?,
+           cpu_info=?, ram_info=?, manufacturer=?, model=?
+           WHERE id=?""",
+        (
+            name,
+            data.get('category', 'Other'),
+            data.get('serial_number', '').strip() or None,
+            data.get('mac_address', '').strip() or None,
+            data.get('ip_address', '').strip() or None,
+            data.get('operating_system', '').strip() or None,
+            data.get('status', 'active'),
+            data.get('location_id') or None,
+            data.get('purchase_date') or None,
+            data.get('warranty_expiry') or None,
+            data.get('notes', '').strip() or None,
+            data.get('cpu_info', '').strip() or None,
+            data.get('ram_info', '').strip() or None,
+            data.get('manufacturer', '').strip() or None,
+            data.get('model', '').strip() or None,
+            device_id,
+        )
+    )
+    return jsonify({'ok': True})
 
 
 @app.route('/devices/<int:device_id>/edit', methods=['GET', 'POST'])
