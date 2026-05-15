@@ -27,7 +27,12 @@
 }
 .list-card-header h5 { margin: 0; font-size: .95rem; font-weight: 600; }
 .list-card-header small { opacity: .65; font-size: .78rem; }
-.list-card-body { padding: 16px 20px; }
+.list-card-header { cursor: pointer; user-select: none; }
+.list-card-header:hover { background: linear-gradient(135deg, #263548 0%, #354d66 100%); }
+.collapse-arrow { color: rgba(255,255,255,.6); font-size: .8rem; transition: transform .2s; flex-shrink: 0; }
+.list-card.collapsed .collapse-arrow { transform: rotate(-90deg); }
+.list-card-body { padding: 16px 20px; transition: none; }
+.list-card.collapsed .list-card-body { display: none; }
 .opt-row {
     display: flex;
     align-items: center;
@@ -82,7 +87,7 @@
 <!-- ── System-Listen (Status, Kategorie) ── -->
 {% for sl in system_lists %}
 <div class="list-card" id="scard_{{ sl['name'] }}">
-    <div class="list-card-header">
+    <div class="list-card-header" onclick="toggleCard(this.closest('.list-card'))">
         <i class="bi {{ sl['icon'] }}"></i>
         <div>
             <h5>{{ sl['label'] }}</h5>
@@ -92,6 +97,7 @@
         <span class="badge bg-light text-dark ms-1" style="font-size:.72rem;" id="scount_{{ sl['name'] }}">
             {{ sl['options']|length }} Einträge
         </span>
+        <i class="bi bi-chevron-down collapse-arrow ms-2"></i>
     </div>
     <div class="list-card-body">
         <ul class="list-unstyled mb-0" id="soptList_{{ sl['name'] }}" data-slist-name="{{ sl['name'] }}">
@@ -135,7 +141,7 @@
 </div>
 {% for field in fields %}
 <div class="list-card" id="card_{{ field['id'] }}">
-    <div class="list-card-header">
+    <div class="list-card-header" onclick="toggleCard(this.closest('.list-card'))">
         <i class="bi bi-list-ul"></i>
         <div>
             <h5>{{ field['label'] }}</h5>
@@ -144,6 +150,7 @@
         <span class="ms-auto badge bg-light text-dark" style="font-size:.72rem;">
             {{ options_by_field.get(field['id'], [])|length }} Einträge
         </span>
+        <i class="bi bi-chevron-down collapse-arrow ms-2"></i>
     </div>
     <div class="list-card-body">
         <ul class="list-unstyled mb-0" id="optList_{{ field['id'] }}" data-field-id="{{ field['id'] }}">
@@ -373,5 +380,10 @@ async function deleteSysOption(optId, listName, btn) {
 
 // Init drag on all existing lists (custom + system)
 document.querySelectorAll('[id^="optList_"], [id^="soptList_"]').forEach(list => initDrag(list));
+
+/* ── Collapse / expand ── */
+function toggleCard(card) {
+    card.classList.toggle('collapsed');
+}
 </script>
 {% endblock %}
