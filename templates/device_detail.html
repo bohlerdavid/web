@@ -65,24 +65,6 @@ body.edit-mode .section-header-edit { display: flex; }
 }
 .section-drag-handle:active { cursor: grabbing; }
 
-/* ── Single shared field toolbar ── */
-#fieldToolbar {
-    display: none;
-    position: sticky;
-    top: 68px;
-    background: #fff;
-    border: 1px solid #bfdbfe;
-    border-radius: 10px;
-    padding: 7px 14px;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-    z-index: 50;
-    box-shadow: 0 2px 10px rgba(79,156,249,.15);
-    margin-bottom: 12px;
-}
-body.edit-mode #fieldToolbar { display: flex; }
-#ftLabel { font-size: .85rem; font-weight: 600; color: #1e2a3b; min-width: 100px; white-space: nowrap; }
 .fw-btn.active  { background: #4f9cf9 !important; color: #fff !important; border-color: #4f9cf9 !important; }
 .ds-btn.active  { background: #4f9cf9 !important; color: #fff !important; border-color: #4f9cf9 !important; }
 
@@ -550,25 +532,6 @@ body.core-edit-mode #coreEditPanel { display: block; }
     </div>
 </div>
 
-<!-- ===== FIELD TOOLBAR (shared, one per page) ===== -->
-<div id="fieldToolbar">
-  <span id="ftLabel" class="text-muted"><i class="bi bi-cursor me-1"></i>Feld anklicken</span>
-  <div class="btn-group btn-group-sm ms-2">
-    <button id="ftW3"  class="btn btn-outline-secondary fw-btn" onclick="setActiveWidth('third')">1/3</button>
-    <button id="ftW2"  class="btn btn-outline-secondary fw-btn" onclick="setActiveWidth('half')">1/2</button>
-    <button id="ftW23" class="btn btn-outline-secondary fw-btn" onclick="setActiveWidth('two-thirds')">2/3</button>
-    <button id="ftWF"  class="btn btn-outline-secondary fw-btn" onclick="setActiveWidth('full')">Voll</button>
-  </div>
-  <div class="btn-group btn-group-sm ms-1">
-    <button id="ftDSS" class="btn btn-outline-secondary ds-btn" onclick="setActiveStyle('stacked')" title="Titel oben"><i class="bi bi-list-ul"></i></button>
-    <button id="ftDSI" class="btn btn-outline-secondary ds-btn" onclick="setActiveStyle('inline')"  title="Titel links"><i class="bi bi-layout-text-sidebar"></i></button>
-  </div>
-  <button id="ftVis" class="btn btn-sm btn-outline-secondary ms-1" onclick="toggleActiveVisible()" title="Sichtbarkeit">
-    <i class="bi bi-eye" id="ftVisIcon"></i>
-  </button>
-  <span class="text-muted ms-2" style="font-size:.75rem;">· Ziehen: Felder verschieben &amp; Grösse anpassen</span>
-</div>
-
 <!-- ===== DYNAMIC SECTIONS GRID ===== -->
 {% if sections %}
 <div class="sections-grid" id="sectionsGrid">
@@ -782,21 +745,7 @@ function cancelEdit() {
     document.getElementById('btnCoreEdit')?.style.setProperty('display','');
 }
 
-/* ── Toolbar sync helpers ── */
-function syncTopToolbar(fw, ds, visible) {
-    const fwMap = {third:'ftW3', half:'ftW2', 'two-thirds':'ftW23', full:'ftWF'};
-    document.querySelectorAll('#fieldToolbar .fw-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById(fwMap[fw])?.classList.add('active');
-    document.querySelectorAll('#fieldToolbar .ds-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById(ds === 'inline' ? 'ftDSI' : 'ftDSS')?.classList.add('active');
-    const visBtn = document.getElementById('ftVis');
-    const visIcon = document.getElementById('ftVisIcon');
-    if (visBtn && visIcon) {
-        visBtn.className = visible ? 'btn btn-sm btn-outline-secondary ms-1' : 'btn btn-sm btn-warning ms-1';
-        visIcon.className = visible ? 'bi bi-eye' : 'bi bi-eye-slash';
-    }
-}
-
+/* ── Toolbar sync helper ── */
 function syncFhpButtons(sectionId, fw, ds, visible) {
     const fwBtnMap = {third:'fhpW3_', half:'fhpW2_', 'two-thirds':'fhpW23_', full:'fhpWF_'};
     document.querySelectorAll(`#fhp_${sectionId} .fhp-fw-btn`).forEach(b => b.classList.remove('active'));
@@ -821,19 +770,11 @@ function selectField(fieldId, el) {
     document.querySelectorAll('.field-hdr-props').forEach(d => d.classList.remove('fhp-active'));
     activeFieldId = fieldId;
     activeFieldEl = el;
-    const label = document.getElementById('ftLabel');
     if (!el) {
         activeSectionId = null;
-        label.innerHTML = '<i class="bi bi-cursor me-1"></i>Feld anklicken';
-        label.className = 'text-muted';
-        document.querySelectorAll('#fieldToolbar .fw-btn, #fieldToolbar .ds-btn').forEach(b => b.classList.remove('active'));
-        document.getElementById('ftVis').className = 'btn btn-sm btn-outline-secondary ms-1';
-        document.getElementById('ftVisIcon').className = 'bi bi-eye';
         return;
     }
     el.classList.add('field-active');
-    label.innerHTML = '<i class="bi bi-ui-checks me-1"></i>' + (el.dataset.fieldLabel || 'Feld');
-    label.className = 'fw-semibold text-primary';
 
     const fw      = el.dataset.fieldWidth || 'third';
     const ds      = el.dataset.displayStyle || 'stacked';
@@ -849,7 +790,6 @@ function selectField(fieldId, el) {
             syncFhpButtons(activeSectionId, fw, ds, visible);
         }
     }
-    syncTopToolbar(fw, ds, visible);
 }
 
 /* ── Shared field toolbar actions ── */
@@ -860,7 +800,6 @@ async function setActiveWidth(fw) {
     activeFieldEl.dataset.fieldWidth = fw;
     const ds = activeFieldEl.dataset.displayStyle || 'stacked';
     const visible = getVisible(activeFieldEl);
-    syncTopToolbar(fw, ds, visible);
     if (activeSectionId) syncFhpButtons(activeSectionId, fw, ds, visible);
     try {
         await fetch(`/layout/fields/${activeFieldId}/field-width`, {
@@ -877,7 +816,6 @@ async function setActiveStyle(style) {
     activeFieldEl.dataset.displayStyle = style;
     const fw = activeFieldEl.dataset.fieldWidth || 'third';
     const visible = getVisible(activeFieldEl);
-    syncTopToolbar(fw, style, visible);
     if (activeSectionId) syncFhpButtons(activeSectionId, fw, style, visible);
     try {
         await fetch(`/layout/fields/${activeFieldId}/display-style`, {
@@ -900,7 +838,6 @@ async function toggleActiveVisible() {
         activeFieldEl.classList.toggle('field-hidden', !visible);
         const fw = activeFieldEl.dataset.fieldWidth || 'third';
         const ds = activeFieldEl.dataset.displayStyle || 'stacked';
-        syncTopToolbar(fw, ds, visible);
         if (activeSectionId) syncFhpButtons(activeSectionId, fw, ds, visible);
         // Update field picker panel if open
         const chip = document.querySelector(`#fieldPickerBody [data-fid="${activeFieldId}"]`);
@@ -1290,7 +1227,6 @@ function initFieldWidthResize() {
             if (activeFieldEl === item) {
                 const ds = item.dataset.displayStyle || 'stacked';
                 const visible = getVisible(item);
-                syncTopToolbar(currentSnap.val, ds, visible);
                 if (activeSectionId) syncFhpButtons(activeSectionId, currentSnap.val, ds, visible);
             }
             try {
