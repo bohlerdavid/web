@@ -8,6 +8,47 @@
 <li class="breadcrumb-item active">{{ device['name'] }}</li>
 {% endblock %}
 
+{% block extra_head %}
+<style>
+/* Edit mode styles */
+.view-value { display: block; }
+.edit-input { display: none; }
+body.edit-mode .view-value { display: none; }
+body.edit-mode .edit-input { display: block; }
+body.edit-mode #btnEditFields { display: none !important; }
+body.edit-mode #editActions { display: flex !important; }
+#editActions { display: none; }
+
+.detail-section-card {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+.detail-section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  background: linear-gradient(135deg, #1e2a3b 0%, #2c3e55 100%);
+  color: #fff;
+}
+.detail-section-header h5 {
+  margin: 0;
+  font-size: .95rem;
+  font-weight: 600;
+}
+.detail-section-header .section-icon {
+  font-size: 1.1rem;
+  opacity: .9;
+}
+.detail-section-body {
+  padding: 20px 24px;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 {% set cat_icons = {
     'PC':'bi-pc-display','Laptop':'bi-laptop','Server':'bi-server',
@@ -42,7 +83,21 @@
                     {% endif %}
                 </div>
             </div>
-            <div class="d-flex gap-2 flex-shrink-0 flex-wrap">
+            <div class="d-flex gap-2 flex-shrink-0 flex-wrap align-items-center">
+                <!-- Edit fields toggle -->
+                <button type="button" id="btnEditFields" class="btn btn-light btn-sm" onclick="enterEditMode()">
+                    <i class="bi bi-pencil-square me-1"></i>Felder bearbeiten
+                </button>
+                <!-- Save / Cancel (shown in edit mode) -->
+                <div id="editActions" class="gap-2">
+                    <button type="button" class="btn btn-success btn-sm" onclick="saveFields({{ device['id'] }})">
+                        <i class="bi bi-check-lg me-1"></i>Speichern
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="cancelEditMode()">
+                        <i class="bi bi-x-lg me-1"></i>Abbrechen
+                    </button>
+                </div>
+
                 {% if device['ip_address'] and device['category'] in ('PC', 'Laptop', 'Server') %}
                 <a href="{{ url_for('device_rdp', device_id=device['id']) }}"
                    class="btn btn-info btn-sm text-white" title="RDP-Datei herunterladen">
@@ -70,10 +125,9 @@
         </div>
     </div>
 
-    <!-- ===== DETAIL BODY ===== -->
+    <!-- ===== CORE DEVICE INFO ===== -->
     <div class="detail-body">
         <div class="row g-4">
-
             <!-- Column 1: Tech Details -->
             <div class="col-12 col-md-6 col-lg-4">
                 <div class="detail-section">
@@ -83,68 +137,14 @@
                         <div class="detail-value">{{ cat_labels.get(device['category'], device['category']) }}</div>
                     </div>
                     <div class="mb-3">
-                        <div class="detail-label">Seriennummer</div>
-                        <div class="detail-value {% if not device['serial_number'] %}empty{% endif %}" style="font-family:monospace;">
-                            {{ device['serial_number'] or 'Nicht angegeben' }}
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <div class="detail-label">Betriebssystem</div>
-                        <div class="detail-value {% if not device['operating_system'] %}empty{% endif %}">
-                            {{ device['operating_system'] or 'Nicht angegeben' }}
-                        </div>
-                    </div>
-                    <div class="mb-3">
                         <div class="detail-label">Status</div>
                         <div class="detail-value">{{ device['status']|status_badge|safe }}</div>
                     </div>
                 </div>
-
-                {% if device['manufacturer'] or device['model'] or device['cpu_info'] or device['ram_info'] %}
-                <div class="detail-section">
-                    <div class="form-section-title">Hardware-Informationen</div>
-                    {% if device['manufacturer'] or device['model'] %}
-                    <div class="mb-3">
-                        <div class="detail-label">Hersteller / Modell</div>
-                        <div class="detail-value">
-                            {{ [device['manufacturer'], device['model']] | select | join(' ') or 'Nicht angegeben' }}
-                        </div>
-                    </div>
-                    {% endif %}
-                    {% if device['cpu_info'] %}
-                    <div class="mb-3">
-                        <div class="detail-label">CPU</div>
-                        <div class="detail-value" style="font-size:.87rem;">{{ device['cpu_info'] }}</div>
-                    </div>
-                    {% endif %}
-                    {% if device['ram_info'] %}
-                    <div class="mb-3">
-                        <div class="detail-label">RAM</div>
-                        <div class="detail-value">{{ device['ram_info'] }}</div>
-                    </div>
-                    {% endif %}
-                </div>
-                {% endif %}
             </div>
 
-            <!-- Column 2: Network -->
+            <!-- Column 2: Location -->
             <div class="col-12 col-md-6 col-lg-4">
-                <div class="detail-section">
-                    <div class="form-section-title">Netzwerk</div>
-                    <div class="mb-3">
-                        <div class="detail-label">MAC-Adresse</div>
-                        <div class="detail-value {% if not device['mac_address'] %}empty{% endif %}" style="font-family:monospace;">
-                            {{ device['mac_address'] or 'Nicht angegeben' }}
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <div class="detail-label">IP-Adresse</div>
-                        <div class="detail-value {% if not device['ip_address'] %}empty{% endif %}" style="font-family:monospace;">
-                            {{ device['ip_address'] or 'Nicht angegeben' }}
-                        </div>
-                    </div>
-                </div>
-
                 <div class="detail-section">
                     <div class="form-section-title">Zuweisung</div>
                     <div class="mb-3">
@@ -167,7 +167,7 @@
                 </div>
             </div>
 
-            <!-- Column 3: Dates & Notes -->
+            <!-- Column 3: Dates -->
             <div class="col-12 col-md-6 col-lg-4">
                 <div class="detail-section">
                     <div class="form-section-title">Kauf &amp; Garantie</div>
@@ -194,28 +194,202 @@
                         <div class="detail-value text-muted">{{ device['created_at'][:10]|de_date }}</div>
                     </div>
                 </div>
-
-                <div class="detail-section">
-                    <div class="form-section-title">Notizen</div>
-                    {% if device['notes'] %}
-                    <div class="detail-value" style="white-space:pre-wrap;font-size:.87rem;line-height:1.6;">{{ device['notes'] }}</div>
-                    {% else %}
-                    <div class="detail-value empty">Keine Notizen vorhanden</div>
-                    {% endif %}
-                </div>
             </div>
-
         </div><!-- /row -->
     </div><!-- /detail-body -->
-</div><!-- /detail-card -->
+</div><!-- /detail-card (hero) -->
+
+<!-- ===== DYNAMIC SECTIONS ===== -->
+{% for section in sections %}
+{% set sec_fields = fields_by_section[section['id']] %}
+<div class="detail-section-card" id="section-{{ section['id'] }}">
+  <div class="detail-section-header">
+    <i class="bi {{ section['icon'] }} section-icon"></i>
+    <h5>{{ section['name'] }}</h5>
+  </div>
+  <div class="detail-section-body">
+    {% if sec_fields %}
+    <div class="row g-3">
+      {% for field in sec_fields %}
+      <div class="{% if field['field_type'] == 'textarea' %}col-12{% else %}col-12 col-sm-6 col-md-4{% endif %}">
+        <div class="detail-label">{{ field['label'] }}</div>
+
+        <!-- View mode -->
+        <div class="detail-value view-value" id="view-{{ field['id'] }}">
+          {% if field['field_type'] == 'boolean' %}
+            {% if field['value'] == '1' %}<span class="badge bg-success">Ja</span>
+            {% elif field['value'] == '0' %}<span class="badge bg-secondary">Nein</span>
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          {% elif field['field_type'] == 'url' and field['value'] %}
+            <a href="{{ field['value'] }}" target="_blank" rel="noopener">{{ field['value'] }}</a>
+          {% elif field['field_type'] == 'date' and field['value'] %}
+            {{ field['value']|de_date }}
+          {% else %}
+            {{ field['value'] or '—' }}
+          {% endif %}
+        </div>
+
+        <!-- Edit mode input -->
+        {% if field['field_type'] == 'textarea' %}
+        <textarea class="form-control form-control-sm edit-input"
+                  data-field-id="{{ field['id'] }}"
+                  rows="3">{{ field['value'] }}</textarea>
+        {% elif field['field_type'] == 'boolean' %}
+        <select class="form-select form-select-sm edit-input"
+                data-field-id="{{ field['id'] }}">
+          <option value="" {% if field['value'] == '' %}selected{% endif %}>—</option>
+          <option value="1" {% if field['value'] == '1' %}selected{% endif %}>Ja</option>
+          <option value="0" {% if field['value'] == '0' %}selected{% endif %}>Nein</option>
+        </select>
+        {% elif field['field_type'] == 'number' %}
+        <input type="number" class="form-control form-control-sm edit-input"
+               data-field-id="{{ field['id'] }}"
+               value="{{ field['value'] }}">
+        {% elif field['field_type'] == 'date' %}
+        <input type="date" class="form-control form-control-sm edit-input"
+               data-field-id="{{ field['id'] }}"
+               value="{{ field['value'] }}">
+        {% elif field['field_type'] == 'url' %}
+        <input type="url" class="form-control form-control-sm edit-input"
+               data-field-id="{{ field['id'] }}"
+               value="{{ field['value'] }}">
+        {% else %}
+        <input type="text" class="form-control form-control-sm edit-input"
+               data-field-id="{{ field['id'] }}"
+               value="{{ field['value'] }}">
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-muted" style="font-size:.87rem;">
+      <i class="bi bi-info-circle me-1"></i>Keine Felder in dieser Sektion. <a href="{{ url_for('layout_editor') }}">Layout bearbeiten</a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% else %}
+<div class="alert alert-info">
+  <i class="bi bi-info-circle me-2"></i>
+  Noch keine Sektionen definiert. <a href="{{ url_for('layout_editor') }}">Jetzt Layout erstellen</a>
+</div>
+{% endfor %}
+
+<!-- Save feedback toast -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index:9999">
+  <div id="saveToast" class="toast align-items-center text-white border-0" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body" id="saveToastMsg">Gespeichert!</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
 
 <!-- Back -->
-<a href="{{ url_for('devices') }}" class="btn btn-outline-secondary btn-sm">
-    <i class="bi bi-arrow-left me-1"></i>Zurück zur Geräteliste
-</a>
+<div class="mt-3">
+  <a href="{{ url_for('devices') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left me-1"></i>Zurück zur Geräteliste
+  </a>
+</div>
 
-{% if device['mac_address'] %}
 <script>
+const csrf = document.querySelector('meta[name="csrf-token"]').content;
+
+// ── Edit mode toggle ────────────────────────────────────────────────────────
+function enterEditMode() {
+  document.body.classList.add('edit-mode');
+}
+
+function cancelEditMode() {
+  document.body.classList.remove('edit-mode');
+  // restore inputs to their original values (the current view-values represent saved data)
+  document.querySelectorAll('.edit-input[data-field-id]').forEach(input => {
+    // Re-read from data attribute if we set it on save, or just leave
+    // Best: reload the page on cancel if values might be dirty
+  });
+}
+
+// ── Save field values ────────────────────────────────────────────────────────
+function saveFields(deviceId) {
+  const inputs = document.querySelectorAll('.edit-input[data-field-id]');
+  const payload = {};
+  inputs.forEach(input => {
+    payload[input.dataset.fieldId] = input.value;
+  });
+
+  fetch(`/devices/${deviceId}/fields`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': csrf,
+    },
+    body: JSON.stringify(payload),
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      // Update view-mode displays
+      inputs.forEach(input => {
+        updateViewDisplay(input.dataset.fieldId, input.value, input.type || input.tagName.toLowerCase());
+      });
+      document.body.classList.remove('edit-mode');
+      showToast('Felder wurden gespeichert!', 'success');
+    } else {
+      showToast('Fehler beim Speichern: ' + (data.error || 'Unbekannt'), 'danger');
+    }
+  })
+  .catch(err => {
+    showToast('Netzwerkfehler: ' + err.message, 'danger');
+  });
+}
+
+function updateViewDisplay(fieldId, value, inputType) {
+  const viewEl = document.getElementById(`view-${fieldId}`);
+  if (!viewEl) return;
+
+  const input = document.querySelector(`.edit-input[data-field-id="${fieldId}"]`);
+  const tagName = input ? input.tagName.toLowerCase() : 'input';
+  const inputTypeAttr = input ? (input.type || '') : '';
+
+  if (tagName === 'select') {
+    // boolean
+    if (value === '1') {
+      viewEl.innerHTML = '<span class="badge bg-success">Ja</span>';
+    } else if (value === '0') {
+      viewEl.innerHTML = '<span class="badge bg-secondary">Nein</span>';
+    } else {
+      viewEl.innerHTML = '<span class="text-muted">—</span>';
+    }
+  } else if (inputTypeAttr === 'date') {
+    if (value) {
+      // Convert YYYY-MM-DD to DD.MM.YYYY
+      const parts = value.split('-');
+      viewEl.textContent = parts.length === 3 ? `${parts[2]}.${parts[1]}.${parts[0]}` : value;
+    } else {
+      viewEl.textContent = '—';
+    }
+  } else if (inputTypeAttr === 'url') {
+    if (value) {
+      viewEl.innerHTML = `<a href="${encodeURI(value)}" target="_blank" rel="noopener">${value}</a>`;
+    } else {
+      viewEl.textContent = '—';
+    }
+  } else {
+    viewEl.textContent = value || '—';
+  }
+}
+
+function showToast(msg, type) {
+  const toast = document.getElementById('saveToast');
+  const toastMsg = document.getElementById('saveToastMsg');
+  toast.className = `toast align-items-center text-white border-0 bg-${type}`;
+  toastMsg.textContent = msg;
+  const bsToast = new bootstrap.Toast(toast, {delay: 3500});
+  bsToast.show();
+}
+
+// ── WoL ──────────────────────────────────────────────────────────────────────
+{% if device['mac_address'] %}
 function sendWoL(deviceId) {
     const btn = document.getElementById('wolBtn');
     btn.disabled = true;
@@ -244,6 +418,6 @@ function sendWoL(deviceId) {
             }
         });
 }
-</script>
 {% endif %}
+</script>
 {% endblock %}

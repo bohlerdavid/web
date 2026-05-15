@@ -2,6 +2,7 @@ import sqlite3
 import csv
 import io
 import os
+import re
 import secrets
 import time
 from functools import wraps
@@ -153,6 +154,32 @@ CREATE TABLE IF NOT EXISTS app_users (
     created_at    TEXT    DEFAULT (datetime('now')),
     last_login    TEXT
 );
+
+CREATE TABLE IF NOT EXISTS detail_sections (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL,
+    icon       TEXT DEFAULT 'bi-grid',
+    position   INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS detail_fields (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_id INTEGER NOT NULL REFERENCES detail_sections(id) ON DELETE CASCADE,
+    label      TEXT NOT NULL,
+    field_key  TEXT NOT NULL UNIQUE,
+    field_type TEXT NOT NULL DEFAULT 'text',
+    position   INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS device_field_values (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id  INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    field_id   INTEGER NOT NULL REFERENCES detail_fields(id) ON DELETE CASCADE,
+    value      TEXT,
+    UNIQUE(device_id, field_id)
+);
 """
 
 def migrate_db():
@@ -183,6 +210,45 @@ def migrate_db():
         except:
             pass  # column already exists
 
+    # Ensure new layout tables exist (for existing DBs that predate the schema addition)
+    db.executescript("""
+    CREATE TABLE IF NOT EXISTS detail_sections (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        name       TEXT NOT NULL,
+        icon       TEXT DEFAULT 'bi-grid',
+        position   INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS detail_fields (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        section_id INTEGER NOT NULL REFERENCES detail_sections(id) ON DELETE CASCADE,
+        label      TEXT NOT NULL,
+        field_key  TEXT NOT NULL UNIQUE,
+        field_type TEXT NOT NULL DEFAULT 'text',
+        position   INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS device_field_values (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        device_id  INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+        field_id   INTEGER NOT NULL REFERENCES detail_fields(id) ON DELETE CASCADE,
+        value      TEXT,
+        UNIQUE(device_id, field_id)
+    );
+    """)
+    db.commit()
+
+
+def _make_field_key(label, db):
+    """Generate a unique field_key slug from a label."""
+    base = re.sub(r'[^a-z0-9]+', '_', label.lower()).strip('_')
+    key = base
+    suffix = 2
+    while db.execute("SELECT id FROM detail_fields WHERE field_key = ?", (key,)).fetchone():
+        key = f"{base}_{suffix}"
+        suffix += 1
+    return key
+
 
 def init_db():
     with app.app_context():
@@ -190,6 +256,46 @@ def init_db():
         db.executescript(SCHEMA)
         db.commit()
         migrate_db()
+
+        # Seed default sections/fields if empty
+        section_count = db.execute("SELECT COUNT(*) FROM detail_sections").fetchone()[0]
+        if section_count == 0:
+            default_sections = [
+                ('Basisinformationen', 'bi-info-circle', 0, [
+                    ('Seriennummer', 'text', 0),
+                    ('Betriebssystem', 'text', 1),
+                    ('Kaufdatum', 'date', 2),
+                    ('Garantie bis', 'date', 3),
+                ]),
+                ('Netzwerk', 'bi-ethernet', 1, [
+                    ('IP-Adresse', 'text', 0),
+                    ('MAC-Adresse', 'text', 1),
+                    ('Hostname', 'text', 2),
+                ]),
+                ('Hardware', 'bi-cpu', 2, [
+                    ('CPU', 'text', 0),
+                    ('RAM', 'text', 1),
+                    ('Festplatte', 'text', 2),
+                    ('Hersteller', 'text', 3),
+                    ('Modell', 'text', 4),
+                ]),
+                ('Notizen', 'bi-journal-text', 3, [
+                    ('Notizen', 'textarea', 0),
+                ]),
+            ]
+            for sec_name, sec_icon, sec_pos, fields in default_sections:
+                cur = db.execute(
+                    "INSERT INTO detail_sections (name, icon, position) VALUES (?,?,?)",
+                    (sec_name, sec_icon, sec_pos)
+                )
+                sec_id = cur.lastrowid
+                for f_label, f_type, f_pos in fields:
+                    f_key = _make_field_key(f_label, db)
+                    db.execute(
+                        "INSERT INTO detail_fields (section_id, label, field_key, field_type, position) VALUES (?,?,?,?,?)",
+                        (sec_id, f_label, f_key, f_type, f_pos)
+                    )
+            db.commit()
 
         # Create default admin if no users exist
         existing = db.execute("SELECT COUNT(*) FROM app_users").fetchone()[0]
@@ -901,9 +1007,25 @@ def device_detail(device_id):
     )
     if not device:
         abort(404)
+
+    sections = query_db("SELECT * FROM detail_sections ORDER BY position")
+    fields_by_section = {}
+    for s in sections:
+        fields = query_db(
+            """SELECT f.*, COALESCE(v.value,'') as value
+               FROM detail_fields f
+               LEFT JOIN device_field_values v ON v.field_id=f.id AND v.device_id=?
+               WHERE f.section_id=?
+               ORDER BY f.position""",
+            (device_id, s['id'])
+        )
+        fields_by_section[s['id']] = fields
+
     return render_template('device_detail.html', device=device,
                            category_labels=CATEGORY_LABELS,
-                           status_labels=STATUS_LABELS)
+                           status_labels=STATUS_LABELS,
+                           sections=sections,
+                           fields_by_section=fields_by_section)
 
 
 @app.route('/devices/<int:device_id>/edit', methods=['GET', 'POST'])
@@ -1395,6 +1517,204 @@ def scan_hardware_all():
         results['ok'] += 1
 
     return jsonify(results)
+
+
+# ---------------------------------------------------------------------------
+# Device field values
+# ---------------------------------------------------------------------------
+
+@app.route('/devices/<int:device_id>/fields', methods=['POST'])
+@login_required
+def device_save_fields(device_id):
+    device = query_db("SELECT id FROM devices WHERE id=?", (device_id,), one=True)
+    if not device:
+        abort(404)
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data'}), 400
+    db = get_db()
+    for field_id, value in data.items():
+        try:
+            field_id_int = int(field_id)
+        except (ValueError, TypeError):
+            continue
+        db.execute(
+            "INSERT OR REPLACE INTO device_field_values (device_id, field_id, value) VALUES (?,?,?)",
+            (device_id, field_id_int, str(value) if value is not None else '')
+        )
+    db.commit()
+    return jsonify({'ok': True})
+
+
+# ---------------------------------------------------------------------------
+# Layout editor (admin only)
+# ---------------------------------------------------------------------------
+
+@app.route('/layout')
+@admin_required
+def layout_editor():
+    sections = query_db("SELECT * FROM detail_sections ORDER BY position")
+    fields_by_section = {}
+    for s in sections:
+        fields = query_db(
+            "SELECT * FROM detail_fields WHERE section_id=? ORDER BY position",
+            (s['id'],)
+        )
+        fields_by_section[s['id']] = fields
+    return render_template('layout_editor.html', sections=sections,
+                           fields_by_section=fields_by_section)
+
+
+@app.route('/layout/sections', methods=['POST'])
+@admin_required
+def layout_section_create():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data'}), 400
+    name = (data.get('name') or '').strip()
+    icon = (data.get('icon') or 'bi-grid').strip()
+    if not name:
+        return jsonify({'error': 'Name required'}), 400
+    db = get_db()
+    max_pos = db.execute("SELECT COALESCE(MAX(position),0) FROM detail_sections").fetchone()[0]
+    cur = db.execute(
+        "INSERT INTO detail_sections (name, icon, position) VALUES (?,?,?)",
+        (name, icon, max_pos + 1)
+    )
+    db.commit()
+    sec_id = cur.lastrowid
+    row = db.execute("SELECT * FROM detail_sections WHERE id=?", (sec_id,)).fetchone()
+    return jsonify(dict(row))
+
+
+@app.route('/layout/sections/<int:section_id>/update', methods=['POST'])
+@admin_required
+def layout_section_update(section_id):
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data'}), 400
+    name = (data.get('name') or '').strip()
+    icon = (data.get('icon') or 'bi-grid').strip()
+    if not name:
+        return jsonify({'error': 'Name required'}), 400
+    db = get_db()
+    db.execute("UPDATE detail_sections SET name=?, icon=? WHERE id=?", (name, icon, section_id))
+    db.commit()
+    row = db.execute("SELECT * FROM detail_sections WHERE id=?", (section_id,)).fetchone()
+    if not row:
+        abort(404)
+    return jsonify(dict(row))
+
+
+@app.route('/layout/sections/<int:section_id>/delete', methods=['POST'])
+@admin_required
+def layout_section_delete(section_id):
+    db = get_db()
+    sec = db.execute("SELECT * FROM detail_sections WHERE id=?", (section_id,)).fetchone()
+    if not sec:
+        abort(404)
+    db.execute("DELETE FROM detail_sections WHERE id=?", (section_id,))
+    db.commit()
+    return jsonify({'ok': True})
+
+
+@app.route('/layout/sections/reorder', methods=['POST'])
+@admin_required
+def layout_sections_reorder():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data'}), 400
+    db = get_db()
+    for item in data:
+        db.execute("UPDATE detail_sections SET position=? WHERE id=?",
+                   (item['position'], item['id']))
+    db.commit()
+    return jsonify({'ok': True})
+
+
+@app.route('/layout/fields', methods=['POST'])
+@admin_required
+def layout_field_create():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data'}), 400
+    label = (data.get('label') or '').strip()
+    section_id = data.get('section_id')
+    field_type = data.get('field_type', 'text')
+    if not label or not section_id:
+        return jsonify({'error': 'label and section_id required'}), 400
+    db = get_db()
+    sec = db.execute("SELECT id FROM detail_sections WHERE id=?", (section_id,)).fetchone()
+    if not sec:
+        return jsonify({'error': 'Section not found'}), 404
+    max_pos = db.execute(
+        "SELECT COALESCE(MAX(position),0) FROM detail_fields WHERE section_id=?",
+        (section_id,)
+    ).fetchone()[0]
+    field_key = _make_field_key(label, db)
+    cur = db.execute(
+        "INSERT INTO detail_fields (section_id, label, field_key, field_type, position) VALUES (?,?,?,?,?)",
+        (section_id, label, field_key, field_type, max_pos + 1)
+    )
+    db.commit()
+    row = db.execute("SELECT * FROM detail_fields WHERE id=?", (cur.lastrowid,)).fetchone()
+    return jsonify(dict(row))
+
+
+@app.route('/layout/fields/<int:field_id>/update', methods=['POST'])
+@admin_required
+def layout_field_update(field_id):
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data'}), 400
+    label = (data.get('label') or '').strip()
+    field_type = data.get('field_type', 'text')
+    section_id = data.get('section_id')
+    if not label:
+        return jsonify({'error': 'label required'}), 400
+    db = get_db()
+    field = db.execute("SELECT * FROM detail_fields WHERE id=?", (field_id,)).fetchone()
+    if not field:
+        abort(404)
+    if section_id:
+        db.execute(
+            "UPDATE detail_fields SET label=?, field_type=?, section_id=? WHERE id=?",
+            (label, field_type, section_id, field_id)
+        )
+    else:
+        db.execute(
+            "UPDATE detail_fields SET label=?, field_type=? WHERE id=?",
+            (label, field_type, field_id)
+        )
+    db.commit()
+    row = db.execute("SELECT * FROM detail_fields WHERE id=?", (field_id,)).fetchone()
+    return jsonify(dict(row))
+
+
+@app.route('/layout/fields/<int:field_id>/delete', methods=['POST'])
+@admin_required
+def layout_field_delete(field_id):
+    db = get_db()
+    field = db.execute("SELECT id FROM detail_fields WHERE id=?", (field_id,)).fetchone()
+    if not field:
+        abort(404)
+    db.execute("DELETE FROM detail_fields WHERE id=?", (field_id,))
+    db.commit()
+    return jsonify({'ok': True})
+
+
+@app.route('/layout/fields/reorder', methods=['POST'])
+@admin_required
+def layout_fields_reorder():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data'}), 400
+    field_ids = data.get('field_ids', [])
+    db = get_db()
+    for pos, fid in enumerate(field_ids):
+        db.execute("UPDATE detail_fields SET position=? WHERE id=?", (pos, fid))
+    db.commit()
+    return jsonify({'ok': True})
 
 
 # ---------------------------------------------------------------------------
