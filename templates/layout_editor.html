@@ -278,6 +278,7 @@
             <option value="boolean">Ja / Nein</option>
             <option value="url">URL</option>
             <option value="textarea">Mehrzeiliger Text</option>
+            <option value="list">Liste (Dropdown)</option>
           </select>
         </div>
         <div id="newFieldError" class="alert alert-danger d-none"></div>
@@ -316,6 +317,7 @@
             <option value="boolean">Ja / Nein</option>
             <option value="url">URL</option>
             <option value="textarea">Mehrzeiliger Text</option>
+            <option value="list">Liste (Dropdown)</option>
           </select>
         </div>
         <div class="mb-3">
@@ -366,7 +368,7 @@ function hideError(elId) {
 }
 
 // ── TYPE LABEL MAP ───────────────────────────────────────────────────────────
-const TYPE_LABELS = {text:'text', number:'number', date:'date', boolean:'boolean', url:'url', textarea:'textarea'};
+const TYPE_LABELS = {text:'Text', number:'Zahl', date:'Datum', boolean:'Ja/Nein', url:'URL', textarea:'Textarea', list:'Liste'};
 
 // ── Section modals ──────────────────────────────────────────────────────────
 function openNewSectionModal() {

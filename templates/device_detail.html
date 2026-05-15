@@ -601,6 +601,13 @@ body.core-edit-mode #coreEditPanel { display: block; }
               {% elif field['field_type'] == 'textarea' %}
                 <textarea name="field_{{ field['id'] }}" class="form-control form-control-sm" rows="3"
                           data-field-id="{{ field['id'] }}">{{ val or '' }}</textarea>
+              {% elif field['field_type'] == 'list' %}
+                <select name="field_{{ field['id'] }}" class="form-select form-select-sm" data-field-id="{{ field['id'] }}">
+                  <option value="">— Wählen —</option>
+                  {% for opt in list_options_by_field.get(field['id'], []) %}
+                  <option value="{{ opt['label'] }}" {% if val == opt['label'] %}selected{% endif %}>{{ opt['label'] }}</option>
+                  {% endfor %}
+                </select>
               {% else %}
                 <input type="text" name="field_{{ field['id'] }}" class="form-control form-control-sm"
                        data-field-id="{{ field['id'] }}" value="{{ val or '' }}">
@@ -638,6 +645,7 @@ body.core-edit-mode #coreEditPanel { display: block; }
 <script>
 const CSRF = document.querySelector('meta[name="csrf-token"]').content;
 const DEVICE_ID = {{ device['id'] }};
+const LIST_OPTIONS = {{ list_options_json|safe }};
 let editMode = false;
 
 /* ── Toggle edit mode ── */
@@ -1069,6 +1077,18 @@ function startInlineEdit(fieldId) {
         input.className = 'form-control form-control-sm';
         input.value = currentVal;
         input.placeholder = 'https://...';
+    } else if (fieldType === 'list') {
+        input = document.createElement('select');
+        input.className = 'form-select form-select-sm';
+        const blank = document.createElement('option');
+        blank.value = ''; blank.textContent = '— Wählen —';
+        input.appendChild(blank);
+        (LIST_OPTIONS[String(fieldId)] || []).forEach(o => {
+            const opt = document.createElement('option');
+            opt.value = o.label; opt.textContent = o.label;
+            if (o.label === currentVal) opt.selected = true;
+            input.appendChild(opt);
+        });
     } else {
         input = document.createElement('input');
         input.type = 'text';
@@ -1141,6 +1161,7 @@ function renderVal(val, type) {
         if (val === '0') return '<span class="badge bg-secondary">Nein</span>';
         return '<span class="text-muted">—</span>';
     }
+    if (type === 'list') return val;
     if (type === 'url') return `<a href="${encodeURI(val)}" target="_blank" rel="noopener" class="text-truncate d-block" style="max-width:200px;">${val}</a>`;
     if (type === 'date') {
         const p = val.split('-');

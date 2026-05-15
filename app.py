@@ -186,6 +186,14 @@ CREATE TABLE IF NOT EXISTS device_field_values (
     value      TEXT,
     UNIQUE(device_id, field_id)
 );
+
+CREATE TABLE IF NOT EXISTS field_list_options (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    field_id   INTEGER NOT NULL REFERENCES detail_fields(id) ON DELETE CASCADE,
+    label      TEXT NOT NULL,
+    position   INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+);
 """
 
 def migrate_db():
@@ -218,6 +226,13 @@ def migrate_db():
 
     # Ensure new layout tables exist (for existing DBs that predate the schema addition)
     db.executescript("""
+    CREATE TABLE IF NOT EXISTS field_list_options (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        field_id   INTEGER NOT NULL REFERENCES detail_fields(id) ON DELETE CASCADE,
+        label      TEXT NOT NULL,
+        position   INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now'))
+    );
     CREATE TABLE IF NOT EXISTS detail_sections (
         id         INTEGER PRIMARY KEY AUTOINCREMENT,
         name       TEXT NOT NULL,
@@ -1074,6 +1089,16 @@ def device_detail(device_id):
 
     is_admin = session.get('role') == 'admin'
     locations = query_db("SELECT * FROM locations ORDER BY name")
+    list_fields = query_db("SELECT id FROM detail_fields WHERE field_type='list'")
+    list_options_by_field = {}
+    for lf in list_fields:
+        opts = query_db(
+            "SELECT id, label FROM field_list_options WHERE field_id=? ORDER BY position",
+            (lf['id'],)
+        )
+        list_options_by_field[lf['id']] = [dict(o) for o in opts]
+    import json as _json
+    list_options_json = _json.dumps({str(k): v for k, v in list_options_by_field.items()})
     return render_template('device_detail.html', device=device,
                            category_labels=CATEGORY_LABELS,
                            status_labels=STATUS_LABELS,
@@ -1082,6 +1107,8 @@ def device_detail(device_id):
                            locations=locations,
                            sections=sections,
                            fields_by_section=fields_by_section,
+                           list_options_by_field=list_options_by_field,
+                           list_options_json=list_options_json,
                            is_admin=is_admin)
 
 
@@ -1897,6 +1924,76 @@ def layout_fields_reorder():
     db = get_db()
     for pos, fid in enumerate(field_ids):
         db.execute("UPDATE detail_fields SET position=? WHERE id=?", (pos, fid))
+    db.commit()
+    return jsonify({'ok': True})
+
+
+# ---------------------------------------------------------------------------
+# Settings — List options
+# ---------------------------------------------------------------------------
+
+@app.route('/settings/lists')
+@admin_required
+def settings_lists():
+    fields = query_db(
+        """SELECT f.*, s.name as section_name
+           FROM detail_fields f
+           JOIN detail_sections s ON s.id = f.section_id
+           WHERE f.field_type = 'list'
+           ORDER BY s.position, f.position"""
+    )
+    options_by_field = {}
+    for f in fields:
+        opts = query_db(
+            "SELECT * FROM field_list_options WHERE field_id=? ORDER BY position",
+            (f['id'],)
+        )
+        options_by_field[f['id']] = opts
+    return render_template('settings_lists.html', fields=fields, options_by_field=options_by_field)
+
+
+@app.route('/settings/lists/<int:field_id>/options', methods=['POST'])
+@admin_required
+def settings_list_add_option(field_id):
+    if not validate_csrf_flexible():
+        return jsonify({'error': 'CSRF validation failed'}), 403
+    field = query_db("SELECT id FROM detail_fields WHERE id=? AND field_type='list'", (field_id,), one=True)
+    if not field:
+        abort(404)
+    data = request.get_json() or {}
+    label = (data.get('label') or '').strip()
+    if not label:
+        return jsonify({'error': 'Bezeichnung erforderlich'}), 400
+    db = get_db()
+    max_pos = db.execute(
+        "SELECT COALESCE(MAX(position),0) FROM field_list_options WHERE field_id=?", (field_id,)
+    ).fetchone()[0]
+    new_id = execute_db(
+        "INSERT INTO field_list_options (field_id, label, position) VALUES (?,?,?)",
+        (field_id, label, max_pos + 1)
+    )
+    return jsonify({'ok': True, 'id': new_id, 'label': label})
+
+
+@app.route('/settings/lists/options/<int:opt_id>/delete', methods=['POST'])
+@admin_required
+def settings_list_delete_option(opt_id):
+    if not validate_csrf_flexible():
+        return jsonify({'error': 'CSRF validation failed'}), 403
+    execute_db("DELETE FROM field_list_options WHERE id=?", (opt_id,))
+    return jsonify({'ok': True})
+
+
+@app.route('/settings/lists/options/reorder', methods=['POST'])
+@admin_required
+def settings_list_reorder_options():
+    if not validate_csrf_flexible():
+        return jsonify({'error': 'CSRF validation failed'}), 403
+    data = request.get_json() or {}
+    order = data.get('order', [])
+    db = get_db()
+    for pos, oid in enumerate(order):
+        db.execute("UPDATE field_list_options SET position=? WHERE id=?", (pos, oid))
     db.commit()
     return jsonify({'ok': True})
 

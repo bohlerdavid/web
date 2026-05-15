@@ -59,11 +59,24 @@
                     <span>Benutzer</span>
                 </a>
             </li>
-            <li class="sidebar-item {% if request.endpoint in ['locations','location_new','location_edit'] %}active{% endif %}">
-                <a href="{{ url_for('locations') }}" class="sidebar-link">
-                    <i class="bi bi-geo-alt"></i>
-                    <span>Standorte</span>
+            <li class="sidebar-item sidebar-has-sub {% if request.endpoint in ['locations','location_new','location_edit','settings_lists'] %}active{% endif %}">
+                <a class="sidebar-link">
+                    <i class="bi bi-gear"></i>
+                    <span>Einstellungen</span>
+                    <i class="bi bi-chevron-right sub-arrow"></i>
                 </a>
+                <ul class="sidebar-sub">
+                    <li class="sidebar-sub-item">
+                        <a href="{{ url_for('locations') }}" class="sidebar-sub-link {% if request.endpoint in ['locations','location_new','location_edit'] %}active{% endif %}">
+                            <i class="bi bi-geo-alt"></i>Standorte
+                        </a>
+                    </li>
+                    <li class="sidebar-sub-item">
+                        <a href="{{ url_for('settings_lists') }}" class="sidebar-sub-link {% if request.endpoint == 'settings_lists' %}active{% endif %}">
+                            <i class="bi bi-list-ul"></i>Listen verwalten
+                        </a>
+                    </li>
+                </ul>
             </li>
             <li class="sidebar-item {% if request.endpoint == 'wiki' %}active{% endif %}">
                 <a href="{{ url_for('wiki') }}" class="sidebar-link">
