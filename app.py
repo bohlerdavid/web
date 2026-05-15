@@ -175,6 +175,7 @@ CREATE TABLE IF NOT EXISTS detail_fields (
     visible     INTEGER DEFAULT 1,
     field_width   TEXT DEFAULT 'third',
     display_style TEXT DEFAULT 'stacked',
+    field_height  INTEGER DEFAULT 1,
     created_at    TEXT DEFAULT (datetime('now'))
 );
 
@@ -236,6 +237,7 @@ def migrate_db():
         visible     INTEGER DEFAULT 1,
         field_width   TEXT DEFAULT 'third',
         display_style TEXT DEFAULT 'stacked',
+        field_height  INTEGER DEFAULT 1,
         created_at    TEXT DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS device_field_values (
@@ -265,6 +267,7 @@ def migrate_db():
         ('visible', 'INTEGER DEFAULT 1'),
         ('field_width', "TEXT DEFAULT 'third'"),
         ('display_style', "TEXT DEFAULT 'stacked'"),
+        ('field_height', 'INTEGER DEFAULT 1'),
     ]
     for col, col_type in fields_new_cols:
         try:
@@ -1059,6 +1062,7 @@ def device_detail(device_id):
                       COALESCE(f.visible, 1) as visible,
                       COALESCE(f.field_width, 'third') as field_width,
                       COALESCE(f.display_style, 'stacked') as display_style,
+                      COALESCE(f.field_height, 1) as field_height,
                       COALESCE(v.value,'') as value
                FROM detail_fields f
                LEFT JOIN device_field_values v ON v.field_id=f.id AND v.device_id=?
@@ -1710,6 +1714,17 @@ def layout_field_width(field_id):
     if fw not in ('third', 'half', 'full'):
         fw = 'third'
     execute_db("UPDATE detail_fields SET field_width=? WHERE id=?", (fw, field_id))
+    return jsonify({'ok': True})
+
+
+@app.route('/layout/fields/<int:field_id>/height', methods=['POST'])
+@admin_required
+def layout_field_height(field_id):
+    if not validate_csrf_flexible():
+        return jsonify({'error': 'CSRF validation failed'}), 403
+    data = request.get_json() or {}
+    h = max(1, min(20, int(data.get('field_height', 1) or 1)))
+    execute_db("UPDATE detail_fields SET field_height=? WHERE id=?", (h, field_id))
     return jsonify({'ok': True})
 
 

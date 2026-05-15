@@ -130,6 +130,43 @@ body.edit-mode .resize-handle { display: block; }
 }
 .ds-btn.active { background: #4f9cf9; color: #fff; border-color: #4f9cf9; }
 
+/* ── Field height resize (in edit mode) ── */
+.field-item { position: relative; box-sizing: border-box; }
+.field-height-handle {
+    display: none;
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 10px;
+    cursor: ns-resize;
+    background: linear-gradient(180deg, transparent 20%, #cbd5e1 50%, transparent 80%);
+    border-radius: 0 0 6px 6px;
+    z-index: 5;
+}
+body.edit-mode .field-height-handle { display: block; }
+/* snap ghost line while dragging */
+.field-item.resizing { outline: 2px dashed #4f9cf9; }
+
+/* ── Inline quick-edit (normal view mode) ── */
+.field-quick-edit {
+    display: inline-flex;
+    align-items: center;
+    background: none;
+    border: none;
+    color: #94a3b8;
+    padding: 0 3px;
+    cursor: pointer;
+    opacity: 0;
+    font-size: .68rem;
+    transition: opacity .15s;
+    vertical-align: middle;
+    line-height: 1;
+}
+.field-item:hover .field-quick-edit { opacity: .55; }
+.field-quick-edit:hover { opacity: 1 !important; color: #4f9cf9; }
+body.edit-mode .field-quick-edit { display: none !important; }
+.inline-edit-wrap { display: flex; flex-direction: column; gap: 4px; }
+.inline-edit-wrap .ie-btns { display: flex; gap: 4px; }
+
 /* ── Edit mode bar ── */
 #editModeBar {
     background: #e0f2fe;
@@ -364,10 +401,13 @@ body.edit-mode .resize-handle { display: block; }
           {% for field in sec_fields %}
           {% set fw_class = {'third':'fw-third','half':'fw-half','full':'fw-full'}.get(field.get('field_width','third'), 'fw-third') %}
           {% set ds_class = 'ds-inline' if field.get('display_style') == 'inline' else '' %}
+          {% set fh_px = (field.get('field_height') or 1) * 60 %}
           <div class="field-item {{ fw_class }} {{ ds_class }}{% if not field['visible'] %} field-hidden{% endif %}"
                data-field-id="{{ field['id'] }}"
                data-field-width="{{ field.get('field_width','third') }}"
                data-display-style="{{ field.get('display_style','stacked') }}"
+               data-field-height="{{ field.get('field_height', 1) }}"
+               style="min-height:{{ fh_px }}px;"
                draggable="false">
 
             <!-- Field edit controls (shown in edit mode) -->
@@ -400,7 +440,10 @@ body.edit-mode .resize-handle { display: block; }
             <div class="detail-label">{{ field['label']|upper }}</div>
 
             <!-- View value -->
-            <div class="detail-value field-view-value" id="view_{{ field['id'] }}">
+            <div class="detail-value field-view-value"
+                 id="view_{{ field['id'] }}"
+                 data-field-type="{{ field['field_type'] }}"
+                 data-value="{{ field['value'] or '' }}">
               {% set val = field['value'] %}
               {% if field['field_type'] == 'boolean' %}
                 {% if val == '1' %}<span class="badge bg-success">Ja</span>
@@ -413,7 +456,13 @@ body.edit-mode .resize-handle { display: block; }
               {% else %}
                 {{ val or '—' }}
               {% endif %}
+              {% if is_admin %}
+              <button class="field-quick-edit" onclick="startInlineEdit({{ field['id'] }})" title="Wert bearbeiten"><i class="bi bi-pencil-fill"></i></button>
+              {% endif %}
             </div>
+
+            <!-- Field height resize handle (edit mode only) -->
+            <div class="field-height-handle" data-field-id="{{ field['id'] }}"></div>
 
             <!-- Edit input (shown in edit mode) -->
             <div class="field-edit-input" id="input_{{ field['id'] }}" style="display:none;">
@@ -489,6 +538,7 @@ function enterEdit() {
     initSectionDrag();
     initFieldDrag();
     initResizeHandles();
+    initFieldHeightResize();
     // Hide the edit button
     const btn = document.getElementById('btnEditFields');
     if (btn) btn.style.display = 'none';
@@ -703,6 +753,166 @@ async function setDisplayStyle(fieldId, style, btn) {
             body: JSON.stringify({display_style: style})
         });
     } catch (e) { showToast('Fehler beim Speichern', 'danger'); }
+}
+
+/* ── Field height snap resize (edit mode) ── */
+const FIELD_SNAP = 60;
+
+function initFieldHeightResize() {
+    document.querySelectorAll('.field-height-handle').forEach(handle => {
+        if (handle._hInit) return;
+        handle._hInit = true;
+        let startY, startH, item, fieldId;
+        handle.addEventListener('mousedown', e => {
+            e.preventDefault();
+            e.stopPropagation();
+            item = handle.closest('.field-item');
+            fieldId = item.dataset.fieldId;
+            startY = e.clientY;
+            startH = item.offsetHeight;
+            item.classList.add('resizing');
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        });
+        function onMove(e) {
+            const raw = startH + (e.clientY - startY);
+            const snapped = Math.max(FIELD_SNAP, Math.round(raw / FIELD_SNAP) * FIELD_SNAP);
+            item.style.minHeight = snapped + 'px';
+            item.dataset.fieldHeight = Math.round(snapped / FIELD_SNAP);
+            const ta = item.querySelector('textarea');
+            if (ta) ta.style.height = Math.max(36, snapped - 48) + 'px';
+        }
+        async function onUp() {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            item.classList.remove('resizing');
+            const units = parseInt(item.dataset.fieldHeight) || 1;
+            try {
+                await fetch(`/layout/fields/${fieldId}/height`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+                    body: JSON.stringify({field_height: units})
+                });
+            } catch(e) { /* silently ignore */ }
+        }
+    });
+}
+
+/* ── Inline value editing (normal view mode) ── */
+function startInlineEdit(fieldId) {
+    if (editMode) return;
+    const viewEl = document.getElementById('view_' + fieldId);
+    if (!viewEl || viewEl.dataset.editing) return;
+    const fieldType = viewEl.dataset.fieldType || 'text';
+    const currentVal = viewEl.dataset.value || '';
+    viewEl.dataset.editing = '1';
+    viewEl.dataset.origHtml = viewEl.innerHTML;
+
+    let input;
+    if (fieldType === 'boolean') {
+        input = document.createElement('select');
+        input.className = 'form-select form-select-sm';
+        input.innerHTML = '<option value="">—</option><option value="1">Ja</option><option value="0">Nein</option>';
+        input.value = currentVal;
+    } else if (fieldType === 'textarea') {
+        input = document.createElement('textarea');
+        input.className = 'form-control form-control-sm';
+        input.rows = 3;
+        input.value = currentVal;
+    } else if (fieldType === 'date') {
+        input = document.createElement('input');
+        input.type = 'date';
+        input.className = 'form-control form-control-sm';
+        input.value = currentVal;
+    } else if (fieldType === 'number') {
+        input = document.createElement('input');
+        input.type = 'number';
+        input.className = 'form-control form-control-sm';
+        input.value = currentVal;
+    } else if (fieldType === 'url') {
+        input = document.createElement('input');
+        input.type = 'url';
+        input.className = 'form-control form-control-sm';
+        input.value = currentVal;
+        input.placeholder = 'https://...';
+    } else {
+        input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'form-control form-control-sm';
+        input.value = currentVal;
+    }
+
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'btn btn-success btn-sm px-2 py-0';
+    saveBtn.innerHTML = '<i class="bi bi-check-lg"></i>';
+    saveBtn.title = 'Speichern';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'btn btn-outline-secondary btn-sm px-2 py-0';
+    cancelBtn.innerHTML = '<i class="bi bi-x-lg"></i>';
+    cancelBtn.title = 'Abbrechen';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'inline-edit-wrap';
+    const btnRow = document.createElement('div');
+    btnRow.className = 'ie-btns';
+    btnRow.appendChild(saveBtn);
+    btnRow.appendChild(cancelBtn);
+    wrap.appendChild(input);
+    wrap.appendChild(btnRow);
+
+    viewEl.innerHTML = '';
+    viewEl.appendChild(wrap);
+    input.focus();
+    if (input.select) input.select();
+
+    saveBtn.onclick = () => commitInlineEdit(fieldId, input.value, fieldType, viewEl);
+    cancelBtn.onclick = () => revertInlineEdit(fieldId, viewEl);
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && fieldType !== 'textarea') { e.preventDefault(); commitInlineEdit(fieldId, input.value, fieldType, viewEl); }
+        if (e.key === 'Escape') revertInlineEdit(fieldId, viewEl);
+    });
+}
+
+async function commitInlineEdit(fieldId, value, fieldType, viewEl) {
+    delete viewEl.dataset.editing;
+    try {
+        const r = await fetch(`/devices/${DEVICE_ID}/fields`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+            body: JSON.stringify({[fieldId]: value})
+        });
+        if (!r.ok) throw new Error();
+        viewEl.dataset.value = value;
+        viewEl.innerHTML = renderVal(value, fieldType) +
+            `<button class="field-quick-edit" onclick="startInlineEdit(${fieldId})" title="Wert bearbeiten"><i class="bi bi-pencil-fill"></i></button>`;
+        showToast('Gespeichert', 'success');
+    } catch(e) {
+        revertInlineEdit(fieldId, viewEl);
+        showToast('Fehler beim Speichern', 'danger');
+    }
+}
+
+function revertInlineEdit(fieldId, viewEl) {
+    delete viewEl.dataset.editing;
+    viewEl.innerHTML = viewEl.dataset.origHtml || '';
+}
+
+function renderVal(val, type) {
+    if (!val) return '<span class="text-muted">—</span>';
+    if (type === 'boolean') {
+        if (val === '1') return '<span class="badge bg-success">Ja</span>';
+        if (val === '0') return '<span class="badge bg-secondary">Nein</span>';
+        return '<span class="text-muted">—</span>';
+    }
+    if (type === 'url') return `<a href="${encodeURI(val)}" target="_blank" rel="noopener" class="text-truncate d-block" style="max-width:200px;">${val}</a>`;
+    if (type === 'date') {
+        const p = val.split('-');
+        return p.length === 3 ? `${p[2]}.${p[1]}.${p[0]}` : val;
+    }
+    return val;
 }
 
 /* ── Field visibility ── */
