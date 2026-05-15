@@ -187,11 +187,6 @@ body.edit-mode .field-quick-edit { display: none !important; }
 .inline-edit-wrap { display: flex; flex-direction: column; gap: 4px; }
 .inline-edit-wrap .ie-btns { display: flex; gap: 4px; }
 
-/* ── Core field visibility ── */
-.core-field-item.core-hidden { display: none; }
-body.edit-mode .core-field-item.core-hidden { display: block !important; opacity: .3; }
-body.edit-mode .core-field-item { position: relative; }
-
 /* ── Edit mode bar ── */
 #editModeBar {
     background: #e0f2fe;
@@ -259,7 +254,6 @@ body.edit-mode .core-field-item { position: relative; }
     background: #fef3c7;
     border: 1px solid #fcd34d;
 }
-body.core-edit-mode #coreViewPanel { display: none !important; }
 #coreEditPanel { display: none; }
 body.core-edit-mode #coreEditPanel { display: block; }
 
@@ -319,6 +313,9 @@ body.core-edit-mode #coreEditPanel { display: block; }
                     {% if device['ip_address'] %}
                     <span><i class="bi bi-ethernet me-1"></i>{{ device['ip_address'] }}</span>
                     {% endif %}
+                    {% if device['location_name'] %}
+                    <span><i class="bi bi-geo-alt me-1"></i>{{ device['location_name'] }}</span>
+                    {% endif %}
                 </div>
             </div>
             <div class="d-flex gap-2 flex-shrink-0 flex-wrap align-items-center">
@@ -360,62 +357,6 @@ body.core-edit-mode #coreEditPanel { display: block; }
 
     <!-- ===== CORE DEVICE INFO ===== -->
     <div class="detail-body">
-
-      <!-- VIEW PANEL -->
-      <div id="coreViewPanel">
-        <div class="row g-4">
-          <div class="col-12 col-md-6 col-lg-4">
-            <div class="detail-section">
-              <div class="form-section-title">Technische Details</div>
-              <div class="mb-3 core-field-item{% if not core_visible.get('category', True) %} core-hidden{% endif %}" data-core-key="category">
-                <div class="detail-label">Kategorie</div>
-                <div class="detail-value">{{ cat_labels.get(device['category'], device['category']) }}</div>
-              </div>
-              <div class="mb-3 core-field-item{% if not core_visible.get('status', True) %} core-hidden{% endif %}" data-core-key="status">
-                <div class="detail-label">Status</div>
-                <div class="detail-value">{{ device['status']|status_badge|safe }}</div>
-              </div>
-            </div>
-          </div>
-          <div class="col-12 col-md-6 col-lg-4">
-            <div class="detail-section">
-              <div class="form-section-title">Zuweisung</div>
-              <div class="mb-3 core-field-item{% if not core_visible.get('location_id', True) %} core-hidden{% endif %}" data-core-key="location_id">
-                <div class="detail-label">Standort</div>
-                {% if device['location_name'] %}
-                <div class="detail-value">
-                  <i class="bi bi-geo-alt me-1 text-accent"></i>{{ device['location_name'] }}
-                  {% if device['building'] and device['building'] != '—' %}
-                  <div class="text-muted" style="font-size:.8rem;">{{ device['building'] }}{% if device['floor'] and device['floor'] != '—' %}, {{ device['floor'] }}{% endif %}{% if device['room'] and device['room'] != '—' %}, Raum {{ device['room'] }}{% endif %}</div>
-                  {% endif %}
-                </div>
-                {% else %}
-                <div class="detail-value empty">Nicht zugewiesen</div>
-                {% endif %}
-              </div>
-            </div>
-          </div>
-          <div class="col-12 col-md-6 col-lg-4">
-            <div class="detail-section">
-              <div class="form-section-title">Kauf &amp; Garantie</div>
-              <div class="mb-3 core-field-item{% if not core_visible.get('purchase_date', True) %} core-hidden{% endif %}" data-core-key="purchase_date">
-                <div class="detail-label">Kaufdatum</div>
-                <div class="detail-value {% if not device['purchase_date'] %}empty{% endif %}">{{ device['purchase_date']|de_date if device['purchase_date'] else 'Nicht angegeben' }}</div>
-              </div>
-              <div class="mb-3 core-field-item{% if not core_visible.get('warranty_expiry', True) %} core-hidden{% endif %}" data-core-key="warranty_expiry">
-                <div class="detail-label">Garantie bis</div>
-                <div class="detail-value {% if not device['warranty_expiry'] %}empty{% endif %}">
-                  {% if device['warranty_expiry'] %}<span data-warranty="{{ device['warranty_expiry'] }}">{{ device['warranty_expiry']|de_date }}</span>{% else %}Nicht angegeben{% endif %}
-                </div>
-              </div>
-              <div class="mb-3 core-field-item{% if not core_visible.get('created_at', True) %} core-hidden{% endif %}" data-core-key="created_at">
-                <div class="detail-label">Hinzugefügt am</div>
-                <div class="detail-value text-muted">{{ device['created_at'][:10]|de_date }}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div><!-- /coreViewPanel -->
 
       <!-- EDIT PANEL -->
       <div id="coreEditPanel">
@@ -702,7 +643,6 @@ body.core-edit-mode #coreEditPanel { display: block; }
 const CSRF = document.querySelector('meta[name="csrf-token"]').content;
 const DEVICE_ID = {{ device['id'] }};
 const LIST_OPTIONS = {{ list_options_json|safe }};
-const CORE_VISIBLE = {{ core_visible_json|safe }};
 let editMode = false;
 let activeFieldId = null;
 let activeFieldEl = null;
@@ -855,26 +795,6 @@ async function toggleActiveVisible() {
     } catch(e) { showToast('Fehler beim Umschalten der Sichtbarkeit', 'danger'); }
 }
 
-/* ── Core field visibility toggle ── */
-async function toggleCoreField(key, chip) {
-    try {
-        const r = await fetch(`/layout/core-fields/${key}/toggle-visible`, {
-            method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},
-            body: JSON.stringify({})
-        });
-        const data = await r.json();
-        const visible = data.visible;
-        CORE_VISIBLE[key] = visible;
-        // Toggle in DOM
-        document.querySelectorAll(`.core-field-item[data-core-key="${key}"]`).forEach(el => {
-            el.classList.toggle('core-hidden', !visible);
-        });
-        chip.classList.toggle('fp-on', visible);
-        chip.classList.toggle('fp-off', !visible);
-        chip.querySelector('.fp-eye').className = visible ? 'bi bi-eye fp-eye' : 'bi bi-eye-slash fp-eye';
-    } catch(e) { showToast('Fehler beim Umschalten', 'danger'); }
-}
-
 /* ── Field picker panel (show/hide fields) ── */
 function toggleFieldPicker() {
     const panel = document.getElementById('fieldPickerPanel');
@@ -883,36 +803,10 @@ function toggleFieldPicker() {
     if (isOpen) buildFieldPicker();
 }
 
-const CORE_FIELD_LABELS = {
-    category:'Kategorie', status:'Status', location_id:'Standort',
-    purchase_date:'Kaufdatum', warranty_expiry:'Garantie bis', created_at:'Hinzugefügt am',
-    serial_number:'Seriennummer', operating_system:'Betriebssystem',
-    ip_address:'IP-Adresse', mac_address:'MAC-Adresse',
-    manufacturer:'Hersteller', model:'Modell', cpu_info:'CPU', ram_info:'RAM', notes:'Notizen'
-};
-
 function buildFieldPicker() {
     const body = document.getElementById('fieldPickerBody');
     if (!body) return;
     body.innerHTML = '';
-
-    // Systemfelder section
-    const coreKeys = ['category','status','location_id','purchase_date','warranty_expiry','created_at'];
-    const sysDiv = document.createElement('div');
-    sysDiv.className = 'fp-section';
-    const sysLabel = document.createElement('div');
-    sysLabel.className = 'fp-sec-label';
-    sysLabel.textContent = 'Systemfelder (obere Karte)';
-    sysDiv.appendChild(sysLabel);
-    coreKeys.forEach(key => {
-        const visible = CORE_VISIBLE[key] !== false;
-        const chip = document.createElement('div');
-        chip.className = 'fp-chip ' + (visible ? 'fp-on' : 'fp-off');
-        chip.innerHTML = `<i class="${visible ? 'bi bi-eye' : 'bi bi-eye-slash'} fp-eye"></i><span>${CORE_FIELD_LABELS[key] || key}</span>`;
-        chip.onclick = () => toggleCoreField(key, chip);
-        sysDiv.appendChild(chip);
-    });
-    body.appendChild(sysDiv);
 
     document.querySelectorAll('.fields-container').forEach(container => {
         const sid = container.dataset.sectionId;
@@ -948,7 +842,6 @@ function buildFieldPicker() {
                 if (activeFieldId === parseInt(fid)) {
                     const fw = item.dataset.fieldWidth || 'third';
                     const ds = item.dataset.displayStyle || 'stacked';
-                    syncTopToolbar(fw, ds, v);
                     if (activeSectionId) syncFhpButtons(activeSectionId, fw, ds, v);
                 }
             };
