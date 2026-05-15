@@ -74,18 +74,65 @@
     </a>
 </div>
 
-{% if not fields %}
 <div class="info-box-sm">
     <i class="bi bi-info-circle me-2"></i>
-    Noch keine Felder vom Typ <strong>Liste (Dropdown)</strong> vorhanden.<br>
-    Erstelle zuerst im <a href="{{ url_for('layout_editor') }}">Layout-Editor</a> ein Feld und wähle als Typ <em>Liste (Dropdown)</em>.
-</div>
-{% else %}
-<div class="info-box-sm">
-    <i class="bi bi-info-circle me-2"></i>
-    Hier kannst du für jedes Listen-Feld die verfügbaren Optionen definieren. Die Optionen erscheinen als Dropdown beim Bearbeiten eines Geräts. Reihenfolge per Drag &amp; Drop anpassbar.
+    Hier kannst du die verfügbaren Optionen für Dropdown-Felder definieren. Reihenfolge per Drag &amp; Drop anpassbar.
 </div>
 
+<!-- ── System-Listen (Status, Kategorie) ── -->
+{% for sl in system_lists %}
+<div class="list-card" id="scard_{{ sl['name'] }}">
+    <div class="list-card-header">
+        <i class="bi {{ sl['icon'] }}"></i>
+        <div>
+            <h5>{{ sl['label'] }}</h5>
+            <small>Systemfeld</small>
+        </div>
+        <span class="ms-auto badge bg-warning text-dark" style="font-size:.72rem;">System</span>
+        <span class="badge bg-light text-dark ms-1" style="font-size:.72rem;" id="scount_{{ sl['name'] }}">
+            {{ sl['options']|length }} Einträge
+        </span>
+    </div>
+    <div class="list-card-body">
+        <ul class="list-unstyled mb-0" id="soptList_{{ sl['name'] }}" data-slist-name="{{ sl['name'] }}">
+            {% if sl['options'] %}
+                {% for opt in sl['options'] %}
+                <li class="opt-row" data-opt-id="{{ opt['id'] }}" draggable="true">
+                    <span class="opt-grip"><i class="bi bi-grip-vertical"></i></span>
+                    <span class="opt-label">{{ opt['label'] }}</span>
+                    <span class="text-muted ms-1" style="font-size:.75rem;">({{ opt['value'] }})</span>
+                    <button class="btn btn-outline-danger btn-sm px-2 py-0 ms-auto"
+                            onclick="deleteSysOption({{ opt['id'] }}, '{{ sl['name'] }}', this)"
+                            title="Löschen">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </li>
+                {% endfor %}
+            {% else %}
+                <li class="empty-hint" id="semptyHint_{{ sl['name'] }}">
+                    <i class="bi bi-dash-circle me-1"></i>Noch keine Einträge
+                </li>
+            {% endif %}
+        </ul>
+        <div class="add-row">
+            <input type="text" class="form-control form-control-sm"
+                   id="snewOpt_{{ sl['name'] }}"
+                   placeholder="Neue Option…"
+                   onkeydown="if(event.key==='Enter') addSysOption('{{ sl['name'] }}')">
+            <button class="btn btn-primary btn-sm px-3"
+                    onclick="addSysOption('{{ sl['name'] }}')">
+                <i class="bi bi-plus-lg"></i>
+            </button>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+<!-- ── Benutzerdefinierte Listen-Felder ── -->
+{% if fields %}
+<div style="font-size:.78rem;text-transform:uppercase;letter-spacing:.6px;color:#94a3b8;font-weight:600;border-bottom:1px solid #e2e8f0;padding-bottom:8px;margin:24px 0 16px;">
+    Benutzerdefinierte Listen-Felder
+</div>
 {% for field in fields %}
 <div class="list-card" id="card_{{ field['id'] }}">
     <div class="list-card-header">
@@ -132,6 +179,12 @@
     </div>
 </div>
 {% endfor %}
+{% else %}
+<div class="info-box-sm mt-2">
+    <i class="bi bi-info-circle me-2"></i>
+    Noch keine benutzerdefinierten Felder vom Typ <strong>Liste (Dropdown)</strong>.<br>
+    Im <a href="{{ url_for('layout_editor') }}">Layout-Editor</a> ein Feld mit Typ <em>Liste (Dropdown)</em> erstellen.
+</div>
 {% endif %}
 
 <script>
@@ -231,8 +284,11 @@ function initDrag(list) {
 
 async function saveOrder(list) {
     const order = [...list.querySelectorAll('.opt-row')].map(r => parseInt(r.dataset.optId));
+    // Determine if this is a system list or custom list
+    const isSys = !!list.dataset.slistName;
+    const url = isSys ? '/settings/system-lists/options/reorder' : '/settings/lists/options/reorder';
     try {
-        await fetch('/settings/lists/options/reorder', {
+        await fetch(url, {
             method: 'POST',
             headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
             body: JSON.stringify({order})
@@ -243,7 +299,14 @@ async function saveOrder(list) {
 function updateCount(fieldId) {
     const list = document.getElementById('optList_' + fieldId);
     const count = list.querySelectorAll('.opt-row').length;
-    const badge = document.querySelector(`#card_${fieldId} .badge`);
+    const badge = document.querySelector(`#card_${fieldId} .badge:last-child`);
+    if (badge) badge.textContent = count + ' Einträge';
+}
+
+function updateSysCount(listName) {
+    const list = document.getElementById('soptList_' + listName);
+    const count = list.querySelectorAll('.opt-row').length;
+    const badge = document.getElementById('scount_' + listName);
     if (badge) badge.textContent = count + ' Einträge';
 }
 
@@ -251,7 +314,64 @@ function escHtml(s) {
     return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// Init drag on all existing lists
-document.querySelectorAll('[id^="optList_"]').forEach(list => initDrag(list));
+/* ── System list: Add ── */
+async function addSysOption(listName) {
+    const input = document.getElementById('snewOpt_' + listName);
+    const label = input.value.trim();
+    if (!label) return;
+    try {
+        const r = await fetch(`/settings/system-lists/${listName}/options`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+            body: JSON.stringify({label})
+        });
+        const data = await r.json();
+        if (!r.ok) { alert(data.error || 'Fehler'); return; }
+        input.value = '';
+        const list = document.getElementById('soptList_' + listName);
+        const hint = document.getElementById('semptyHint_' + listName);
+        if (hint) hint.remove();
+        const li = document.createElement('li');
+        li.className = 'opt-row';
+        li.dataset.optId = data.id;
+        li.draggable = true;
+        li.innerHTML = `
+            <span class="opt-grip"><i class="bi bi-grip-vertical"></i></span>
+            <span class="opt-label">${escHtml(label)}</span>
+            <button class="btn btn-outline-danger btn-sm px-2 py-0 ms-auto"
+                    onclick="deleteSysOption(${data.id}, '${listName}', this)"
+                    title="Löschen"><i class="bi bi-trash"></i></button>`;
+        list.appendChild(li);
+        initDrag(list);
+        updateSysCount(listName);
+    } catch(e) { alert('Netzwerkfehler'); }
+}
+
+/* ── System list: Delete ── */
+async function deleteSysOption(optId, listName, btn) {
+    if (!confirm('Option löschen?')) return;
+    try {
+        const r = await fetch(`/settings/system-lists/options/${optId}/delete`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+            body: JSON.stringify({})
+        });
+        if (!r.ok) { alert('Fehler'); return; }
+        const row = btn.closest('.opt-row');
+        row.remove();
+        const list = document.getElementById('soptList_' + listName);
+        if (!list.querySelector('.opt-row')) {
+            const li = document.createElement('li');
+            li.className = 'empty-hint';
+            li.id = 'semptyHint_' + listName;
+            li.innerHTML = '<i class="bi bi-dash-circle me-1"></i>Noch keine Einträge';
+            list.appendChild(li);
+        }
+        updateSysCount(listName);
+    } catch(e) { alert('Netzwerkfehler'); }
+}
+
+// Init drag on all existing lists (custom + system)
+document.querySelectorAll('[id^="optList_"], [id^="soptList_"]').forEach(list => initDrag(list));
 </script>
 {% endblock %}

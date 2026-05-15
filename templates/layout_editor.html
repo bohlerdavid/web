@@ -110,6 +110,33 @@
   Ziehen Sie Sektionen und Felder per Drag &amp; Drop, um die Reihenfolge zu ändern.
 </p>
 
+<!-- ===== SYSTEMFELDER ===== -->
+<div class="section-card mb-4" style="border:1px solid #bfdbfe;background:#eff6ff;">
+  <div class="section-header" style="background:linear-gradient(135deg,#1e40af 0%,#2563eb 100%);">
+    <i class="bi bi-shield-lock" style="font-size:1rem;color:rgba(255,255,255,.8);"></i>
+    <span class="section-name ms-2">Systemfelder (Kern-Gerätefelder)</span>
+    <span class="ms-auto badge bg-light text-primary" style="font-size:.7rem;">Fest im System</span>
+  </div>
+  <div class="section-body">
+    <p class="text-muted mb-3" style="font-size:.82rem;">
+      Diese Felder sind fest im System und erscheinen in der oberen Gerätekarte.
+      Dropdown-Optionen für <strong>Status</strong> und <strong>Kategorie</strong> können unter
+      <a href="{{ url_for('settings_lists') }}">Einstellungen → Listen verwalten</a> angepasst werden.
+    </p>
+    <ul class="field-list" style="pointer-events:none;">
+      {% for cf in core_fields %}
+      <li class="field-item" style="opacity:.85;">
+        <i class="bi bi-lock" style="font-size:.75rem;color:#94a3b8;flex-shrink:0;"></i>
+        <span class="field-label-text ms-1">{{ cf['label'] }}</span>
+        <span class="badge {% if cf['type'] == 'list' %}bg-primary{% elif cf['type'] == 'date' %}bg-success{% elif cf['type'] == 'textarea' %}bg-secondary{% else %}bg-secondary{% endif %} field-type-badge">
+          {% if cf['type'] == 'list' %}Liste{% elif cf['type'] == 'date' %}Datum{% elif cf['type'] == 'textarea' %}Textarea{% elif cf['type'] == 'location' %}Standort{% else %}Text{% endif %}
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+
 <!-- Section list -->
 <div id="sectionList">
 {% for section in sections %}

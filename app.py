@@ -194,6 +194,16 @@ CREATE TABLE IF NOT EXISTS field_list_options (
     position   INTEGER DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS system_list_options (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    list_name  TEXT NOT NULL,
+    value      TEXT NOT NULL,
+    label      TEXT NOT NULL,
+    position   INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(list_name, value)
+);
 """
 
 def migrate_db():
@@ -290,6 +300,46 @@ def migrate_db():
             db.commit()
         except:
             pass  # column already exists
+
+    # Create system_list_options and seed with Status / Kategorie defaults
+    db.executescript("""
+    CREATE TABLE IF NOT EXISTS system_list_options (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        list_name  TEXT NOT NULL,
+        value      TEXT NOT NULL,
+        label      TEXT NOT NULL,
+        position   INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(list_name, value)
+    );
+    """)
+    db.commit()
+    _seed_system_lists(db)
+
+
+def _seed_system_lists(db):
+    """Insert default Status and Kategorie options if not yet present."""
+    defaults = [
+        ('status',   'active',         'Aktiv',         0),
+        ('status',   'inactive',       'Inaktiv',        1),
+        ('status',   'maintenance',    'Wartung',        2),
+        ('status',   'decommissioned', 'Ausgemustert',   3),
+        ('category', 'PC',       'PC',        0),
+        ('category', 'Laptop',   'Laptop',    1),
+        ('category', 'Server',   'Server',    2),
+        ('category', 'Printer',  'Drucker',   3),
+        ('category', 'Network',  'Netzwerk',  4),
+        ('category', 'Phone',    'Telefon',   5),
+        ('category', 'Tablet',   'Tablet',    6),
+        ('category', 'Monitor',  'Monitor',   7),
+        ('category', 'Other',    'Sonstiges', 8),
+    ]
+    for list_name, value, label, pos in defaults:
+        db.execute(
+            "INSERT OR IGNORE INTO system_list_options (list_name, value, label, position) VALUES (?,?,?,?)",
+            (list_name, value, label, pos)
+        )
+    db.commit()
 
 
 def _make_field_key(label, db):
@@ -881,6 +931,33 @@ CATEGORY_LABELS = {
     'Monitor': 'Monitor',
     'Other':   'Sonstiges',
 }
+
+CORE_FIELDS = [
+    {'key': 'name',             'label': 'Gerätename',     'type': 'text'},
+    {'key': 'category',         'label': 'Kategorie',      'type': 'list'},
+    {'key': 'status',           'label': 'Status',         'type': 'list'},
+    {'key': 'serial_number',    'label': 'Seriennummer',   'type': 'text'},
+    {'key': 'operating_system', 'label': 'Betriebssystem', 'type': 'text'},
+    {'key': 'ip_address',       'label': 'IP-Adresse',     'type': 'text'},
+    {'key': 'mac_address',      'label': 'MAC-Adresse',    'type': 'text'},
+    {'key': 'manufacturer',     'label': 'Hersteller',     'type': 'text'},
+    {'key': 'model',            'label': 'Modell',         'type': 'text'},
+    {'key': 'cpu_info',         'label': 'CPU',            'type': 'text'},
+    {'key': 'ram_info',         'label': 'RAM',            'type': 'text'},
+    {'key': 'purchase_date',    'label': 'Kaufdatum',      'type': 'date'},
+    {'key': 'warranty_expiry',  'label': 'Garantie bis',   'type': 'date'},
+    {'key': 'location_id',      'label': 'Standort',       'type': 'location'},
+    {'key': 'notes',            'label': 'Notizen',        'type': 'textarea'},
+]
+
+
+def get_system_list(list_name):
+    """Load system list options from DB, returning list of (value, label) tuples."""
+    rows = query_db(
+        "SELECT value, label FROM system_list_options WHERE list_name=? ORDER BY position",
+        (list_name,)
+    )
+    return rows if rows else []
 
 
 @app.route('/devices')
@@ -1692,7 +1769,8 @@ def layout_editor():
         )
         fields_by_section[s['id']] = fields
     return render_template('layout_editor.html', sections=sections,
-                           fields_by_section=fields_by_section)
+                           fields_by_section=fields_by_section,
+                           core_fields=CORE_FIELDS)
 
 
 @app.route('/layout/sections', methods=['POST'])
@@ -1949,7 +2027,86 @@ def settings_lists():
             (f['id'],)
         )
         options_by_field[f['id']] = opts
-    return render_template('settings_lists.html', fields=fields, options_by_field=options_by_field)
+
+    # System lists (Status, Kategorie)
+    system_lists = [
+        {
+            'name': 'status',
+            'label': 'Status',
+            'icon': 'bi-toggle-on',
+            'options': query_db(
+                "SELECT * FROM system_list_options WHERE list_name='status' ORDER BY position"
+            )
+        },
+        {
+            'name': 'category',
+            'label': 'Kategorie',
+            'icon': 'bi-tag',
+            'options': query_db(
+                "SELECT * FROM system_list_options WHERE list_name='category' ORDER BY position"
+            )
+        },
+    ]
+    return render_template('settings_lists.html', fields=fields,
+                           options_by_field=options_by_field,
+                           system_lists=system_lists)
+
+
+@app.route('/settings/system-lists/<list_name>/options', methods=['POST'])
+@admin_required
+def system_list_add_option(list_name):
+    if list_name not in ('status', 'category'):
+        abort(404)
+    if not validate_csrf_flexible():
+        return jsonify({'error': 'CSRF validation failed'}), 403
+    data = request.get_json() or {}
+    label = (data.get('label') or '').strip()
+    if not label:
+        return jsonify({'error': 'Bezeichnung erforderlich'}), 400
+    import re as _re
+    value = _re.sub(r'[^a-z0-9]+', '_', label.lower()).strip('_') or label.lower()
+    db = get_db()
+    # Ensure unique value within list
+    existing = db.execute(
+        "SELECT id FROM system_list_options WHERE list_name=? AND value=?", (list_name, value)
+    ).fetchone()
+    if existing:
+        value = value + '_2'
+    max_pos = db.execute(
+        "SELECT COALESCE(MAX(position),0) FROM system_list_options WHERE list_name=?", (list_name,)
+    ).fetchone()[0]
+    db.execute(
+        "INSERT INTO system_list_options (list_name, value, label, position) VALUES (?,?,?,?)",
+        (list_name, value, label, max_pos + 1)
+    )
+    db.commit()
+    new_row = db.execute(
+        "SELECT * FROM system_list_options WHERE list_name=? AND value=?", (list_name, value)
+    ).fetchone()
+    return jsonify({'ok': True, 'id': new_row['id'], 'label': label})
+
+
+@app.route('/settings/system-lists/options/<int:opt_id>/delete', methods=['POST'])
+@admin_required
+def system_list_delete_option(opt_id):
+    if not validate_csrf_flexible():
+        return jsonify({'error': 'CSRF validation failed'}), 403
+    execute_db("DELETE FROM system_list_options WHERE id=?", (opt_id,))
+    return jsonify({'ok': True})
+
+
+@app.route('/settings/system-lists/options/reorder', methods=['POST'])
+@admin_required
+def system_list_reorder_options():
+    if not validate_csrf_flexible():
+        return jsonify({'error': 'CSRF validation failed'}), 403
+    data = request.get_json() or {}
+    order = data.get('order', [])
+    db = get_db()
+    for pos, oid in enumerate(order):
+        db.execute("UPDATE system_list_options SET position=? WHERE id=?", (pos, oid))
+    db.commit()
+    return jsonify({'ok': True})
 
 
 @app.route('/settings/lists/<int:field_id>/options', methods=['POST'])
