@@ -303,6 +303,44 @@ def inject_globals():
 # Login / Logout
 # ---------------------------------------------------------------------------
 
+@app.route('/local-reset', methods=['GET', 'POST'])
+def local_reset():
+    """Emergency user reset — only accessible from localhost."""
+    if request.remote_addr not in ('127.0.0.1', '::1'):
+        abort(404)
+    msg = ''
+    if request.method == 'POST':
+        username  = request.form.get('username', '').strip()
+        password  = request.form.get('password', '').strip()
+        full_name = request.form.get('full_name', '').strip() or username
+        if username and password:
+            pw_hash = generate_password_hash(password)
+            db = get_db()
+            existing = db.execute("SELECT id FROM app_users WHERE username=?", (username,)).fetchone()
+            if existing:
+                db.execute("UPDATE app_users SET password_hash=?, must_change_pw=0 WHERE username=?", (pw_hash, username))
+            else:
+                db.execute("INSERT INTO app_users (username,password_hash,full_name,role,must_change_pw) VALUES (?,?,?,?,?)",
+                           (username, pw_hash, full_name, 'admin', 0))
+            db.commit()
+            msg = f'OK — Benutzer "{username}" gespeichert. <a href="/login">Zum Login</a>'
+    users = [r[0] for r in get_db().execute("SELECT username FROM app_users").fetchall()]
+    return f'''<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+    </head><body class="bg-light"><div class="container" style="max-width:480px;margin-top:80px">
+    <div class="card shadow p-4">
+    <h5 class="mb-1">&#128274; Notfall-Benutzerverwaltung</h5>
+    <p class="text-muted small mb-3">Nur von localhost erreichbar</p>
+    {"<div class='alert alert-success'>"+msg+"</div>" if msg else ""}
+    <p class="small text-muted">Vorhandene Benutzer: <strong>{", ".join(users) or "keine"}</strong></p>
+    <form method="post">
+    <div class="mb-2"><input name="username" class="form-control form-control-sm" placeholder="Benutzername" required></div>
+    <div class="mb-2"><input name="full_name" class="form-control form-control-sm" placeholder="Vollstaendiger Name (optional)"></div>
+    <div class="mb-3"><input type="password" name="password" class="form-control form-control-sm" placeholder="Passwort" required></div>
+    <button class="btn btn-primary btn-sm w-100">Benutzer erstellen / Passwort setzen</button>
+    </form></div></div></body></html>'''
+
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if 'user_id' in session:
