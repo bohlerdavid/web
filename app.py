@@ -160,17 +160,21 @@ CREATE TABLE IF NOT EXISTS detail_sections (
     name       TEXT NOT NULL,
     icon       TEXT DEFAULT 'bi-grid',
     position   INTEGER DEFAULT 0,
+    width      TEXT DEFAULT 'half',
+    min_height INTEGER DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS detail_fields (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    section_id INTEGER NOT NULL REFERENCES detail_sections(id) ON DELETE CASCADE,
-    label      TEXT NOT NULL,
-    field_key  TEXT NOT NULL UNIQUE,
-    field_type TEXT NOT NULL DEFAULT 'text',
-    position   INTEGER DEFAULT 0,
-    created_at TEXT DEFAULT (datetime('now'))
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_id  INTEGER NOT NULL REFERENCES detail_sections(id) ON DELETE CASCADE,
+    label       TEXT NOT NULL,
+    field_key   TEXT NOT NULL UNIQUE,
+    field_type  TEXT NOT NULL DEFAULT 'text',
+    position    INTEGER DEFAULT 0,
+    visible     INTEGER DEFAULT 1,
+    field_width TEXT DEFAULT 'third',
+    created_at  TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS device_field_values (
@@ -217,16 +221,20 @@ def migrate_db():
         name       TEXT NOT NULL,
         icon       TEXT DEFAULT 'bi-grid',
         position   INTEGER DEFAULT 0,
+        width      TEXT DEFAULT 'half',
+        min_height INTEGER DEFAULT 0,
         created_at TEXT DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS detail_fields (
-        id         INTEGER PRIMARY KEY AUTOINCREMENT,
-        section_id INTEGER NOT NULL REFERENCES detail_sections(id) ON DELETE CASCADE,
-        label      TEXT NOT NULL,
-        field_key  TEXT NOT NULL UNIQUE,
-        field_type TEXT NOT NULL DEFAULT 'text',
-        position   INTEGER DEFAULT 0,
-        created_at TEXT DEFAULT (datetime('now'))
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        section_id  INTEGER NOT NULL REFERENCES detail_sections(id) ON DELETE CASCADE,
+        label       TEXT NOT NULL,
+        field_key   TEXT NOT NULL UNIQUE,
+        field_type  TEXT NOT NULL DEFAULT 'text',
+        position    INTEGER DEFAULT 0,
+        visible     INTEGER DEFAULT 1,
+        field_width TEXT DEFAULT 'third',
+        created_at  TEXT DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS device_field_values (
         id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -237,6 +245,30 @@ def migrate_db():
     );
     """)
     db.commit()
+
+    # Add new columns to detail_sections if they don't exist yet
+    section_new_cols = [
+        ('width', "TEXT DEFAULT 'half'"),
+        ('min_height', 'INTEGER DEFAULT 0'),
+    ]
+    for col, col_type in section_new_cols:
+        try:
+            db.execute(f'ALTER TABLE detail_sections ADD COLUMN {col} {col_type}')
+            db.commit()
+        except:
+            pass  # column already exists
+
+    # Add new columns to detail_fields if they don't exist yet
+    fields_new_cols = [
+        ('visible', 'INTEGER DEFAULT 1'),
+        ('field_width', "TEXT DEFAULT 'third'"),
+    ]
+    for col, col_type in fields_new_cols:
+        try:
+            db.execute(f'ALTER TABLE detail_fields ADD COLUMN {col} {col_type}')
+            db.commit()
+        except:
+            pass  # column already exists
 
 
 def _make_field_key(label, db):
@@ -326,6 +358,13 @@ def generate_csrf():
 
 def validate_csrf(token):
     return token and token == session.get('csrf_token')
+
+
+def validate_csrf_flexible():
+    """Accept CSRF token from X-CSRFToken header OR form field."""
+    header_token = request.headers.get('X-CSRFToken', '')
+    form_token = request.form.get('csrf_token', '')
+    return validate_csrf(header_token) or validate_csrf(form_token)
 
 
 # ---------------------------------------------------------------------------
@@ -1012,20 +1051,26 @@ def device_detail(device_id):
     fields_by_section = {}
     for s in sections:
         fields = query_db(
-            """SELECT f.*, COALESCE(v.value,'') as value
+            """SELECT f.id, f.section_id, f.label, f.field_key, f.field_type,
+                      f.position, f.created_at,
+                      COALESCE(f.visible, 1) as visible,
+                      COALESCE(f.field_width, 'third') as field_width,
+                      COALESCE(v.value,'') as value
                FROM detail_fields f
                LEFT JOIN device_field_values v ON v.field_id=f.id AND v.device_id=?
                WHERE f.section_id=?
                ORDER BY f.position""",
             (device_id, s['id'])
         )
-        fields_by_section[s['id']] = fields
+        fields_by_section[s['id']] = [dict(row) for row in fields]
 
+    is_admin = session.get('role') == 'admin'
     return render_template('device_detail.html', device=device,
                            category_labels=CATEGORY_LABELS,
                            status_labels=STATUS_LABELS,
                            sections=sections,
-                           fields_by_section=fields_by_section)
+                           fields_by_section=fields_by_section,
+                           is_admin=is_admin)
 
 
 @app.route('/devices/<int:device_id>/edit', methods=['GET', 'POST'])
@@ -1526,16 +1571,21 @@ def scan_hardware_all():
 @app.route('/devices/<int:device_id>/fields', methods=['POST'])
 @login_required
 def device_save_fields(device_id):
+    if not validate_csrf_flexible():
+        return jsonify({'error': 'CSRF validation failed'}), 403
     device = query_db("SELECT id FROM devices WHERE id=?", (device_id,), one=True)
     if not device:
         abort(404)
-    data = request.get_json()
+    if request.is_json:
+        data = request.get_json()
+    else:
+        data = request.form
     if not data:
         return jsonify({'error': 'No data'}), 400
     db = get_db()
-    for field_id, value in data.items():
+    for field_id_str, value in data.items():
         try:
-            field_id_int = int(field_id)
+            field_id_int = int(field_id_str)
         except (ValueError, TypeError):
             continue
         db.execute(
@@ -1597,13 +1647,66 @@ def layout_section_update(section_id):
     icon = (data.get('icon') or 'bi-grid').strip()
     if not name:
         return jsonify({'error': 'Name required'}), 400
+    width = data.get('width', 'half')
+    min_height = int(data.get('min_height', 0) or 0)
     db = get_db()
-    db.execute("UPDATE detail_sections SET name=?, icon=? WHERE id=?", (name, icon, section_id))
+    db.execute("UPDATE detail_sections SET name=?, icon=?, width=?, min_height=? WHERE id=?",
+               (name, icon, width, min_height, section_id))
     db.commit()
     row = db.execute("SELECT * FROM detail_sections WHERE id=?", (section_id,)).fetchone()
     if not row:
         abort(404)
     return jsonify(dict(row))
+
+
+@app.route('/layout/sections/<int:section_id>/width', methods=['POST'])
+@admin_required
+def layout_section_width(section_id):
+    if not validate_csrf_flexible():
+        return jsonify({'error': 'CSRF validation failed'}), 403
+    data = request.get_json() or {}
+    width = data.get('width', 'half')
+    if width not in ('half', 'third', 'full'):
+        width = 'half'
+    execute_db("UPDATE detail_sections SET width=? WHERE id=?", (width, section_id))
+    return jsonify({'ok': True})
+
+
+@app.route('/layout/sections/<int:section_id>/height', methods=['POST'])
+@admin_required
+def layout_section_height(section_id):
+    if not validate_csrf_flexible():
+        return jsonify({'error': 'CSRF validation failed'}), 403
+    data = request.get_json() or {}
+    height = int(data.get('height', 0) or 0)
+    execute_db("UPDATE detail_sections SET min_height=? WHERE id=?", (height, section_id))
+    return jsonify({'ok': True})
+
+
+@app.route('/layout/fields/<int:field_id>/toggle-visible', methods=['POST'])
+@admin_required
+def layout_field_toggle_visible(field_id):
+    if not validate_csrf_flexible():
+        return jsonify({'error': 'CSRF validation failed'}), 403
+    field = query_db("SELECT visible FROM detail_fields WHERE id=?", (field_id,), one=True)
+    if not field:
+        abort(404)
+    new_val = 0 if field['visible'] else 1
+    execute_db("UPDATE detail_fields SET visible=? WHERE id=?", (new_val, field_id))
+    return jsonify({'ok': True, 'visible': new_val})
+
+
+@app.route('/layout/fields/<int:field_id>/field-width', methods=['POST'])
+@admin_required
+def layout_field_width(field_id):
+    if not validate_csrf_flexible():
+        return jsonify({'error': 'CSRF validation failed'}), 403
+    data = request.get_json() or {}
+    fw = data.get('field_width', 'third')
+    if fw not in ('third', 'half', 'full'):
+        fw = 'third'
+    execute_db("UPDATE detail_fields SET field_width=? WHERE id=?", (fw, field_id))
+    return jsonify({'ok': True})
 
 
 @app.route('/layout/sections/<int:section_id>/delete', methods=['POST'])
@@ -1621,6 +1724,8 @@ def layout_section_delete(section_id):
 @app.route('/layout/sections/reorder', methods=['POST'])
 @admin_required
 def layout_sections_reorder():
+    if not validate_csrf_flexible():
+        return jsonify({'error': 'CSRF validation failed'}), 403
     data = request.get_json()
     if not data:
         return jsonify({'error': 'No data'}), 400
@@ -1706,6 +1811,8 @@ def layout_field_delete(field_id):
 @app.route('/layout/fields/reorder', methods=['POST'])
 @admin_required
 def layout_fields_reorder():
+    if not validate_csrf_flexible():
+        return jsonify({'error': 'CSRF validation failed'}), 403
     data = request.get_json()
     if not data:
         return jsonify({'error': 'No data'}), 400

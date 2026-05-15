@@ -10,15 +10,114 @@
 
 {% block extra_head %}
 <style>
-/* Edit mode styles */
-.view-value { display: block; }
-.edit-input { display: none; }
-body.edit-mode .view-value { display: none; }
-body.edit-mode .edit-input { display: block; }
-body.edit-mode #btnEditFields { display: none !important; }
-body.edit-mode #editActions { display: flex !important; }
-#editActions { display: none; }
+/* ── Section grid ── */
+.sections-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: flex-start;
+}
 
+.section-wrap.w-half  { width: calc(50% - 8px); }
+.section-wrap.w-third { width: calc(33.333% - 11px); }
+.section-wrap.w-full  { width: 100%; }
+
+@media (max-width: 768px) {
+    .section-wrap { width: 100% !important; }
+}
+
+/* ── Edit mode ── */
+body.edit-mode .section-wrap {
+    border: 2px dashed #4f9cf9;
+    border-radius: 12px;
+    position: relative;
+}
+body.edit-mode .section-drag-handle {
+    cursor: grab;
+    display: flex !important;
+}
+body.edit-mode .section-drag-handle:active { cursor: grabbing; }
+
+body.edit-mode .field-item {
+    border: 1px dashed #cbd5e1;
+    border-radius: 6px;
+    padding: 6px 8px;
+    margin-bottom: 6px;
+    background: #f8fafc;
+    cursor: grab;
+    position: relative;
+}
+body.edit-mode .field-item:active { cursor: grabbing; }
+body.edit-mode .field-drag-handle { display: inline-block !important; }
+
+.section-drag-handle { display: none; color: #94a3b8; }
+.field-drag-handle { display: none; color: #94a3b8; margin-right: 6px; }
+
+/* ── Width toggle buttons ── */
+.width-toggle-btn.active { background: #4f9cf9; color: #fff; border-color: #4f9cf9; }
+.fw-btn.active { background: #4f9cf9; color: #fff; border-color: #4f9cf9; }
+
+/* ── Section edit toolbar ── */
+.section-edit-toolbar {
+    display: none;
+    position: absolute;
+    top: -14px;
+    right: 8px;
+    z-index: 10;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 3px 6px;
+    gap: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.1);
+    align-items: center;
+}
+body.edit-mode .section-edit-toolbar { display: flex; }
+
+/* ── Field edit controls ── */
+.field-edit-controls { display: none; }
+body.edit-mode .field-edit-controls { display: flex; }
+body.edit-mode .field-view-value { display: none; }
+body.edit-mode .field-edit-input { display: block !important; }
+
+/* ── Drag-over indicator ── */
+.drag-over-section { border-color: #4f9cf9 !important; background: rgba(79,156,249,.05); }
+.drag-over-field { border-top: 3px solid #4f9cf9 !important; }
+
+/* ── Resize handle ── */
+.section-body-resizable {
+    overflow: hidden;
+    transition: min-height .1s;
+}
+.resize-handle {
+    display: none;
+    height: 8px;
+    cursor: ns-resize;
+    background: linear-gradient(180deg, transparent 30%, #e2e8f0 50%, transparent 70%);
+    border-radius: 0 0 10px 10px;
+    margin: 0 16px;
+}
+body.edit-mode .resize-handle { display: block; }
+
+/* ── Field width classes ── */
+.field-item.fw-third { width: calc(33.333% - 8px); display: inline-block; vertical-align: top; }
+.field-item.fw-half  { width: calc(50% - 8px);     display: inline-block; vertical-align: top; }
+.field-item.fw-full  { width: 100%;                  display: block; }
+
+/* ── View mode: hide edit-only elements ── */
+.field-edit-input { display: none; }
+.field-edit-controls { display: none; }
+
+/* ── Field hidden dim ── */
+.field-item.field-hidden { opacity: .4; }
+
+/* ── Edit mode bar ── */
+#editModeBar {
+    background: #e0f2fe;
+    border: 1px solid #7dd3fc;
+}
+
+/* ── Legacy view-mode styles (for fixed info row) ── */
 .detail-section-card {
   background: #fff;
   border-radius: 12px;
@@ -38,13 +137,6 @@ body.edit-mode #editActions { display: flex !important; }
   margin: 0;
   font-size: .95rem;
   font-weight: 600;
-}
-.detail-section-header .section-icon {
-  font-size: 1.1rem;
-  opacity: .9;
-}
-.detail-section-body {
-  padding: 20px 24px;
 }
 </style>
 {% endblock %}
@@ -84,19 +176,11 @@ body.edit-mode #editActions { display: flex !important; }
                 </div>
             </div>
             <div class="d-flex gap-2 flex-shrink-0 flex-wrap align-items-center">
-                <!-- Edit fields toggle -->
-                <button type="button" id="btnEditFields" class="btn btn-light btn-sm" onclick="enterEditMode()">
+                {% if is_admin %}
+                <button id="btnEditFields" class="btn btn-outline-primary btn-sm" onclick="enterEdit()">
                     <i class="bi bi-pencil-square me-1"></i>Felder bearbeiten
                 </button>
-                <!-- Save / Cancel (shown in edit mode) -->
-                <div id="editActions" class="gap-2">
-                    <button type="button" class="btn btn-success btn-sm" onclick="saveFields({{ device['id'] }})">
-                        <i class="bi bi-check-lg me-1"></i>Speichern
-                    </button>
-                    <button type="button" class="btn btn-secondary btn-sm" onclick="cancelEditMode()">
-                        <i class="bi bi-x-lg me-1"></i>Abbrechen
-                    </button>
-                </div>
+                {% endif %}
 
                 {% if device['ip_address'] and device['category'] in ('PC', 'Laptop', 'Server') %}
                 <a href="{{ url_for('device_rdp', device_id=device['id']) }}"
@@ -199,91 +283,161 @@ body.edit-mode #editActions { display: flex !important; }
     </div><!-- /detail-body -->
 </div><!-- /detail-card (hero) -->
 
-<!-- ===== DYNAMIC SECTIONS ===== -->
-{% for section in sections %}
-{% set sec_fields = fields_by_section[section['id']] %}
-<div class="detail-section-card" id="section-{{ section['id'] }}">
-  <div class="detail-section-header">
-    <i class="bi {{ section['icon'] }} section-icon"></i>
-    <h5>{{ section['name'] }}</h5>
-  </div>
-  <div class="detail-section-body">
-    {% if sec_fields %}
-    <div class="row g-3">
-      {% for field in sec_fields %}
-      <div class="{% if field['field_type'] == 'textarea' %}col-12{% else %}col-12 col-sm-6 col-md-4{% endif %}">
-        <div class="detail-label">{{ field['label'] }}</div>
-
-        <!-- View mode -->
-        <div class="detail-value view-value" id="view-{{ field['id'] }}">
-          {% if field['field_type'] == 'boolean' %}
-            {% if field['value'] == '1' %}<span class="badge bg-success">Ja</span>
-            {% elif field['value'] == '0' %}<span class="badge bg-secondary">Nein</span>
-            {% else %}<span class="text-muted">—</span>{% endif %}
-          {% elif field['field_type'] == 'url' and field['value'] %}
-            <a href="{{ field['value'] }}" target="_blank" rel="noopener">{{ field['value'] }}</a>
-          {% elif field['field_type'] == 'date' and field['value'] %}
-            {{ field['value']|de_date }}
-          {% else %}
-            {{ field['value'] or '—' }}
-          {% endif %}
+<!-- ===== EDIT MODE BAR ===== -->
+<div id="editModeBar" style="display:none;" class="mb-3 p-3 rounded">
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+        <span class="fw-semibold text-primary"><i class="bi bi-pencil-square me-1"></i>Layout-Bearbeitungsmodus</span>
+        <span class="text-muted small">Boxen und Felder per Drag &amp; Drop verschieben &middot; Breite und Sichtbarkeit anpassen</span>
+        <div class="ms-auto d-flex gap-2">
+            <button class="btn btn-success btn-sm" onclick="saveFieldValues()"><i class="bi bi-check-lg me-1"></i>Speichern</button>
+            <button class="btn btn-outline-secondary btn-sm" onclick="cancelEdit()"><i class="bi bi-x me-1"></i>Abbrechen</button>
         </div>
-
-        <!-- Edit mode input -->
-        {% if field['field_type'] == 'textarea' %}
-        <textarea class="form-control form-control-sm edit-input"
-                  data-field-id="{{ field['id'] }}"
-                  rows="3">{{ field['value'] }}</textarea>
-        {% elif field['field_type'] == 'boolean' %}
-        <select class="form-select form-select-sm edit-input"
-                data-field-id="{{ field['id'] }}">
-          <option value="" {% if field['value'] == '' %}selected{% endif %}>—</option>
-          <option value="1" {% if field['value'] == '1' %}selected{% endif %}>Ja</option>
-          <option value="0" {% if field['value'] == '0' %}selected{% endif %}>Nein</option>
-        </select>
-        {% elif field['field_type'] == 'number' %}
-        <input type="number" class="form-control form-control-sm edit-input"
-               data-field-id="{{ field['id'] }}"
-               value="{{ field['value'] }}">
-        {% elif field['field_type'] == 'date' %}
-        <input type="date" class="form-control form-control-sm edit-input"
-               data-field-id="{{ field['id'] }}"
-               value="{{ field['value'] }}">
-        {% elif field['field_type'] == 'url' %}
-        <input type="url" class="form-control form-control-sm edit-input"
-               data-field-id="{{ field['id'] }}"
-               value="{{ field['value'] }}">
-        {% else %}
-        <input type="text" class="form-control form-control-sm edit-input"
-               data-field-id="{{ field['id'] }}"
-               value="{{ field['value'] }}">
-        {% endif %}
-      </div>
-      {% endfor %}
     </div>
-    {% else %}
-    <div class="text-muted" style="font-size:.87rem;">
-      <i class="bi bi-info-circle me-1"></i>Keine Felder in dieser Sektion. <a href="{{ url_for('layout_editor') }}">Layout bearbeiten</a>
-    </div>
-    {% endif %}
-  </div>
 </div>
+
+<!-- ===== DYNAMIC SECTIONS GRID ===== -->
+{% if sections %}
+<div class="sections-grid" id="sectionsGrid">
+  {% for section in sections %}
+  {% set width_class = {'half':'w-half','third':'w-third','full':'w-full'}.get(section['width'] or 'half', 'w-half') %}
+  <div class="section-wrap {{ width_class }}"
+       data-section-id="{{ section['id'] }}"
+       data-width="{{ section['width'] or 'half' }}"
+       draggable="false">
+
+    <!-- Section edit toolbar (visible in edit mode) -->
+    <div class="section-edit-toolbar">
+      <!-- Width toggle -->
+      <div class="btn-group btn-group-sm me-1">
+        <button class="btn btn-outline-secondary btn-sm width-toggle-btn {% if section['width'] == 'third' %}active{% endif %}"
+                onclick="setSectionWidth({{ section['id'] }}, 'third', this)" title="1/3 Breite">1/3</button>
+        <button class="btn btn-outline-secondary btn-sm width-toggle-btn {% if (section['width'] or 'half') == 'half' %}active{% endif %}"
+                onclick="setSectionWidth({{ section['id'] }}, 'half', this)" title="1/2 Breite">1/2</button>
+        <button class="btn btn-outline-secondary btn-sm width-toggle-btn {% if section['width'] == 'full' %}active{% endif %}"
+                onclick="setSectionWidth({{ section['id'] }}, 'full', this)" title="Volle Breite">Voll</button>
+      </div>
+      <!-- Drag handle -->
+      <span class="section-drag-handle px-1" title="Verschieben">
+        <i class="bi bi-grip-vertical"></i>
+      </span>
+    </div>
+
+    <!-- Section card -->
+    <div class="detail-card">
+      <div class="detail-header d-flex align-items-center gap-2 py-3 px-4">
+        <i class="bi {{ section['icon'] }} me-1" style="font-size:1.1rem;opacity:.8;"></i>
+        <span class="fw-semibold">{{ section['name'] }}</span>
+      </div>
+      <div class="section-body-resizable detail-body"
+           id="sectionBody_{{ section['id'] }}"
+           style="{% if section['min_height'] %}min-height:{{ section['min_height'] }}px;{% endif %}">
+
+        <!-- Fields container -->
+        <div class="fields-container d-flex flex-wrap gap-2"
+             id="fieldsContainer_{{ section['id'] }}"
+             data-section-id="{{ section['id'] }}">
+
+          {% set sec_fields = fields_by_section.get(section['id'], []) %}
+          {% if sec_fields %}
+          {% for field in sec_fields %}
+          {% set fw_class = {'third':'fw-third','half':'fw-half','full':'fw-full'}.get(field.get('field_width','third'), 'fw-third') %}
+          <div class="field-item {{ fw_class }}{% if not field['visible'] %} field-hidden{% endif %}"
+               data-field-id="{{ field['id'] }}"
+               data-field-width="{{ field.get('field_width','third') }}"
+               draggable="false">
+
+            <!-- Field edit controls (shown in edit mode) -->
+            <div class="field-edit-controls align-items-center mb-1 gap-1" style="font-size:.72rem;">
+              <span class="field-drag-handle me-1" title="Verschieben"><i class="bi bi-grip-vertical text-muted"></i></span>
+              <!-- Field width -->
+              <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-secondary py-0 fw-btn {% if field.get('field_width','third') == 'third' %}active{% endif %}"
+                        onclick="setFieldWidth({{ field['id'] }}, 'third', this)" title="1/3">1/3</button>
+                <button class="btn btn-outline-secondary py-0 fw-btn {% if field.get('field_width') == 'half' %}active{% endif %}"
+                        onclick="setFieldWidth({{ field['id'] }}, 'half', this)" title="1/2">1/2</button>
+                <button class="btn btn-outline-secondary py-0 fw-btn {% if field.get('field_width') == 'full' %}active{% endif %}"
+                        onclick="setFieldWidth({{ field['id'] }}, 'full', this)" title="Voll">Voll</button>
+              </div>
+              <!-- Visibility toggle -->
+              <button class="btn btn-sm py-0 ms-1 {% if field['visible'] %}btn-outline-secondary{% else %}btn-warning{% endif %}"
+                      onclick="toggleFieldVisible({{ field['id'] }}, this)" title="Sichtbarkeit umschalten">
+                <i class="bi {% if field['visible'] %}bi-eye{% else %}bi-eye-slash{% endif %}"></i>
+              </button>
+            </div>
+
+            <!-- Field label -->
+            <div class="detail-label">{{ field['label']|upper }}</div>
+
+            <!-- View value -->
+            <div class="detail-value field-view-value" id="view_{{ field['id'] }}">
+              {% set val = field['value'] %}
+              {% if field['field_type'] == 'boolean' %}
+                {% if val == '1' %}<span class="badge bg-success">Ja</span>
+                {% elif val == '0' %}<span class="badge bg-secondary">Nein</span>
+                {% else %}<span class="text-muted">—</span>{% endif %}
+              {% elif field['field_type'] == 'url' and val %}
+                <a href="{{ val }}" target="_blank" rel="noopener" class="text-truncate d-block" style="max-width:200px;">{{ val }}</a>
+              {% elif field['field_type'] == 'date' and val %}
+                {{ val|de_date }}
+              {% else %}
+                {{ val or '—' }}
+              {% endif %}
+            </div>
+
+            <!-- Edit input (shown in edit mode) -->
+            <div class="field-edit-input" id="input_{{ field['id'] }}" style="display:none;">
+              {% set val = field['value'] %}
+              {% if field['field_type'] == 'boolean' %}
+                <select name="field_{{ field['id'] }}" class="form-select form-select-sm" data-field-id="{{ field['id'] }}">
+                  <option value="" {% if not val %}selected{% endif %}>—</option>
+                  <option value="1" {% if val == '1' %}selected{% endif %}>Ja</option>
+                  <option value="0" {% if val == '0' %}selected{% endif %}>Nein</option>
+                </select>
+              {% elif field['field_type'] == 'date' %}
+                <input type="date" name="field_{{ field['id'] }}" class="form-control form-control-sm"
+                       data-field-id="{{ field['id'] }}" value="{{ val or '' }}">
+              {% elif field['field_type'] == 'number' %}
+                <input type="number" name="field_{{ field['id'] }}" class="form-control form-control-sm"
+                       data-field-id="{{ field['id'] }}" value="{{ val or '' }}">
+              {% elif field['field_type'] == 'url' %}
+                <input type="url" name="field_{{ field['id'] }}" class="form-control form-control-sm"
+                       data-field-id="{{ field['id'] }}" value="{{ val or '' }}" placeholder="https://...">
+              {% elif field['field_type'] == 'textarea' %}
+                <textarea name="field_{{ field['id'] }}" class="form-control form-control-sm" rows="3"
+                          data-field-id="{{ field['id'] }}">{{ val or '' }}</textarea>
+              {% else %}
+                <input type="text" name="field_{{ field['id'] }}" class="form-control form-control-sm"
+                       data-field-id="{{ field['id'] }}" value="{{ val or '' }}">
+              {% endif %}
+            </div>
+
+          </div>
+          {% endfor %}
+          {% else %}
+          <div class="text-muted w-100" style="font-size:.87rem;">
+            <i class="bi bi-info-circle me-1"></i>Keine Felder in dieser Sektion.
+            <a href="{{ url_for('layout_editor') }}">Layout bearbeiten</a>
+          </div>
+          {% endif %}
+
+        </div><!-- /.fields-container -->
+
+      </div><!-- /.section-body-resizable -->
+
+      <!-- Resize handle -->
+      <div class="resize-handle"
+           data-section-id="{{ section['id'] }}"
+           title="Hoehe anpassen"></div>
+    </div><!-- /.detail-card -->
+  </div><!-- /.section-wrap -->
+  {% endfor %}
+</div><!-- /.sections-grid -->
 {% else %}
 <div class="alert alert-info">
   <i class="bi bi-info-circle me-2"></i>
   Noch keine Sektionen definiert. <a href="{{ url_for('layout_editor') }}">Jetzt Layout erstellen</a>
 </div>
-{% endfor %}
-
-<!-- Save feedback toast -->
-<div class="position-fixed bottom-0 end-0 p-3" style="z-index:9999">
-  <div id="saveToast" class="toast align-items-center text-white border-0" role="alert" aria-live="assertive" aria-atomic="true">
-    <div class="d-flex">
-      <div class="toast-body" id="saveToastMsg">Gespeichert!</div>
-      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
-    </div>
-  </div>
-</div>
+{% endif %}
 
 <!-- Back -->
 <div class="mt-3">
@@ -293,102 +447,295 @@ body.edit-mode #editActions { display: flex !important; }
 </div>
 
 <script>
-const csrf = document.querySelector('meta[name="csrf-token"]').content;
+const CSRF = document.querySelector('meta[name="csrf-token"]').content;
+const DEVICE_ID = {{ device['id'] }};
+let editMode = false;
 
-// ── Edit mode toggle ────────────────────────────────────────────────────────
-function enterEditMode() {
-  document.body.classList.add('edit-mode');
+/* ── Toggle edit mode ── */
+function enterEdit() {
+    editMode = true;
+    document.body.classList.add('edit-mode');
+    document.getElementById('editModeBar').style.display = '';
+    // Show edit inputs, hide view values
+    document.querySelectorAll('.field-edit-input').forEach(el => el.style.display = '');
+    document.querySelectorAll('.field-view-value').forEach(el => el.style.display = 'none');
+    // Make sections and fields draggable
+    document.querySelectorAll('.section-wrap').forEach(el => el.setAttribute('draggable', 'true'));
+    document.querySelectorAll('.field-item').forEach(el => el.setAttribute('draggable', 'true'));
+    initSectionDrag();
+    initFieldDrag();
+    initResizeHandles();
+    // Hide the edit button
+    const btn = document.getElementById('btnEditFields');
+    if (btn) btn.style.display = 'none';
 }
 
-function cancelEditMode() {
-  document.body.classList.remove('edit-mode');
-  // restore inputs to their original values (the current view-values represent saved data)
-  document.querySelectorAll('.edit-input[data-field-id]').forEach(input => {
-    // Re-read from data attribute if we set it on save, or just leave
-    // Best: reload the page on cancel if values might be dirty
-  });
+function cancelEdit() {
+    editMode = false;
+    document.body.classList.remove('edit-mode');
+    document.getElementById('editModeBar').style.display = 'none';
+    document.querySelectorAll('.field-edit-input').forEach(el => el.style.display = 'none');
+    document.querySelectorAll('.field-view-value').forEach(el => el.style.display = '');
+    document.querySelectorAll('.section-wrap').forEach(el => el.setAttribute('draggable', 'false'));
+    document.querySelectorAll('.field-item').forEach(el => el.setAttribute('draggable', 'false'));
+    const btn = document.getElementById('btnEditFields');
+    if (btn) btn.style.display = '';
 }
 
-// ── Save field values ────────────────────────────────────────────────────────
-function saveFields(deviceId) {
-  const inputs = document.querySelectorAll('.edit-input[data-field-id]');
-  const payload = {};
-  inputs.forEach(input => {
-    payload[input.dataset.fieldId] = input.value;
-  });
-
-  fetch(`/devices/${deviceId}/fields`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CSRFToken': csrf,
-    },
-    body: JSON.stringify(payload),
-  })
-  .then(r => r.json())
-  .then(data => {
-    if (data.ok) {
-      // Update view-mode displays
-      inputs.forEach(input => {
-        updateViewDisplay(input.dataset.fieldId, input.value, input.type || input.tagName.toLowerCase());
-      });
-      document.body.classList.remove('edit-mode');
-      showToast('Felder wurden gespeichert!', 'success');
-    } else {
-      showToast('Fehler beim Speichern: ' + (data.error || 'Unbekannt'), 'danger');
+/* ── Save field values ── */
+async function saveFieldValues() {
+    const values = {};
+    document.querySelectorAll('[data-field-id]').forEach(el => {
+        if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') {
+            values[el.dataset.fieldId] = el.value;
+        }
+    });
+    try {
+        const r = await fetch(`/devices/${DEVICE_ID}/fields`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+            body: JSON.stringify(values)
+        });
+        if (r.ok) {
+            // Update view values for each field
+            document.querySelectorAll('[data-field-id]').forEach(el => {
+                if (!(el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA')) return;
+                const fid = el.dataset.fieldId;
+                const viewEl = document.getElementById('view_' + fid);
+                if (!viewEl) return;
+                const val = el.value;
+                if (el.tagName === 'SELECT') {
+                    if (val === '1') viewEl.innerHTML = '<span class="badge bg-success">Ja</span>';
+                    else if (val === '0') viewEl.innerHTML = '<span class="badge bg-secondary">Nein</span>';
+                    else viewEl.innerHTML = '<span class="text-muted">—</span>';
+                } else if (el.type === 'date' && val) {
+                    const p = val.split('-');
+                    viewEl.textContent = p.length === 3 ? `${p[2]}.${p[1]}.${p[0]}` : val;
+                } else if (el.type === 'url' && val) {
+                    viewEl.innerHTML = `<a href="${encodeURI(val)}" target="_blank" rel="noopener" class="text-truncate d-block" style="max-width:200px;">${val}</a>`;
+                } else {
+                    viewEl.textContent = val || '—';
+                }
+            });
+            showToast('Gespeichert!', 'success');
+            cancelEdit();
+        } else {
+            showToast('Fehler beim Speichern', 'danger');
+        }
+    } catch (err) {
+        showToast('Netzwerkfehler: ' + err.message, 'danger');
     }
-  })
-  .catch(err => {
-    showToast('Netzwerkfehler: ' + err.message, 'danger');
-  });
 }
 
-function updateViewDisplay(fieldId, value, inputType) {
-  const viewEl = document.getElementById(`view-${fieldId}`);
-  if (!viewEl) return;
+/* ── Section drag & drop ── */
+let dragSrcSection = null;
 
-  const input = document.querySelector(`.edit-input[data-field-id="${fieldId}"]`);
-  const tagName = input ? input.tagName.toLowerCase() : 'input';
-  const inputTypeAttr = input ? (input.type || '') : '';
-
-  if (tagName === 'select') {
-    // boolean
-    if (value === '1') {
-      viewEl.innerHTML = '<span class="badge bg-success">Ja</span>';
-    } else if (value === '0') {
-      viewEl.innerHTML = '<span class="badge bg-secondary">Nein</span>';
-    } else {
-      viewEl.innerHTML = '<span class="text-muted">—</span>';
-    }
-  } else if (inputTypeAttr === 'date') {
-    if (value) {
-      // Convert YYYY-MM-DD to DD.MM.YYYY
-      const parts = value.split('-');
-      viewEl.textContent = parts.length === 3 ? `${parts[2]}.${parts[1]}.${parts[0]}` : value;
-    } else {
-      viewEl.textContent = '—';
-    }
-  } else if (inputTypeAttr === 'url') {
-    if (value) {
-      viewEl.innerHTML = `<a href="${encodeURI(value)}" target="_blank" rel="noopener">${value}</a>`;
-    } else {
-      viewEl.textContent = '—';
-    }
-  } else {
-    viewEl.textContent = value || '—';
-  }
+function initSectionDrag() {
+    const grid = document.getElementById('sectionsGrid');
+    if (!grid) return;
+    const wraps = grid.querySelectorAll('.section-wrap');
+    wraps.forEach(wrap => {
+        // Remove old listeners by cloning (simple reset)
+        wrap.ondragstart = e => {
+            dragSrcSection = wrap;
+            e.dataTransfer.effectAllowed = 'move';
+            setTimeout(() => wrap.style.opacity = '.4', 0);
+        };
+        wrap.ondragend = () => {
+            wrap.style.opacity = '';
+            grid.querySelectorAll('.drag-over-section').forEach(el => el.classList.remove('drag-over-section'));
+            saveSectionOrder();
+        };
+        wrap.ondragover = e => {
+            e.preventDefault();
+            if (dragSrcSection && dragSrcSection !== wrap) {
+                grid.querySelectorAll('.drag-over-section').forEach(el => el.classList.remove('drag-over-section'));
+                wrap.classList.add('drag-over-section');
+                const rect = wrap.getBoundingClientRect();
+                const mid = rect.left + rect.width / 2;
+                if (e.clientX < mid) {
+                    grid.insertBefore(dragSrcSection, wrap);
+                } else {
+                    grid.insertBefore(dragSrcSection, wrap.nextSibling);
+                }
+            }
+        };
+        wrap.ondragleave = () => wrap.classList.remove('drag-over-section');
+        wrap.ondrop = e => { e.preventDefault(); wrap.classList.remove('drag-over-section'); };
+    });
 }
 
+async function saveSectionOrder() {
+    const order = [...document.querySelectorAll('.section-wrap')].map((el, i) => ({
+        id: parseInt(el.dataset.sectionId), position: i
+    }));
+    try {
+        await fetch('/layout/sections/reorder', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+            body: JSON.stringify(order)
+        });
+    } catch (e) { /* silently ignore */ }
+}
+
+/* ── Field drag & drop within sections ── */
+let dragSrcField = null;
+
+function initFieldDrag() {
+    document.querySelectorAll('.field-item').forEach(field => {
+        field.ondragstart = e => {
+            e.stopPropagation();
+            dragSrcField = field;
+            e.dataTransfer.effectAllowed = 'move';
+            setTimeout(() => field.style.opacity = '.4', 0);
+        };
+        field.ondragend = () => {
+            field.style.opacity = '';
+            document.querySelectorAll('.drag-over-field').forEach(el => el.classList.remove('drag-over-field'));
+            const container = field.closest('.fields-container');
+            if (container) saveFieldOrder(container.dataset.sectionId);
+        };
+        field.ondragover = e => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (dragSrcField && dragSrcField !== field) {
+                document.querySelectorAll('.drag-over-field').forEach(el => el.classList.remove('drag-over-field'));
+                field.classList.add('drag-over-field');
+                const container = field.parentElement;
+                const rect = field.getBoundingClientRect();
+                if (e.clientY < rect.top + rect.height / 2) {
+                    container.insertBefore(dragSrcField, field);
+                } else {
+                    container.insertBefore(dragSrcField, field.nextSibling);
+                }
+            }
+        };
+        field.ondragleave = () => field.classList.remove('drag-over-field');
+        field.ondrop = e => { e.preventDefault(); e.stopPropagation(); };
+    });
+}
+
+async function saveFieldOrder(sectionId) {
+    const container = document.getElementById('fieldsContainer_' + sectionId);
+    if (!container) return;
+    const field_ids = [...container.querySelectorAll('.field-item')].map(el => parseInt(el.dataset.fieldId));
+    try {
+        await fetch('/layout/fields/reorder', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+            body: JSON.stringify({section_id: parseInt(sectionId), field_ids})
+        });
+    } catch (e) { /* silently ignore */ }
+}
+
+/* ── Section width ── */
+async function setSectionWidth(sectionId, width, btn) {
+    const wrap = btn.closest('.section-wrap');
+    wrap.classList.remove('w-half', 'w-third', 'w-full');
+    wrap.classList.add('w-' + width);
+    wrap.dataset.width = width;
+    btn.closest('.btn-group').querySelectorAll('.width-toggle-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    try {
+        await fetch(`/layout/sections/${sectionId}/width`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+            body: JSON.stringify({width})
+        });
+    } catch (e) { showToast('Fehler beim Speichern der Breite', 'danger'); }
+}
+
+/* ── Field width ── */
+async function setFieldWidth(fieldId, fw, btn) {
+    const item = btn.closest('.field-item');
+    item.classList.remove('fw-third', 'fw-half', 'fw-full');
+    item.classList.add('fw-' + fw);
+    btn.closest('.btn-group').querySelectorAll('.fw-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    try {
+        await fetch(`/layout/fields/${fieldId}/field-width`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+            body: JSON.stringify({field_width: fw})
+        });
+    } catch (e) { showToast('Fehler beim Speichern der Feldbreite', 'danger'); }
+}
+
+/* ── Field visibility ── */
+async function toggleFieldVisible(fieldId, btn) {
+    try {
+        const r = await fetch(`/layout/fields/${fieldId}/toggle-visible`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+            body: JSON.stringify({})
+        });
+        const data = await r.json();
+        const item = btn.closest('.field-item');
+        if (data.visible) {
+            item.style.opacity = '';
+            item.classList.remove('field-hidden');
+            btn.classList.replace('btn-warning', 'btn-outline-secondary');
+            btn.querySelector('i').className = 'bi bi-eye';
+        } else {
+            item.style.opacity = '.4';
+            item.classList.add('field-hidden');
+            btn.classList.replace('btn-outline-secondary', 'btn-warning');
+            btn.querySelector('i').className = 'bi bi-eye-slash';
+        }
+    } catch (e) { showToast('Fehler beim Umschalten der Sichtbarkeit', 'danger'); }
+}
+
+/* ── Resize handles ── */
+function initResizeHandles() {
+    document.querySelectorAll('.resize-handle').forEach(handle => {
+        // Avoid attaching multiple listeners
+        if (handle._resizeInit) return;
+        handle._resizeInit = true;
+
+        let startY, startH, body;
+        handle.addEventListener('mousedown', e => {
+            e.preventDefault();
+            const sectionId = handle.dataset.sectionId;
+            body = document.getElementById('sectionBody_' + sectionId);
+            startY = e.clientY;
+            startH = body.offsetHeight;
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        });
+
+        function onMouseMove(e) {
+            const newH = Math.max(80, startH + (e.clientY - startY));
+            body.style.minHeight = newH + 'px';
+        }
+
+        async function onMouseUp() {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+            const sectionId = handle.dataset.sectionId;
+            const height = parseInt(body.style.minHeight) || 0;
+            try {
+                await fetch(`/layout/sections/${sectionId}/height`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+                    body: JSON.stringify({height})
+                });
+            } catch (e) { /* silently ignore */ }
+        }
+    });
+}
+
+/* ── Toast ── */
 function showToast(msg, type) {
-  const toast = document.getElementById('saveToast');
-  const toastMsg = document.getElementById('saveToastMsg');
-  toast.className = `toast align-items-center text-white border-0 bg-${type}`;
-  toastMsg.textContent = msg;
-  const bsToast = new bootstrap.Toast(toast, {delay: 3500});
-  bsToast.show();
+    type = type || 'success';
+    const t = document.createElement('div');
+    t.className = `alert alert-${type} position-fixed shadow`;
+    t.style.cssText = 'bottom:24px;right:24px;z-index:9999;min-width:200px;';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => { if (t.parentNode) t.parentNode.removeChild(t); }, 3000);
 }
 
-// ── WoL ──────────────────────────────────────────────────────────────────────
+/* ── WoL ── */
 {% if device['mac_address'] %}
 function sendWoL(deviceId) {
     const btn = document.getElementById('wolBtn');
