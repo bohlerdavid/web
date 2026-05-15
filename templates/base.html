@@ -46,20 +46,13 @@
                     <i class="bi bi-radar"></i><span>Netzwerkscan</span>
                 </a>
             </li>
-            {% if session.get('role') == 'admin' %}
-            <li class="sidebar-item {% if request.endpoint == 'layout_editor' %}active{% endif %}">
-                <a class="sidebar-link" href="{{ url_for('layout_editor') }}">
-                    <i class="bi bi-layout-wtf"></i><span>Layout</span>
-                </a>
-            </li>
-            {% endif %}
             <li class="sidebar-item {% if request.endpoint in ['users','user_new','user_edit'] %}active{% endif %}">
                 <a href="{{ url_for('users') }}" class="sidebar-link">
                     <i class="bi bi-person-lock"></i>
                     <span>Benutzer</span>
                 </a>
             </li>
-            <li class="sidebar-item sidebar-has-sub {% if request.endpoint in ['locations','location_new','location_edit','settings_lists'] %}active{% endif %}">
+            <li class="sidebar-item sidebar-has-sub {% if request.endpoint in ['locations','location_new','location_edit','settings_lists','layout_editor'] %}active{% endif %}">
                 <a class="sidebar-link">
                     <i class="bi bi-gear"></i>
                     <span>Einstellungen</span>
@@ -76,6 +69,13 @@
                             <i class="bi bi-list-ul"></i>Listen verwalten
                         </a>
                     </li>
+                    {% if session.get('role') == 'admin' %}
+                    <li class="sidebar-sub-item">
+                        <a href="{{ url_for('layout_editor') }}" class="sidebar-sub-link {% if request.endpoint == 'layout_editor' %}active{% endif %}">
+                            <i class="bi bi-layout-wtf"></i>Layout
+                        </a>
+                    </li>
+                    {% endif %}
                 </ul>
             </li>
             <li class="sidebar-item {% if request.endpoint == 'wiki' %}active{% endif %}">
