@@ -100,9 +100,36 @@ body.edit-mode .field-edit-input { display: block !important; }
 body.edit-mode .resize-handle { display: block; }
 
 /* ── Field width classes ── */
-.field-item.fw-third { width: calc(33.333% - 8px); display: inline-block; vertical-align: top; }
-.field-item.fw-half  { width: calc(50% - 8px);     display: inline-block; vertical-align: top; }
-.field-item.fw-full  { width: 100%;                  display: block; }
+.field-item.fw-third      { width: calc(33.333% - 8px); display: inline-block; vertical-align: top; }
+.field-item.fw-half       { width: calc(50% - 8px);     display: inline-block; vertical-align: top; }
+.field-item.fw-two-thirds { width: calc(66.666% - 5px); display: inline-block; vertical-align: top; }
+.field-item.fw-full       { width: 100%;                 display: block; }
+
+/* ── Field width drag handle ── */
+.field-width-handle {
+    display: none;
+    position: absolute;
+    top: 4px; right: 0; bottom: 4px;
+    width: 8px;
+    cursor: ew-resize;
+    background: linear-gradient(90deg, transparent 20%, #cbd5e1 50%, transparent 80%);
+    border-radius: 0 6px 6px 0;
+    z-index: 5;
+}
+body.edit-mode .field-width-handle { display: block; }
+/* snap tooltip */
+#snapTooltip {
+    position: fixed;
+    background: #1e2a3b;
+    color: #fff;
+    padding: 2px 9px;
+    border-radius: 5px;
+    font-size: .72rem;
+    font-weight: 700;
+    pointer-events: none;
+    z-index: 9999;
+    display: none;
+}
 
 /* ── View mode: hide edit-only elements ── */
 .field-edit-input { display: none; }
@@ -342,6 +369,8 @@ body.edit-mode .field-quick-edit { display: none !important; }
     </div><!-- /detail-body -->
 </div><!-- /detail-card (hero) -->
 
+<div id="snapTooltip"></div>
+
 <!-- ===== EDIT MODE BAR ===== -->
 <div id="editModeBar" style="display:none;" class="mb-3 p-3 rounded">
     <div class="d-flex align-items-center gap-3 flex-wrap">
@@ -461,8 +490,9 @@ body.edit-mode .field-quick-edit { display: none !important; }
               {% endif %}
             </div>
 
-            <!-- Field height resize handle (edit mode only) -->
+            <!-- Resize handles (edit mode only) -->
             <div class="field-height-handle" data-field-id="{{ field['id'] }}"></div>
+            <div class="field-width-handle"  data-field-id="{{ field['id'] }}"></div>
 
             <!-- Edit input (shown in edit mode) -->
             <div class="field-edit-input" id="input_{{ field['id'] }}" style="display:none;">
@@ -539,6 +569,7 @@ function enterEdit() {
     initFieldDrag();
     initResizeHandles();
     initFieldHeightResize();
+    initFieldWidthResize();
     // Hide the edit button
     const btn = document.getElementById('btnEditFields');
     if (btn) btn.style.display = 'none';
@@ -794,6 +825,76 @@ function initFieldHeightResize() {
                     body: JSON.stringify({field_height: units})
                 });
             } catch(e) { /* silently ignore */ }
+        }
+    });
+}
+
+/* ── Field width snap resize (edit mode) ── */
+const WIDTH_SNAPS = [
+    {pct: 33.333, cls: 'fw-third',      val: 'third',      label: '1/3'},
+    {pct: 50,     cls: 'fw-half',       val: 'half',       label: '1/2'},
+    {pct: 66.666, cls: 'fw-two-thirds', val: 'two-thirds', label: '2/3'},
+    {pct: 100,    cls: 'fw-full',       val: 'full',       label: 'Voll'},
+];
+const ALL_FW = WIDTH_SNAPS.map(s => s.cls);
+const tooltip = document.getElementById('snapTooltip');
+
+function nearestSnap(pct) {
+    return WIDTH_SNAPS.reduce((best, s) =>
+        Math.abs(s.pct - pct) < Math.abs(best.pct - pct) ? s : best
+    );
+}
+
+function initFieldWidthResize() {
+    document.querySelectorAll('.field-width-handle').forEach(handle => {
+        if (handle._wInit) return;
+        handle._wInit = true;
+        let item, fieldId, containerRect, currentSnap;
+
+        handle.addEventListener('mousedown', e => {
+            e.preventDefault();
+            e.stopPropagation();
+            item = handle.closest('.field-item');
+            fieldId = item.dataset.fieldId;
+            containerRect = item.closest('.fields-container').getBoundingClientRect();
+            currentSnap = null;
+            item.classList.add('resizing');
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        });
+
+        function onMove(e) {
+            const rawPct = ((e.clientX - containerRect.left) / containerRect.width) * 100;
+            const snap = nearestSnap(rawPct);
+            if (!currentSnap || currentSnap.val !== snap.val) {
+                currentSnap = snap;
+                item.classList.remove(...ALL_FW);
+                item.classList.add(snap.cls);
+            }
+            // show tooltip near cursor
+            tooltip.textContent = snap.label;
+            tooltip.style.display = 'block';
+            tooltip.style.left = (e.clientX + 12) + 'px';
+            tooltip.style.top  = (e.clientY - 10) + 'px';
+        }
+
+        async function onUp() {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            item.classList.remove('resizing');
+            tooltip.style.display = 'none';
+            if (!currentSnap) return;
+            // sync width-toggle buttons
+            item.querySelectorAll('.fw-btn').forEach(b => b.classList.remove('active'));
+            const syncBtn = item.querySelector(`.fw-btn[onclick*="'${currentSnap.val}'"]`);
+            if (syncBtn) syncBtn.classList.add('active');
+            try {
+                await fetch(`/layout/fields/${fieldId}/field-width`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+                    body: JSON.stringify({field_width: currentSnap.val})
+                });
+            } catch(e) { showToast('Fehler beim Speichern der Breite', 'danger'); }
         }
     });
 }

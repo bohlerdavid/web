@@ -1711,7 +1711,7 @@ def layout_field_width(field_id):
         return jsonify({'error': 'CSRF validation failed'}), 403
     data = request.get_json() or {}
     fw = data.get('field_width', 'third')
-    if fw not in ('third', 'half', 'full'):
+    if fw not in ('third', 'half', 'two-thirds', 'full'):
         fw = 'third'
     execute_db("UPDATE detail_fields SET field_width=? WHERE id=?", (fw, field_id))
     return jsonify({'ok': True})
