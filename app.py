@@ -353,6 +353,37 @@ def migrate_db():
     except Exception:
         pass
 
+    # Make detail_fields.section_id nullable so core fields (without a section) can be inserted
+    cols_info = db.execute("PRAGMA table_info(detail_fields)").fetchall()
+    sid_col = next((c for c in cols_info if c['name'] == 'section_id'), None)
+    if sid_col and sid_col['notnull'] == 1:
+        existing_col_names = [c['name'] for c in cols_info]
+        cols_csv = ', '.join(existing_col_names)
+        db.execute("PRAGMA foreign_keys = OFF")
+        db.commit()
+        db.executescript(f"""
+        CREATE TABLE detail_fields_new (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            section_id    INTEGER REFERENCES detail_sections(id) ON DELETE CASCADE,
+            label         TEXT NOT NULL,
+            field_key     TEXT NOT NULL UNIQUE,
+            field_type    TEXT NOT NULL DEFAULT 'text',
+            position      INTEGER DEFAULT 0,
+            visible       INTEGER DEFAULT 1,
+            field_width   TEXT DEFAULT 'third',
+            display_style TEXT DEFAULT 'stacked',
+            field_height  INTEGER DEFAULT 1,
+            created_at    TEXT DEFAULT (datetime('now')),
+            core_field_key TEXT,
+            is_core       INTEGER DEFAULT 0
+        );
+        INSERT INTO detail_fields_new ({cols_csv}) SELECT {cols_csv} FROM detail_fields;
+        DROP TABLE detail_fields;
+        ALTER TABLE detail_fields_new RENAME TO detail_fields;
+        """)
+        db.execute("PRAGMA foreign_keys = ON")
+        db.commit()
+
     # Migrate existing detail_fields → section_fields (run once)
     if db.execute("SELECT COUNT(*) FROM section_fields").fetchone()[0] == 0:
         rows = db.execute(
@@ -425,6 +456,51 @@ def migrate_db():
             )
         except Exception:
             pass
+    db.commit()
+
+    # ── Dedup: replace old German custom field_keys with core equivalents ──────
+    # Runs AFTER core seeding so core fields exist in detail_fields
+    _DEDUP_MAP = {
+        'seriennummer':   'serial_number',
+        'betriebssystem': 'operating_system',
+        'kaufdatum':      'purchase_date',
+        'garantie_bis':   'warranty_expiry',
+        'ip_adresse':     'ip_address',
+        'mac_adresse':    'mac_address',
+        'cpu':            'cpu_info',
+        'ram':            'ram_info',
+        'hersteller':     'manufacturer',
+        'modell':         'model',
+        'notizen':        'notes',
+        'standort':       'location_id',
+        'kategorie':      'category',
+        'status':         'status',
+    }
+    for old_key, core_key in _DEDUP_MAP.items():
+        old_f = db.execute(
+            "SELECT id FROM detail_fields WHERE field_key=? AND COALESCE(is_core,0)=0",
+            (old_key,)
+        ).fetchone()
+        core_f = db.execute(
+            "SELECT id FROM detail_fields WHERE field_key=? AND is_core=1",
+            (core_key,)
+        ).fetchone()
+        if old_f and core_f:
+            sf_rows = db.execute(
+                "SELECT id, section_id FROM section_fields WHERE field_id=?",
+                (old_f['id'],)
+            ).fetchall()
+            for sf in sf_rows:
+                conflict = db.execute(
+                    "SELECT id FROM section_fields WHERE section_id=? AND field_id=?",
+                    (sf['section_id'], core_f['id'])
+                ).fetchone()
+                if conflict:
+                    db.execute("DELETE FROM section_fields WHERE id=?", (sf['id'],))
+                else:
+                    db.execute("UPDATE section_fields SET field_id=? WHERE id=?",
+                               (core_f['id'], sf['id']))
+            db.execute("DELETE FROM detail_fields WHERE id=?", (old_f['id'],))
     db.commit()
 
 
