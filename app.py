@@ -1188,11 +1188,42 @@ def device_detail(device_id):
         )
         fields_by_section[s['id']] = [dict(row) for row in fields]
 
-    # For fields linked to core device columns, substitute the real device value
+    # Auto-map field_key to core device columns (works even without core_field_key set in DB)
+    FIELD_KEY_AUTO_MAP = {
+        'seriennummer':   'serial_number',
+        'serial_number':  'serial_number',
+        'betriebssystem': 'operating_system',
+        'operating_system': 'operating_system',
+        'kaufdatum':      'purchase_date',
+        'purchase_date':  'purchase_date',
+        'garantie_bis':   'warranty_expiry',
+        'warranty_expiry':'warranty_expiry',
+        'ip_adresse':     'ip_address',
+        'ip_address':     'ip_address',
+        'mac_adresse':    'mac_address',
+        'mac_address':    'mac_address',
+        'cpu':            'cpu_info',
+        'cpu_info':       'cpu_info',
+        'ram':            'ram_info',
+        'ram_info':       'ram_info',
+        'hersteller':     'manufacturer',
+        'manufacturer':   'manufacturer',
+        'modell':         'model',
+        'model':          'model',
+        'notizen':        'notes',
+        'notes':          'notes',
+        'standort':       'location_id',
+        'location_id':    'location_id',
+        'kategorie':      'category',
+        'category':       'category',
+        'status':         'status',
+        'name':           'name',
+    }
+
     device_dict = dict(device)
     for sid, fields in fields_by_section.items():
         for field in fields:
-            cfk = field.get('core_field_key') or ''
+            cfk = field.get('core_field_key') or FIELD_KEY_AUTO_MAP.get(field.get('field_key', ''), '')
             if not cfk:
                 continue
             field['is_core_linked'] = True
