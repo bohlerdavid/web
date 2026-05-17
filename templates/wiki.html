@@ -109,12 +109,24 @@ sudo apt install -y python3 python3-pip python3-venv git</pre>
 sudo su - itassets</pre>
 
             <h3>3. Anwendung herunterladen</h3>
-<pre># Als itassets-Benutzer (oder in /opt/itassets)
+<pre>sudo mkdir -p /opt/itassets
+sudo chown itassets:itassets /opt/itassets
+
+# Als itassets-Benutzer einloggen
+sudo su - itassets
+
 git clone https://github.com/bohlerdavid/web.git /opt/itassets
-cd /opt/itassets</pre>
+cd /opt/itassets
+
+# Aktuellen Branch auschecken
+git checkout claude/device-management-system-uQhWP</pre>
+
+            <div class="info-box"><i class="bi bi-info-circle me-2"></i><strong>Kein Git?</strong> Dateien können auch manuell per SCP/SFTP auf den Server kopiert werden:<br>
+<code>scp -r C:\Pfad\zu\it-verwaltung\* benutzer@SERVER-IP:/opt/itassets/</code></div>
 
             <h3>4. Python Virtual Environment erstellen</h3>
-<pre>python3 -m venv venv
+<pre>cd /opt/itassets
+python3 -m venv venv
 source venv/bin/activate</pre>
 
             <h3>5. Python-Pakete installieren</h3>
@@ -122,21 +134,19 @@ source venv/bin/activate</pre>
 pip install -r requirements.txt
 pip install gunicorn</pre>
 
-            <p>Inhalt der <code>requirements.txt</code>:</p>
-<pre>Flask==3.0.3
-Werkzeug==3.0.3
-python-nmap
-paramiko</pre>
-
             <div class="warn-box"><i class="bi bi-exclamation-triangle me-2"></i><strong>Hinweis:</strong> Das <code>wmi</code>-Paket ist nur unter Windows verfügbar. Auf Linux wird ausschliesslich SSH für Hardware-Abfragen verwendet.</div>
 
-            <h3>6. Datenbank initialisieren &amp; ersten Admin anlegen</h3>
+            <h3>6. Datenbank initialisieren</h3>
+            <p>Die Datenbank wird beim ersten Start der Anwendung <strong>automatisch</strong> erstellt. Ein Standard-Admin-Benutzer wird ebenfalls automatisch angelegt:</p>
+            <ul>
+                <li>Benutzername: <code>admin</code></li>
+                <li>Passwort: <code>Admin1234!</code></li>
+            </ul>
+            <div class="warn-box"><i class="bi bi-exclamation-triangle me-2"></i>Das Standard-Passwort <strong>sofort</strong> nach dem ersten Login ändern!</div>
+
+            <p>Möchtest du einen weiteren Benutzer vorab anlegen (nachdem die App einmal gestartet wurde):</p>
 <pre>source venv/bin/activate
-python create_user.py
-# Benutzername: admin
-# Vollständiger Name: Administrator
-# Passwort: (sicheres Passwort wählen)
-# Rolle: admin</pre>
+python create_user.py</pre>
         </div>
 
         <!-- Nginx + Gunicorn -->
@@ -146,10 +156,11 @@ python create_user.py
             <h3>1. Nginx installieren</h3>
 <pre>sudo apt install -y nginx</pre>
 
-            <h3>2. Gunicorn testen</h3>
+            <h3>2. Gunicorn testen (erster Start)</h3>
 <pre>cd /opt/itassets
 source venv/bin/activate
 gunicorn --bind 127.0.0.1:5000 app:app</pre>
+            <div class="info-box"><i class="bi bi-info-circle me-2"></i>Beim ersten Start wird die Datenbank <code>devices.db</code> automatisch erstellt und ein Admin-Benutzer (<code>admin</code> / <code>Admin1234!</code>) angelegt. Im Terminal erscheint eine entsprechende Meldung.</div>
 
             <h3>3. Nginx-Konfiguration erstellen</h3>
 <pre>sudo nano /etc/nginx/sites-available/itassets</pre>
