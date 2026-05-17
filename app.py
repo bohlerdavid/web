@@ -298,6 +298,7 @@ def migrate_db():
         ('field_width', "TEXT DEFAULT 'third'"),
         ('display_style', "TEXT DEFAULT 'stacked'"),
         ('field_height', 'INTEGER DEFAULT 1'),
+        ('core_field_key', 'TEXT'),
     ]
     for col, col_type in fields_new_cols:
         try:
@@ -1187,6 +1188,26 @@ def device_detail(device_id):
         )
         fields_by_section[s['id']] = [dict(row) for row in fields]
 
+    # For fields linked to core device columns, substitute the real device value
+    device_dict = dict(device)
+    for sid, fields in fields_by_section.items():
+        for field in fields:
+            cfk = field.get('core_field_key') or ''
+            if not cfk:
+                continue
+            field['is_core_linked'] = True
+            if cfk == 'location_id':
+                field['value'] = device_dict.get('location_name') or ''
+                field['field_type'] = 'text'
+            elif cfk == 'category':
+                field['value'] = CATEGORY_LABELS.get(device_dict.get('category', ''), device_dict.get('category', ''))
+                field['field_type'] = 'text'
+            elif cfk == 'status':
+                field['value'] = STATUS_LABELS.get(device_dict.get('status', ''), device_dict.get('status', ''))
+                field['field_type'] = 'text'
+            elif cfk in device_dict:
+                field['value'] = device_dict.get(cfk) or ''
+
     is_admin = session.get('role') == 'admin'
     locations = query_db("SELECT * FROM locations ORDER BY name")
     list_fields = query_db("SELECT id FROM detail_fields WHERE field_type='list'")
@@ -1969,6 +1990,44 @@ def layout_field_create():
     cur = db.execute(
         "INSERT INTO detail_fields (section_id, label, field_key, field_type, position) VALUES (?,?,?,?,?)",
         (section_id, label, field_key, field_type, max_pos + 1)
+    )
+    db.commit()
+    row = db.execute("SELECT * FROM detail_fields WHERE id=?", (cur.lastrowid,)).fetchone()
+    return jsonify(dict(row))
+
+
+@app.route('/layout/sections/<int:section_id>/add-core-field', methods=['POST'])
+@admin_required
+def layout_add_core_field(section_id):
+    if not validate_csrf_flexible():
+        return jsonify({'error': 'CSRF validation failed'}), 403
+    data = request.get_json() or {}
+    core_field_key = (data.get('core_field_key') or '').strip()
+    valid_keys = {cf['key'] for cf in CORE_FIELDS}
+    if core_field_key not in valid_keys:
+        return jsonify({'error': 'Ungültiger Systemfeld-Key'}), 400
+    cf_def = next(cf for cf in CORE_FIELDS if cf['key'] == core_field_key)
+    label = cf_def['label']
+    type_map = {'list': 'text', 'location': 'text', 'textarea': 'textarea', 'date': 'date', 'text': 'text'}
+    field_type = type_map.get(cf_def['type'], 'text')
+    db = get_db()
+    sec = db.execute("SELECT id FROM detail_sections WHERE id=?", (section_id,)).fetchone()
+    if not sec:
+        return jsonify({'error': 'Sektion nicht gefunden'}), 404
+    existing = db.execute(
+        "SELECT id FROM detail_fields WHERE section_id=? AND core_field_key=?",
+        (section_id, core_field_key)
+    ).fetchone()
+    if existing:
+        return jsonify({'error': f'Systemfeld "{label}" ist bereits in dieser Box vorhanden.'}), 400
+    max_pos = db.execute(
+        "SELECT COALESCE(MAX(position),0) FROM detail_fields WHERE section_id=?",
+        (section_id,)
+    ).fetchone()[0]
+    field_key = _make_field_key(label, db)
+    cur = db.execute(
+        "INSERT INTO detail_fields (section_id, label, field_key, field_type, position, core_field_key) VALUES (?,?,?,?,?,?)",
+        (section_id, label, field_key, field_type, max_pos + 1, core_field_key)
     )
     db.commit()
     row = db.execute("SELECT * FROM detail_fields WHERE id=?", (cur.lastrowid,)).fetchone()

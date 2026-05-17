@@ -119,18 +119,23 @@
   </div>
   <div class="section-body">
     <p class="text-muted mb-3" style="font-size:.82rem;">
-      Diese Felder sind fest im System und erscheinen in der oberen Gerätekarte.
+      Systemfelder zeigen die fest gespeicherten Gerätedaten (Seriennummer, Kaufdatum usw.).
+      Klicken Sie auf <strong>→ Zu Box</strong>, um ein Systemfeld in eine Box einzufügen.
       Dropdown-Optionen für <strong>Status</strong> und <strong>Kategorie</strong> können unter
       <a href="{{ url_for('settings_lists') }}">Einstellungen → Listen verwalten</a> angepasst werden.
     </p>
     <ul class="field-list" style="pointer-events:none;">
       {% for cf in core_fields %}
-      <li class="field-item" style="opacity:.85;">
+      <li class="field-item" style="opacity:1;pointer-events:auto;">
         <i class="bi bi-lock" style="font-size:.75rem;color:#94a3b8;flex-shrink:0;"></i>
         <span class="field-label-text ms-1">{{ cf['label'] }}</span>
         <span class="badge {% if cf['type'] == 'list' %}bg-primary{% elif cf['type'] == 'date' %}bg-success{% elif cf['type'] == 'textarea' %}bg-secondary{% else %}bg-secondary{% endif %} field-type-badge">
           {% if cf['type'] == 'list' %}Liste{% elif cf['type'] == 'date' %}Datum{% elif cf['type'] == 'textarea' %}Textarea{% elif cf['type'] == 'location' %}Standort{% else %}Text{% endif %}
         </span>
+        <button class="btn btn-sm btn-outline-primary ms-auto" style="padding:.15rem .45rem;font-size:.75rem;pointer-events:auto;"
+                onclick="openAddCoreFieldModal('{{ cf['key'] }}', '{{ cf['label'] }}')">
+          <i class="bi bi-arrow-right me-1"></i>Zu Box
+        </button>
       </li>
       {% endfor %}
     </ul>
@@ -161,6 +166,20 @@
   <div class="section-body">
     <ul class="field-list" id="field-list-{{ section['id'] }}" data-section-id="{{ section['id'] }}">
       {% for field in fields_by_section[section['id']] %}
+      {% if field['core_field_key'] %}
+      <li class="field-item" id="field-{{ field['id'] }}" data-field-id="{{ field['id'] }}" draggable="false">
+        <i class="bi bi-lock" style="font-size:.75rem;color:#94a3b8;flex-shrink:0;"></i>
+        <span class="field-label-text" id="field-label-{{ field['id'] }}">{{ field['label'] }}</span>
+        <span class="badge bg-info field-type-badge text-dark" style="font-size:.65rem;">Systemfeld</span>
+        <div class="field-actions">
+          <button class="btn btn-sm btn-outline-danger" style="padding:.2rem .45rem;"
+                  onclick="deleteField({{ field['id'] }}, '{{ field['label']|replace("'", "\\'") }}')"
+                  title="Entfernen">
+            <i class="bi bi-trash" style="font-size:.8rem;"></i>
+          </button>
+        </div>
+      </li>
+      {% else %}
       <li class="field-item" id="field-{{ field['id'] }}" data-field-id="{{ field['id'] }}" draggable="true">
         <span class="field-drag-handle" title="Ziehen zum Sortieren"><i class="bi bi-grip-vertical"></i></span>
         <span class="field-label-text" id="field-label-{{ field['id'] }}">{{ field['label'] }}</span>
@@ -178,15 +197,21 @@
           </button>
         </div>
       </li>
+      {% endif %}
       {% else %}
       <li class="text-muted text-center py-2" style="font-size:.85rem;" id="empty-{{ section['id'] }}">
         Noch keine Felder — fügen Sie unten ein Feld hinzu.
       </li>
       {% endfor %}
     </ul>
-    <button class="btn btn-sm btn-outline-primary" onclick="openNewFieldModal({{ section['id'] }})">
-      <i class="bi bi-plus me-1"></i>Feld hinzufügen
-    </button>
+    <div class="d-flex gap-2">
+      <button class="btn btn-sm btn-outline-primary" onclick="openNewFieldModal({{ section['id'] }})">
+        <i class="bi bi-plus me-1"></i>Feld hinzufügen
+      </button>
+      <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('addCoreFieldSection').value={{ section['id'] }};openAddCoreFieldModal('', '')">
+        <i class="bi bi-shield-lock me-1"></i>Systemfeld
+      </button>
+    </div>
   </div>
 </div>
 {% else %}
@@ -367,6 +392,48 @@
   </div>
 </div>
 
+<!-- ===== MODAL: Systemfeld zu Box hinzufügen ===== -->
+<div class="modal fade" id="addCoreFieldModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-shield-lock me-2 text-primary"></i>Systemfeld zu Box hinzufügen</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3" id="addCoreFieldPickRow">
+          <label class="form-label fw-semibold">Systemfeld <span class="text-danger">*</span></label>
+          <select id="addCoreFieldKey" class="form-select">
+            {% for cf in core_fields %}
+            <option value="{{ cf['key'] }}">{{ cf['label'] }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3" id="addCoreFieldFixedRow" style="display:none;">
+          <label class="form-label fw-semibold">Systemfeld</label>
+          <p class="mb-0"><strong id="addCoreFieldLabel"></strong></p>
+          <input type="hidden" id="addCoreFieldKeyFixed">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Ziel-Box <span class="text-danger">*</span></label>
+          <select id="addCoreFieldSection" class="form-select">
+            {% for section in sections %}
+            <option value="{{ section['id'] }}">{{ section['name'] }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div id="addCoreFieldError" class="alert alert-danger d-none"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+        <button type="button" class="btn btn-primary" onclick="submitAddCoreField()">
+          <i class="bi bi-check-lg me-1"></i>Hinzufügen
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
@@ -455,6 +522,39 @@ function deleteSection(id, name) {
     } else {
       alert('Fehler beim Löschen: ' + (data.error || 'Unbekannter Fehler'));
     }
+  });
+}
+
+// ── Core field modal ──────────────────────────────────────────────────────────
+function openAddCoreFieldModal(coreKey, coreLabel) {
+  hideError('addCoreFieldError');
+  const pickRow  = document.getElementById('addCoreFieldPickRow');
+  const fixedRow = document.getElementById('addCoreFieldFixedRow');
+  if (coreKey) {
+    // Pre-selected: show fixed label, hide dropdown
+    pickRow.style.display = 'none';
+    fixedRow.style.display = '';
+    document.getElementById('addCoreFieldKeyFixed').value = coreKey;
+    document.getElementById('addCoreFieldLabel').textContent = coreLabel;
+  } else {
+    // Free pick: show dropdown
+    pickRow.style.display = '';
+    fixedRow.style.display = 'none';
+  }
+  new bootstrap.Modal(document.getElementById('addCoreFieldModal')).show();
+}
+
+function submitAddCoreField() {
+  const pickRow = document.getElementById('addCoreFieldPickRow');
+  const core_field_key = pickRow.style.display === 'none'
+    ? document.getElementById('addCoreFieldKeyFixed').value
+    : document.getElementById('addCoreFieldKey').value;
+  const section_id = parseInt(document.getElementById('addCoreFieldSection').value);
+  hideError('addCoreFieldError');
+  apiFetch(`/layout/sections/${section_id}/add-core-field`, {core_field_key}).then(data => {
+    if (data.error) { showError('addCoreFieldError', data.error); return; }
+    bootstrap.Modal.getInstance(document.getElementById('addCoreFieldModal')).hide();
+    appendFieldItem(section_id, data, true);
   });
 }
 
@@ -568,15 +668,20 @@ function appendSectionCard(sec) {
           Noch keine Felder — fügen Sie unten ein Feld hinzu.
         </li>
       </ul>
-      <button class="btn btn-sm btn-outline-primary" onclick="openNewFieldModal(${sec.id})">
-        <i class="bi bi-plus me-1"></i>Feld hinzufügen
-      </button>
+      <div class="d-flex gap-2">
+        <button class="btn btn-sm btn-outline-primary" onclick="openNewFieldModal(${sec.id})">
+          <i class="bi bi-plus me-1"></i>Feld hinzufügen
+        </button>
+        <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('addCoreFieldSection').value=${sec.id};openAddCoreFieldModal('', '')">
+          <i class="bi bi-shield-lock me-1"></i>Systemfeld
+        </button>
+      </div>
     </div>`;
   list.appendChild(div);
   bindSectionDrag(div);
 }
 
-function appendFieldItem(sectionId, field) {
+function appendFieldItem(sectionId, field, isCoreLinked = false) {
   const ul = document.getElementById(`field-list-${sectionId}`);
   if (!ul) return;
   // Remove empty placeholder
@@ -587,8 +692,18 @@ function appendFieldItem(sectionId, field) {
   li.className = 'field-item';
   li.id = `field-${field.id}`;
   li.dataset.fieldId = field.id;
-  li.draggable = true;
-  li.innerHTML = `
+  li.draggable = !isCoreLinked;
+  const isCore = isCoreLinked || !!field.core_field_key;
+  li.innerHTML = isCore ? `
+    <i class="bi bi-lock field-drag-handle" style="font-size:.75rem;color:#94a3b8;"></i>
+    <span class="field-label-text" id="field-label-${field.id}">${field.label}</span>
+    <span class="badge bg-info field-type-badge text-dark" style="font-size:.65rem;">Systemfeld</span>
+    <div class="field-actions">
+      <button class="btn btn-sm btn-outline-danger" style="padding:.2rem .45rem;"
+              onclick="deleteField(${field.id}, '${field.label.replace(/'/g,"\\'")}')">
+        <i class="bi bi-trash" style="font-size:.8rem;"></i>
+      </button>
+    </div>` : `
     <span class="field-drag-handle" title="Ziehen zum Sortieren"><i class="bi bi-grip-vertical"></i></span>
     <span class="field-label-text" id="field-label-${field.id}">${field.label}</span>
     <span class="badge bg-secondary field-type-badge" id="field-type-${field.id}">${field.field_type}</span>
@@ -604,7 +719,7 @@ function appendFieldItem(sectionId, field) {
       </button>
     </div>`;
   ul.appendChild(li);
-  bindFieldDrag(li, ul);
+  if (!isCore) bindFieldDrag(li, ul);
 }
 
 // ── Drag & Drop: Sections ─────────────────────────────────────────────────────

@@ -579,6 +579,11 @@ body.core-edit-mode #coreEditPanel { display: block; }
 
             <!-- Edit input (shown in edit mode) -->
             <div class="field-edit-input" id="input_{{ field['id'] }}" style="display:none;">
+              {% if field.get('is_core_linked') %}
+              <div class="text-muted d-flex align-items-center gap-1" style="font-size:.78rem;padding:2px 0;">
+                <i class="bi bi-lock"></i>Systemfeld — über <em>Bearbeiten</em> editierbar
+              </div>
+              {% else %}
               {% set val = field['value'] %}
               {% if field['field_type'] == 'boolean' %}
                 <select name="field_{{ field['id'] }}" class="form-select form-select-sm" data-field-id="{{ field['id'] }}">
@@ -609,6 +614,7 @@ body.core-edit-mode #coreEditPanel { display: block; }
                 <input type="text" name="field_{{ field['id'] }}" class="form-control form-control-sm"
                        data-field-id="{{ field['id'] }}" value="{{ val or '' }}">
               {% endif %}
+              {% endif %}{# /is_core_linked #}
             </div>
 
           </div>
