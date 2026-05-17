@@ -475,6 +475,7 @@ def migrate_db():
         'standort':       'location_id',
         'kategorie':      'category',
         'status':         'status',
+        'hostname':       'name',
     }
     for old_key, core_key in _DEDUP_MAP.items():
         old_f = db.execute(
@@ -556,27 +557,29 @@ def init_db():
         # Seed default sections/fields if empty
         section_count = db.execute("SELECT COUNT(*) FROM detail_sections").fetchone()[0]
         if section_count == 0:
+            # Each field entry: (core_field_key_or_None, label, field_type, position)
+            # If core_field_key is set the existing core detail_fields row is reused via section_fields
             default_sections = [
                 ('Basisinformationen', 'bi-info-circle', 0, [
-                    ('Seriennummer', 'text', 0),
-                    ('Betriebssystem', 'text', 1),
-                    ('Kaufdatum', 'date', 2),
-                    ('Garantie bis', 'date', 3),
+                    ('serial_number',    'Seriennummer',  'text',     0),
+                    ('operating_system', 'Betriebssystem','text',     1),
+                    ('purchase_date',    'Kaufdatum',     'date',     2),
+                    ('warranty_expiry',  'Garantie bis',  'date',     3),
                 ]),
                 ('Netzwerk', 'bi-ethernet', 1, [
-                    ('IP-Adresse', 'text', 0),
-                    ('MAC-Adresse', 'text', 1),
-                    ('Hostname', 'text', 2),
+                    ('ip_address',  'IP-Adresse', 'text', 0),
+                    ('mac_address', 'MAC-Adresse','text', 1),
+                    ('name',        'Hostname',   'text', 2),
                 ]),
                 ('Hardware', 'bi-cpu', 2, [
-                    ('CPU', 'text', 0),
-                    ('RAM', 'text', 1),
-                    ('Festplatte', 'text', 2),
-                    ('Hersteller', 'text', 3),
-                    ('Modell', 'text', 4),
+                    ('cpu_info',     'CPU',       'text', 0),
+                    ('ram_info',     'RAM',       'text', 1),
+                    (None,           'Festplatte','text', 2),
+                    ('manufacturer', 'Hersteller','text', 3),
+                    ('model',        'Modell',    'text', 4),
                 ]),
                 ('Notizen', 'bi-journal-text', 3, [
-                    ('Notizen', 'textarea', 0),
+                    ('notes', 'Notizen', 'textarea', 0),
                 ]),
             ]
             for sec_name, sec_icon, sec_pos, fields in default_sections:
@@ -585,11 +588,31 @@ def init_db():
                     (sec_name, sec_icon, sec_pos)
                 )
                 sec_id = cur.lastrowid
-                for f_label, f_type, f_pos in fields:
+                for core_key, f_label, f_type, f_pos in fields:
+                    if core_key:
+                        field_row = db.execute(
+                            "SELECT id FROM detail_fields WHERE field_key=? AND is_core=1",
+                            (core_key,)
+                        ).fetchone()
+                        if field_row:
+                            db.execute(
+                                "INSERT OR IGNORE INTO section_fields (section_id, field_id, position) VALUES (?,?,?)",
+                                (sec_id, field_row['id'], f_pos)
+                            )
+                            continue
+                    # Custom field (no core equivalent)
                     f_key = _make_field_key(f_label, db)
+                    cur2 = db.execute(
+                        "INSERT INTO detail_fields (label, field_key, field_type, is_core) VALUES (?,?,?,0)",
+                        (f_label, f_key, f_type)
+                    )
+                    try:
+                        db.execute(f'ALTER TABLE devices ADD COLUMN "{f_key}" TEXT')
+                    except Exception:
+                        pass
                     db.execute(
-                        "INSERT INTO detail_fields (section_id, label, field_key, field_type, position) VALUES (?,?,?,?,?)",
-                        (sec_id, f_label, f_key, f_type, f_pos)
+                        "INSERT OR IGNORE INTO section_fields (section_id, field_id, position) VALUES (?,?,?)",
+                        (sec_id, cur2.lastrowid, f_pos)
                     )
             db.commit()
 
