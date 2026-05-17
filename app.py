@@ -2150,23 +2150,13 @@ def layout_field_update(field_id):
         return jsonify({'error': 'No data'}), 400
     label = (data.get('label') or '').strip()
     field_type = data.get('field_type', 'text')
-    section_id = data.get('section_id')
     if not label:
         return jsonify({'error': 'label required'}), 400
     db = get_db()
     field = db.execute("SELECT * FROM detail_fields WHERE id=?", (field_id,)).fetchone()
     if not field:
         abort(404)
-    if section_id:
-        db.execute(
-            "UPDATE detail_fields SET label=?, field_type=?, section_id=? WHERE id=?",
-            (label, field_type, section_id, field_id)
-        )
-    else:
-        db.execute(
-            "UPDATE detail_fields SET label=?, field_type=? WHERE id=?",
-            (label, field_type, field_id)
-        )
+    db.execute("UPDATE detail_fields SET label=?, field_type=? WHERE id=?", (label, field_type, field_id))
     db.commit()
     row = db.execute("SELECT * FROM detail_fields WHERE id=?", (field_id,)).fetchone()
     return jsonify(dict(row))
@@ -2175,6 +2165,7 @@ def layout_field_update(field_id):
 @app.route('/layout/fields/<int:field_id>/delete', methods=['POST'])
 @admin_required
 def layout_field_delete(field_id):
+    # Legacy stub — kept for backward compat; use /layout/section-fields/<sf_id>/delete instead
     db = get_db()
     field = db.execute("SELECT id FROM detail_fields WHERE id=?", (field_id,)).fetchone()
     if not field:
@@ -2184,19 +2175,85 @@ def layout_field_delete(field_id):
     return jsonify({'ok': True})
 
 
+@app.route('/layout/section-fields/<int:sf_id>/delete', methods=['POST'])
+@admin_required
+def layout_sf_delete(sf_id):
+    if not validate_csrf_flexible():
+        return jsonify({'error': 'CSRF validation failed'}), 403
+    db = get_db()
+    row = db.execute("SELECT field_id FROM section_fields WHERE id=?", (sf_id,)).fetchone()
+    if not row:
+        abort(404)
+    field_id = row['field_id']
+    db.execute("DELETE FROM section_fields WHERE id=?", (sf_id,))
+    # If custom field not used in any section anymore, also remove from detail_fields
+    still_used = db.execute("SELECT COUNT(*) FROM section_fields WHERE field_id=?", (field_id,)).fetchone()[0]
+    is_core = db.execute("SELECT COALESCE(is_core,0) FROM detail_fields WHERE id=?", (field_id,)).fetchone()
+    if still_used == 0 and is_core and not is_core[0]:
+        db.execute("DELETE FROM detail_fields WHERE id=?", (field_id,))
+    db.commit()
+    return jsonify({'ok': True})
+
+
+@app.route('/layout/section-fields/<int:sf_id>/field-width', methods=['POST'])
+@admin_required
+def sf_field_width(sf_id):
+    if not validate_csrf_flexible():
+        return jsonify({'error': 'CSRF validation failed'}), 403
+    data = request.get_json() or {}
+    fw = data.get('field_width', 'third')
+    if fw not in ('third', 'half', 'two-thirds', 'full'):
+        return jsonify({'error': 'invalid'}), 400
+    execute_db("UPDATE section_fields SET field_width=? WHERE id=?", (fw, sf_id))
+    return jsonify({'ok': True})
+
+
+@app.route('/layout/section-fields/<int:sf_id>/display-style', methods=['POST'])
+@admin_required
+def sf_display_style(sf_id):
+    if not validate_csrf_flexible():
+        return jsonify({'error': 'CSRF validation failed'}), 403
+    data = request.get_json() or {}
+    ds = data.get('display_style', 'stacked')
+    if ds not in ('stacked', 'inline'):
+        return jsonify({'error': 'invalid'}), 400
+    execute_db("UPDATE section_fields SET display_style=? WHERE id=?", (ds, sf_id))
+    return jsonify({'ok': True})
+
+
+@app.route('/layout/section-fields/<int:sf_id>/toggle-visible', methods=['POST'])
+@admin_required
+def sf_toggle_visible(sf_id):
+    if not validate_csrf_flexible():
+        return jsonify({'error': 'CSRF validation failed'}), 403
+    row = query_db("SELECT visible FROM section_fields WHERE id=?", (sf_id,), one=True)
+    if not row:
+        abort(404)
+    new_val = 0 if row['visible'] else 1
+    execute_db("UPDATE section_fields SET visible=? WHERE id=?", (new_val, sf_id))
+    return jsonify({'ok': True, 'visible': bool(new_val)})
+
+
+@app.route('/layout/section-fields/reorder', methods=['POST'])
+@admin_required
+def sf_reorder():
+    if not validate_csrf_flexible():
+        return jsonify({'error': 'CSRF validation failed'}), 403
+    data = request.get_json() or {}
+    order = data.get('order', [])
+    db = get_db()
+    for pos, sf_id in enumerate(order):
+        db.execute("UPDATE section_fields SET position=? WHERE id=?", (pos, sf_id))
+    db.commit()
+    return jsonify({'ok': True})
+
+
 @app.route('/layout/fields/reorder', methods=['POST'])
 @admin_required
 def layout_fields_reorder():
+    # Legacy stub — new code uses /layout/section-fields/reorder
     if not validate_csrf_flexible():
         return jsonify({'error': 'CSRF validation failed'}), 403
-    data = request.get_json()
-    if not data:
-        return jsonify({'error': 'No data'}), 400
-    field_ids = data.get('field_ids', [])
-    db = get_db()
-    for pos, fid in enumerate(field_ids):
-        db.execute("UPDATE detail_fields SET position=? WHERE id=?", (pos, fid))
-    db.commit()
     return jsonify({'ok': True})
 
 

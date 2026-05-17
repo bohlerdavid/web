@@ -539,7 +539,9 @@ body.core-edit-mode #coreEditPanel { display: block; }
           {% set ds_class = 'ds-inline' if field.get('display_style') == 'inline' else '' %}
           {% set fh_px = (field.get('field_height') or 1) * 60 %}
           <div class="field-item {{ fw_class }} {{ ds_class }}{% if not field['visible'] %} field-hidden{% endif %}"
-               data-field-id="{{ field['id'] }}"
+               data-field-id="{{ field['sf_id'] }}"
+               data-sf-id="{{ field['sf_id'] }}"
+               data-field-key="{{ field['field_key'] }}"
                data-field-width="{{ field.get('field_width','third') }}"
                data-display-style="{{ field.get('display_style','stacked') }}"
                data-field-height="{{ field.get('field_height', 1) }}"
@@ -553,8 +555,9 @@ body.core-edit-mode #coreEditPanel { display: block; }
 
             <!-- View value -->
             <div class="detail-value field-view-value"
-                 id="view_{{ field['id'] }}"
+                 id="view_{{ field['sf_id'] }}"
                  data-field-type="{{ field['field_type'] }}"
+                 data-field-key="{{ field['field_key'] }}"
                  data-value="{{ field['value'] or '' }}">
               {% set val = field['value'] %}
               {% if field['field_type'] == 'boolean' %}
@@ -569,52 +572,46 @@ body.core-edit-mode #coreEditPanel { display: block; }
                 {{ val or '—' }}
               {% endif %}
               {% if is_admin %}
-              <button class="field-quick-edit" onclick="startInlineEdit({{ field['id'] }})" title="Wert bearbeiten"><i class="bi bi-pencil-fill"></i></button>
+              <button class="field-quick-edit" onclick="startInlineEdit('{{ field['sf_id'] }}', '{{ field['field_key'] }}')" title="Wert bearbeiten"><i class="bi bi-pencil-fill"></i></button>
               {% endif %}
             </div>
 
             <!-- Resize handles (edit mode only) -->
-            <div class="field-height-handle" data-field-id="{{ field['id'] }}"></div>
-            <div class="field-width-handle"  data-field-id="{{ field['id'] }}"></div>
+            <div class="field-height-handle" data-field-id="{{ field['sf_id'] }}" data-field-key="{{ field['field_key'] }}"></div>
+            <div class="field-width-handle"  data-field-id="{{ field['sf_id'] }}" data-field-key="{{ field['field_key'] }}"></div>
 
             <!-- Edit input (shown in edit mode) -->
-            <div class="field-edit-input" id="input_{{ field['id'] }}" style="display:none;">
-              {% if field.get('is_core_linked') %}
-              <div class="text-muted d-flex align-items-center gap-1" style="font-size:.78rem;padding:2px 0;">
-                <i class="bi bi-lock"></i>Systemfeld — über <em>Bearbeiten</em> editierbar
-              </div>
-              {% else %}
+            <div class="field-edit-input" id="input_{{ field['sf_id'] }}" style="display:none;">
               {% set val = field['value'] %}
               {% if field['field_type'] == 'boolean' %}
-                <select name="field_{{ field['id'] }}" class="form-select form-select-sm" data-field-id="{{ field['id'] }}">
+                <select name="{{ field['field_key'] }}" class="form-select form-select-sm" data-field-key="{{ field['field_key'] }}">
                   <option value="" {% if not val %}selected{% endif %}>—</option>
                   <option value="1" {% if val == '1' %}selected{% endif %}>Ja</option>
                   <option value="0" {% if val == '0' %}selected{% endif %}>Nein</option>
                 </select>
               {% elif field['field_type'] == 'date' %}
-                <input type="date" name="field_{{ field['id'] }}" class="form-control form-control-sm"
-                       data-field-id="{{ field['id'] }}" value="{{ val or '' }}">
+                <input type="date" name="{{ field['field_key'] }}" class="form-control form-control-sm"
+                       data-field-key="{{ field['field_key'] }}" value="{{ val or '' }}">
               {% elif field['field_type'] == 'number' %}
-                <input type="number" name="field_{{ field['id'] }}" class="form-control form-control-sm"
-                       data-field-id="{{ field['id'] }}" value="{{ val or '' }}">
+                <input type="number" name="{{ field['field_key'] }}" class="form-control form-control-sm"
+                       data-field-key="{{ field['field_key'] }}" value="{{ val or '' }}">
               {% elif field['field_type'] == 'url' %}
-                <input type="url" name="field_{{ field['id'] }}" class="form-control form-control-sm"
-                       data-field-id="{{ field['id'] }}" value="{{ val or '' }}" placeholder="https://...">
+                <input type="url" name="{{ field['field_key'] }}" class="form-control form-control-sm"
+                       data-field-key="{{ field['field_key'] }}" value="{{ val or '' }}" placeholder="https://...">
               {% elif field['field_type'] == 'textarea' %}
-                <textarea name="field_{{ field['id'] }}" class="form-control form-control-sm" rows="3"
-                          data-field-id="{{ field['id'] }}">{{ val or '' }}</textarea>
+                <textarea name="{{ field['field_key'] }}" class="form-control form-control-sm" rows="3"
+                          data-field-key="{{ field['field_key'] }}">{{ val or '' }}</textarea>
               {% elif field['field_type'] == 'list' %}
-                <select name="field_{{ field['id'] }}" class="form-select form-select-sm" data-field-id="{{ field['id'] }}">
+                <select name="{{ field['field_key'] }}" class="form-select form-select-sm" data-field-key="{{ field['field_key'] }}">
                   <option value="">— Wählen —</option>
-                  {% for opt in list_options_by_field.get(field['id'], []) %}
+                  {% for opt in list_options_by_field.get(field['field_id'], []) %}
                   <option value="{{ opt['label'] }}" {% if val == opt['label'] %}selected{% endif %}>{{ opt['label'] }}</option>
                   {% endfor %}
                 </select>
               {% else %}
-                <input type="text" name="field_{{ field['id'] }}" class="form-control form-control-sm"
-                       data-field-id="{{ field['id'] }}" value="{{ val or '' }}">
+                <input type="text" name="{{ field['field_key'] }}" class="form-control form-control-sm"
+                       data-field-key="{{ field['field_key'] }}" value="{{ val or '' }}">
               {% endif %}
-              {% endif %}{# /is_core_linked #}
             </div>
 
           </div>
@@ -650,7 +647,8 @@ const CSRF = document.querySelector('meta[name="csrf-token"]').content;
 const DEVICE_ID = {{ device['id'] }};
 const LIST_OPTIONS = {{ list_options_json|safe }};
 let editMode = false;
-let activeFieldId = null;
+let activeSfId = null;
+let activeFieldId = null;  // kept for compat but now equals activeSfId
 let activeFieldEl = null;
 let activeSectionId = null;
 
@@ -668,7 +666,7 @@ function enterEdit() {
         el.onclick = function(e) {
             if (!editMode) return;
             if (['INPUT','SELECT','TEXTAREA','BUTTON'].includes(e.target.tagName)) return;
-            selectField(parseInt(this.dataset.fieldId), this);
+            selectField(parseInt(this.dataset.sfId || this.dataset.fieldId), this);
         };
     });
     selectField(null, null);
@@ -717,10 +715,11 @@ function getVisible(el) {
 }
 
 /* ── Active field selection ── */
-function selectField(fieldId, el) {
+function selectField(sfId, el) {
     if (activeFieldEl) activeFieldEl.classList.remove('field-active');
     document.querySelectorAll('.field-hdr-props').forEach(d => d.classList.remove('fhp-active'));
-    activeFieldId = fieldId;
+    activeSfId = sfId;
+    activeFieldId = sfId;  // kept for compat
     activeFieldEl = el;
     if (!el) {
         activeSectionId = null;
@@ -746,7 +745,7 @@ function selectField(fieldId, el) {
 
 /* ── Shared field toolbar actions ── */
 async function setActiveWidth(fw) {
-    if (!activeFieldEl || !activeFieldId) return;
+    if (!activeFieldEl || !activeSfId) return;
     activeFieldEl.classList.remove('fw-third','fw-half','fw-two-thirds','fw-full');
     activeFieldEl.classList.add('fw-' + fw);
     activeFieldEl.dataset.fieldWidth = fw;
@@ -754,7 +753,7 @@ async function setActiveWidth(fw) {
     const visible = getVisible(activeFieldEl);
     if (activeSectionId) syncFhpButtons(activeSectionId, fw, ds, visible);
     try {
-        await fetch(`/layout/fields/${activeFieldId}/field-width`, {
+        await fetch(`/layout/section-fields/${activeSfId}/field-width`, {
             method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},
             body: JSON.stringify({field_width: fw})
         });
@@ -762,7 +761,7 @@ async function setActiveWidth(fw) {
 }
 
 async function setActiveStyle(style) {
-    if (!activeFieldEl || !activeFieldId) return;
+    if (!activeFieldEl || !activeSfId) return;
     if (style === 'inline') activeFieldEl.classList.add('ds-inline');
     else activeFieldEl.classList.remove('ds-inline');
     activeFieldEl.dataset.displayStyle = style;
@@ -770,7 +769,7 @@ async function setActiveStyle(style) {
     const visible = getVisible(activeFieldEl);
     if (activeSectionId) syncFhpButtons(activeSectionId, fw, style, visible);
     try {
-        await fetch(`/layout/fields/${activeFieldId}/display-style`, {
+        await fetch(`/layout/section-fields/${activeSfId}/display-style`, {
             method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},
             body: JSON.stringify({display_style: style})
         });
@@ -778,9 +777,9 @@ async function setActiveStyle(style) {
 }
 
 async function toggleActiveVisible() {
-    if (!activeFieldEl || !activeFieldId) return;
+    if (!activeFieldEl || !activeSfId) return;
     try {
-        const r = await fetch(`/layout/fields/${activeFieldId}/toggle-visible`, {
+        const r = await fetch(`/layout/section-fields/${activeSfId}/toggle-visible`, {
             method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},
             body: JSON.stringify({})
         });
@@ -792,7 +791,7 @@ async function toggleActiveVisible() {
         const ds = activeFieldEl.dataset.displayStyle || 'stacked';
         if (activeSectionId) syncFhpButtons(activeSectionId, fw, ds, visible);
         // Update field picker panel if open
-        const chip = document.querySelector(`#fieldPickerBody [data-fid="${activeFieldId}"]`);
+        const chip = document.querySelector(`#fieldPickerBody [data-fid="${activeSfId}"]`);
         if (chip) {
             chip.classList.toggle('fp-on', visible);
             chip.classList.toggle('fp-off', !visible);
@@ -825,15 +824,15 @@ function buildFieldPicker() {
         secLabel.textContent = secName;
         secDiv.appendChild(secLabel);
         container.querySelectorAll('.field-item').forEach(item => {
-            const fid = item.dataset.fieldId;
-            const flabel = item.dataset.fieldLabel || fid;
+            const sfid = item.dataset.sfId || item.dataset.fieldId;
+            const flabel = item.dataset.fieldLabel || sfid;
             const visible = getVisible(item);
             const chip = document.createElement('div');
             chip.className = 'fp-chip ' + (visible ? 'fp-on' : 'fp-off');
-            chip.dataset.fid = fid;
+            chip.dataset.fid = sfid;
             chip.innerHTML = `<i class="${visible ? 'bi bi-eye' : 'bi bi-eye-slash'} fp-eye"></i><span>${flabel}</span>`;
             chip.onclick = async () => {
-                const r = await fetch(`/layout/fields/${fid}/toggle-visible`, {
+                const r = await fetch(`/layout/section-fields/${sfid}/toggle-visible`, {
                     method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},
                     body: JSON.stringify({})
                 });
@@ -845,7 +844,7 @@ function buildFieldPicker() {
                 chip.classList.toggle('fp-off', !v);
                 chip.querySelector('.fp-eye').className = v ? 'bi bi-eye fp-eye' : 'bi bi-eye-slash fp-eye';
                 // Also sync active field toolbar if this is the active field
-                if (activeFieldId === parseInt(fid)) {
+                if (activeSfId === parseInt(sfid)) {
                     const fw = item.dataset.fieldWidth || 'third';
                     const ds = item.dataset.displayStyle || 'stacked';
                     if (activeSectionId) syncFhpButtons(activeSectionId, fw, ds, v);
@@ -906,10 +905,11 @@ async function saveCoreDevice() {
 
 /* ── Save field values + core device data ── */
 async function saveFieldValues() {
-    // 1. Save core device data
     const name = document.getElementById('ce_name').value.trim();
     if (!name) { showToast('Gerätename ist erforderlich.', 'danger'); return; }
-    const corePayload = {
+
+    // Build one payload with core fields + all custom fields by field_key
+    const payload = {
         name,
         category:         document.getElementById('ce_category').value,
         status:           document.getElementById('ce_status').value,
@@ -926,36 +926,26 @@ async function saveFieldValues() {
         warranty_expiry:  document.getElementById('ce_warranty').value,
         notes:            document.getElementById('ce_notes').value.trim(),
     };
-    try {
-        const rc = await fetch(`/devices/${DEVICE_ID}/update`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
-            body: JSON.stringify(corePayload)
-        });
-        if (!rc.ok) { const d = await rc.json(); showToast(d.error || 'Fehler beim Speichern der Gerätedaten', 'danger'); return; }
-    } catch(e) { showToast('Netzwerkfehler: ' + e.message, 'danger'); return; }
 
-    // 2. Save custom field values
-    const values = {};
-    document.querySelectorAll('[data-field-id]').forEach(el => {
+    // Collect custom field values by field_key
+    document.querySelectorAll('[data-field-key]').forEach(el => {
         if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') {
-            values[el.dataset.fieldId] = el.value;
+            const fk = el.dataset.fieldKey;
+            if (fk) payload[fk] = el.value;
         }
     });
+
     try {
-        const r = await fetch(`/devices/${DEVICE_ID}/fields`, {
+        const r = await fetch(`/devices/${DEVICE_ID}/update`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
-            body: JSON.stringify(values)
+            body: JSON.stringify(payload)
         });
-        if (r.ok) {
-            showToast('Gespeichert — Seite wird aktualisiert…', 'success');
-            setTimeout(() => location.reload(), 800);
-        } else {
-            showToast('Fehler beim Speichern der Feldwerte', 'danger');
-        }
-    } catch (err) {
-        showToast('Netzwerkfehler: ' + err.message, 'danger');
+        if (!r.ok) { const d = await r.json(); showToast(d.error || 'Fehler beim Speichern', 'danger'); return; }
+        showToast('Gespeichert — Seite wird aktualisiert…', 'success');
+        setTimeout(() => location.reload(), 800);
+    } catch(e) {
+        showToast('Netzwerkfehler: ' + e.message, 'danger');
     }
 }
 
@@ -1050,12 +1040,14 @@ function initFieldDrag() {
 async function saveFieldOrder(sectionId) {
     const container = document.getElementById('fieldsContainer_' + sectionId);
     if (!container) return;
-    const field_ids = [...container.querySelectorAll('.field-item')].map(el => parseInt(el.dataset.fieldId));
+    const order = [...container.querySelectorAll('.field-item')].map(el =>
+        parseInt(el.dataset.sfId || el.dataset.fieldId)
+    );
     try {
-        await fetch('/layout/fields/reorder', {
+        await fetch('/layout/section-fields/reorder', {
             method: 'POST',
             headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
-            body: JSON.stringify({section_id: parseInt(sectionId), field_ids})
+            body: JSON.stringify({order})
         });
     } catch (e) { /* silently ignore */ }
 }
@@ -1084,12 +1076,12 @@ function initFieldHeightResize() {
     document.querySelectorAll('.field-height-handle').forEach(handle => {
         if (handle._hInit) return;
         handle._hInit = true;
-        let startY, startH, item, fieldId;
+        let startY, startH, item, sfId;
         handle.addEventListener('mousedown', e => {
             e.preventDefault();
             e.stopPropagation();
             item = handle.closest('.field-item');
-            fieldId = item.dataset.fieldId;
+            sfId = item.dataset.sfId || item.dataset.fieldId;
             startY = e.clientY;
             startH = item.offsetHeight;
             item.classList.add('resizing');
@@ -1110,7 +1102,7 @@ function initFieldHeightResize() {
             item.classList.remove('resizing');
             const units = parseInt(item.dataset.fieldHeight) || 1;
             try {
-                await fetch(`/layout/fields/${fieldId}/height`, {
+                await fetch(`/layout/fields/${sfId}/height`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
                     body: JSON.stringify({field_height: units})
@@ -1140,13 +1132,13 @@ function initFieldWidthResize() {
     document.querySelectorAll('.field-width-handle').forEach(handle => {
         if (handle._wInit) return;
         handle._wInit = true;
-        let item, fieldId, containerRect, currentSnap;
+        let item, sfId, containerRect, currentSnap;
 
         handle.addEventListener('mousedown', e => {
             e.preventDefault();
             e.stopPropagation();
             item = handle.closest('.field-item');
-            fieldId = item.dataset.fieldId;
+            sfId = item.dataset.sfId || item.dataset.fieldId;
             containerRect = item.closest('.fields-container').getBoundingClientRect();
             currentSnap = null;
             item.classList.add('resizing');
@@ -1182,7 +1174,7 @@ function initFieldWidthResize() {
                 if (activeSectionId) syncFhpButtons(activeSectionId, currentSnap.val, ds, visible);
             }
             try {
-                await fetch(`/layout/fields/${fieldId}/field-width`, {
+                await fetch(`/layout/section-fields/${sfId}/field-width`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
                     body: JSON.stringify({field_width: currentSnap.val})
@@ -1193,9 +1185,9 @@ function initFieldWidthResize() {
 }
 
 /* ── Inline value editing (normal view mode) ── */
-function startInlineEdit(fieldId) {
+function startInlineEdit(sfId, fieldKey) {
     if (editMode) return;
-    const viewEl = document.getElementById('view_' + fieldId);
+    const viewEl = document.getElementById('view_' + sfId);
     if (!viewEl || viewEl.dataset.editing) return;
     const fieldType = viewEl.dataset.fieldType || 'text';
     const currentVal = viewEl.dataset.value || '';
@@ -1274,34 +1266,42 @@ function startInlineEdit(fieldId) {
     input.focus();
     if (input.select) input.select();
 
-    saveBtn.onclick = () => commitInlineEdit(fieldId, input.value, fieldType, viewEl);
-    cancelBtn.onclick = () => revertInlineEdit(fieldId, viewEl);
+    const fKey = fieldKey || viewEl.dataset.fieldKey;
+    const sfIdVal = sfId;
+    saveBtn.onclick = () => commitInlineEdit(sfIdVal, fKey, input.value, fieldType, viewEl);
+    cancelBtn.onclick = () => revertInlineEdit(sfIdVal, viewEl);
     input.addEventListener('keydown', e => {
-        if (e.key === 'Enter' && fieldType !== 'textarea') { e.preventDefault(); commitInlineEdit(fieldId, input.value, fieldType, viewEl); }
-        if (e.key === 'Escape') revertInlineEdit(fieldId, viewEl);
+        if (e.key === 'Enter' && fieldType !== 'textarea') { e.preventDefault(); commitInlineEdit(sfIdVal, fKey, input.value, fieldType, viewEl); }
+        if (e.key === 'Escape') revertInlineEdit(sfIdVal, viewEl);
     });
 }
 
-async function commitInlineEdit(fieldId, value, fieldType, viewEl) {
+async function commitInlineEdit(sfId, fieldKey, value, fieldType, viewEl) {
     delete viewEl.dataset.editing;
+    // Build a minimal payload with name (required) + this field
+    const nameEl = document.getElementById('ce_name');
+    const nameVal = nameEl ? nameEl.value.trim() : '';
+    if (!nameVal) { revertInlineEdit(sfId, viewEl); showToast('Gerätename fehlt', 'danger'); return; }
+    const payload = {name: nameVal, [fieldKey]: value};
     try {
-        const r = await fetch(`/devices/${DEVICE_ID}/fields`, {
+        const r = await fetch(`/devices/${DEVICE_ID}/update`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
-            body: JSON.stringify({[fieldId]: value})
+            body: JSON.stringify(payload)
         });
         if (!r.ok) throw new Error();
         viewEl.dataset.value = value;
+        viewEl.dataset.fieldKey = fieldKey;
         viewEl.innerHTML = renderVal(value, fieldType) +
-            `<button class="field-quick-edit" onclick="startInlineEdit(${fieldId})" title="Wert bearbeiten"><i class="bi bi-pencil-fill"></i></button>`;
+            `<button class="field-quick-edit" onclick="startInlineEdit('${sfId}', '${fieldKey}')" title="Wert bearbeiten"><i class="bi bi-pencil-fill"></i></button>`;
         showToast('Gespeichert', 'success');
     } catch(e) {
-        revertInlineEdit(fieldId, viewEl);
+        revertInlineEdit(sfId, viewEl);
         showToast('Fehler beim Speichern', 'danger');
     }
 }
 
-function revertInlineEdit(fieldId, viewEl) {
+function revertInlineEdit(sfId, viewEl) {
     delete viewEl.dataset.editing;
     viewEl.innerHTML = viewEl.dataset.origHtml || '';
 }

@@ -166,32 +166,32 @@
   <div class="section-body">
     <ul class="field-list" id="field-list-{{ section['id'] }}" data-section-id="{{ section['id'] }}">
       {% for field in fields_by_section[section['id']] %}
-      {% if field['core_field_key'] %}
-      <li class="field-item" id="field-{{ field['id'] }}" data-field-id="{{ field['id'] }}" draggable="false">
+      {% if field['is_core'] %}
+      <li class="field-item" id="field-{{ field['sf_id'] }}" data-field-id="{{ field['sf_id'] }}" data-sf-id="{{ field['sf_id'] }}" draggable="false">
         <i class="bi bi-lock" style="font-size:.75rem;color:#94a3b8;flex-shrink:0;"></i>
-        <span class="field-label-text" id="field-label-{{ field['id'] }}">{{ field['label'] }}</span>
+        <span class="field-label-text" id="field-label-{{ field['sf_id'] }}">{{ field['label'] }}</span>
         <span class="badge bg-info field-type-badge text-dark" style="font-size:.65rem;">Systemfeld</span>
         <div class="field-actions">
           <button class="btn btn-sm btn-outline-danger" style="padding:.2rem .45rem;"
-                  onclick="deleteField({{ field['id'] }}, '{{ field['label']|replace("'", "\\'") }}')"
+                  onclick="deleteSfField({{ field['sf_id'] }}, '{{ field['label']|replace("'", "\\'") }}')"
                   title="Entfernen">
             <i class="bi bi-trash" style="font-size:.8rem;"></i>
           </button>
         </div>
       </li>
       {% else %}
-      <li class="field-item" id="field-{{ field['id'] }}" data-field-id="{{ field['id'] }}" draggable="true">
+      <li class="field-item" id="field-{{ field['sf_id'] }}" data-field-id="{{ field['sf_id'] }}" data-sf-id="{{ field['sf_id'] }}" draggable="true">
         <span class="field-drag-handle" title="Ziehen zum Sortieren"><i class="bi bi-grip-vertical"></i></span>
-        <span class="field-label-text" id="field-label-{{ field['id'] }}">{{ field['label'] }}</span>
-        <span class="badge bg-secondary field-type-badge" id="field-type-{{ field['id'] }}">{{ field['field_type'] }}</span>
+        <span class="field-label-text" id="field-label-{{ field['sf_id'] }}">{{ field['label'] }}</span>
+        <span class="badge bg-secondary field-type-badge" id="field-type-{{ field['sf_id'] }}">{{ field['field_type'] }}</span>
         <div class="field-actions">
           <button class="btn btn-sm btn-outline-secondary" style="padding:.2rem .45rem;"
-                  onclick="openEditFieldModal({{ field['id'] }}, '{{ field['label']|replace("'", "\\'") }}', '{{ field['field_type'] }}', {{ section['id'] }})"
+                  onclick="openEditFieldModal({{ field['field_id'] }}, '{{ field['label']|replace("'", "\\'") }}', '{{ field['field_type'] }}', {{ section['id'] }})"
                   title="Bearbeiten">
             <i class="bi bi-pencil" style="font-size:.8rem;"></i>
           </button>
           <button class="btn btn-sm btn-outline-danger" style="padding:.2rem .45rem;"
-                  onclick="deleteField({{ field['id'] }}, '{{ field['label']|replace("'", "\\'") }}')"
+                  onclick="deleteSfField({{ field['sf_id'] }}, '{{ field['label']|replace("'", "\\'") }}')"
                   title="Löschen">
             <i class="bi bi-trash" style="font-size:.8rem;"></i>
           </button>
@@ -623,10 +623,15 @@ function submitEditField() {
 }
 
 function deleteField(id, label) {
-  if (!confirm(`Feld "${label}" wirklich löschen?\nDadurch werden alle Feldwerte dieses Feldes für alle Geräte gelöscht!`)) return;
-  apiFetch(`/layout/fields/${id}/delete`, {}).then(data => {
+  // Legacy wrapper — prefer deleteSfField
+  deleteSfField(id, label);
+}
+
+function deleteSfField(sfId, label) {
+  if (!confirm(`Feld "${label}" aus dieser Box entfernen?`)) return;
+  apiFetch(`/layout/section-fields/${sfId}/delete`, {}).then(data => {
     if (data.ok) {
-      document.getElementById(`field-${id}`)?.remove();
+      document.getElementById(`field-${sfId}`)?.remove();
     } else {
       alert('Fehler beim Löschen: ' + (data.error || 'Unbekannter Fehler'));
     }
@@ -688,33 +693,36 @@ function appendFieldItem(sectionId, field, isCoreLinked = false) {
   const empty = document.getElementById(`empty-${sectionId}`);
   if (empty) empty.remove();
 
+  const sfId = field.sf_id || field.id;
+  const fieldId = field.id;
   const li = document.createElement('li');
   li.className = 'field-item';
-  li.id = `field-${field.id}`;
-  li.dataset.fieldId = field.id;
+  li.id = `field-${sfId}`;
+  li.dataset.fieldId = sfId;
+  li.dataset.sfId = sfId;
   li.draggable = !isCoreLinked;
-  const isCore = isCoreLinked || !!field.core_field_key;
+  const isCore = isCoreLinked || !!field.core_field_key || !!field.is_core;
   li.innerHTML = isCore ? `
     <i class="bi bi-lock field-drag-handle" style="font-size:.75rem;color:#94a3b8;"></i>
-    <span class="field-label-text" id="field-label-${field.id}">${field.label}</span>
+    <span class="field-label-text" id="field-label-${sfId}">${field.label}</span>
     <span class="badge bg-info field-type-badge text-dark" style="font-size:.65rem;">Systemfeld</span>
     <div class="field-actions">
       <button class="btn btn-sm btn-outline-danger" style="padding:.2rem .45rem;"
-              onclick="deleteField(${field.id}, '${field.label.replace(/'/g,"\\'")}')">
+              onclick="deleteSfField(${sfId}, '${field.label.replace(/'/g,"\\'")}')">
         <i class="bi bi-trash" style="font-size:.8rem;"></i>
       </button>
     </div>` : `
     <span class="field-drag-handle" title="Ziehen zum Sortieren"><i class="bi bi-grip-vertical"></i></span>
-    <span class="field-label-text" id="field-label-${field.id}">${field.label}</span>
-    <span class="badge bg-secondary field-type-badge" id="field-type-${field.id}">${field.field_type}</span>
+    <span class="field-label-text" id="field-label-${sfId}">${field.label}</span>
+    <span class="badge bg-secondary field-type-badge" id="field-type-${sfId}">${field.field_type}</span>
     <div class="field-actions">
       <button class="btn btn-sm btn-outline-secondary" style="padding:.2rem .45rem;"
-              onclick="openEditFieldModal(${field.id}, '${field.label.replace(/'/g,"\\'")}', '${field.field_type}', ${sectionId})"
+              onclick="openEditFieldModal(${fieldId}, '${field.label.replace(/'/g,"\\'")}', '${field.field_type}', ${sectionId})"
               title="Bearbeiten">
         <i class="bi bi-pencil" style="font-size:.8rem;"></i>
       </button>
       <button class="btn btn-sm btn-outline-danger" style="padding:.2rem .45rem;"
-              onclick="deleteField(${field.id}, '${field.label.replace(/'/g,"\\'")}')">
+              onclick="deleteSfField(${sfId}, '${field.label.replace(/'/g,"\\'")}')">
         <i class="bi bi-trash" style="font-size:.8rem;"></i>
       </button>
     </div>`;
@@ -806,10 +814,9 @@ function bindFieldDrag(li, ul) {
 }
 
 function saveFieldOrder(ul) {
-  const sectionId = ul.dataset.sectionId;
   const items = [...ul.querySelectorAll('.field-item')];
-  const field_ids = items.map(i => parseInt(i.dataset.fieldId));
-  apiFetch('/layout/fields/reorder', {section_id: parseInt(sectionId), field_ids});
+  const order = items.map(i => parseInt(i.dataset.sfId || i.dataset.fieldId));
+  apiFetch('/layout/section-fields/reorder', {order});
 }
 
 // ── Init: bind drag to existing elements ────────────────────────────────────
