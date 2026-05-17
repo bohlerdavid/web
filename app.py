@@ -330,6 +330,103 @@ def migrate_db():
     """)
     db.commit()
 
+    # ── section_fields table ──────────────────────────────────────────────────
+    db.executescript("""
+    CREATE TABLE IF NOT EXISTS section_fields (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        section_id    INTEGER NOT NULL REFERENCES detail_sections(id) ON DELETE CASCADE,
+        field_id      INTEGER NOT NULL REFERENCES detail_fields(id) ON DELETE CASCADE,
+        position      INTEGER DEFAULT 0,
+        visible       INTEGER DEFAULT 1,
+        field_width   TEXT DEFAULT 'third',
+        display_style TEXT DEFAULT 'stacked',
+        field_height  INTEGER DEFAULT 1,
+        UNIQUE(section_id, field_id)
+    );
+    """)
+    db.commit()
+
+    # Add is_core to detail_fields
+    try:
+        db.execute("ALTER TABLE detail_fields ADD COLUMN is_core INTEGER DEFAULT 0")
+        db.commit()
+    except Exception:
+        pass
+
+    # Migrate existing detail_fields → section_fields (run once)
+    if db.execute("SELECT COUNT(*) FROM section_fields").fetchone()[0] == 0:
+        rows = db.execute(
+            """SELECT id, section_id, position,
+               COALESCE(visible,1), COALESCE(field_width,'third'),
+               COALESCE(display_style,'stacked'), COALESCE(field_height,1)
+               FROM detail_fields WHERE section_id IS NOT NULL"""
+        ).fetchall()
+        for row in rows:
+            try:
+                db.execute(
+                    "INSERT OR IGNORE INTO section_fields (section_id, field_id, position, visible, field_width, display_style, field_height) VALUES (?,?,?,?,?,?,?)",
+                    (row[1], row[0], row[2], row[3], row[4], row[5], row[6])
+                )
+            except Exception:
+                pass
+        db.commit()
+
+    # Add columns to devices for existing custom fields
+    custom_rows = db.execute(
+        "SELECT field_key, field_type FROM detail_fields WHERE is_core=0 OR is_core IS NULL"
+    ).fetchall()
+    for cr in custom_rows:
+        fk, ftype = cr[0], cr[1]
+        col_type = 'INTEGER' if ftype == 'number' else 'TEXT'
+        try:
+            db.execute(f'ALTER TABLE devices ADD COLUMN "{fk}" {col_type}')
+            db.commit()
+        except Exception:
+            pass
+
+    # Migrate device_field_values → devices columns
+    try:
+        vals = db.execute(
+            "SELECT dfv.device_id, f.field_key, dfv.value FROM device_field_values dfv JOIN detail_fields f ON f.id=dfv.field_id"
+        ).fetchall()
+        for v in vals:
+            try:
+                db.execute(f'UPDATE devices SET "{v[1]}"=? WHERE id=?', (v[2], v[0]))
+            except Exception:
+                pass
+        db.commit()
+    except Exception:
+        pass
+
+    # Seed core fields in detail_fields
+    _CORE_FIELD_SEEDS = [
+        ('name',             'Gerätename',    'text'),
+        ('category',         'Kategorie',     'list'),
+        ('status',           'Status',        'list'),
+        ('serial_number',    'Seriennummer',  'text'),
+        ('operating_system', 'Betriebssystem','text'),
+        ('ip_address',       'IP-Adresse',    'text'),
+        ('mac_address',      'MAC-Adresse',   'text'),
+        ('manufacturer',     'Hersteller',    'text'),
+        ('model',            'Modell',        'text'),
+        ('cpu_info',         'CPU',           'text'),
+        ('ram_info',         'RAM',           'text'),
+        ('purchase_date',    'Kaufdatum',     'date'),
+        ('warranty_expiry',  'Garantie bis',  'date'),
+        ('location_id',      'Standort',      'location'),
+        ('notes',            'Notizen',       'textarea'),
+        ('created_at',       'Erstellt am',   'date'),
+    ]
+    for fk, lbl, ftype in _CORE_FIELD_SEEDS:
+        try:
+            db.execute(
+                "INSERT OR IGNORE INTO detail_fields (label, field_key, field_type, is_core) VALUES (?,?,?,1)",
+                (lbl, fk, ftype)
+            )
+        except Exception:
+            pass
+    db.commit()
+
 
 def _seed_system_lists(db):
     """Insert default Status and Kategorie options if not yet present."""
@@ -1170,77 +1267,48 @@ def device_detail(device_id):
         abort(404)
 
     sections = query_db("SELECT * FROM detail_sections ORDER BY position")
-    fields_by_section = {}
-    for s in sections:
-        fields = query_db(
-            """SELECT f.id, f.section_id, f.label, f.field_key, f.field_type,
-                      f.position, f.created_at,
-                      COALESCE(f.visible, 1) as visible,
-                      COALESCE(f.field_width, 'third') as field_width,
-                      COALESCE(f.display_style, 'stacked') as display_style,
-                      COALESCE(f.field_height, 1) as field_height,
-                      COALESCE(v.value,'') as value
-               FROM detail_fields f
-               LEFT JOIN device_field_values v ON v.field_id=f.id AND v.device_id=?
-               WHERE f.section_id=?
-               ORDER BY f.position""",
-            (device_id, s['id'])
-        )
-        fields_by_section[s['id']] = [dict(row) for row in fields]
-
-    # Auto-map field_key to core device columns (works even without core_field_key set in DB)
-    FIELD_KEY_AUTO_MAP = {
-        'seriennummer':   'serial_number',
-        'serial_number':  'serial_number',
-        'betriebssystem': 'operating_system',
-        'operating_system': 'operating_system',
-        'kaufdatum':      'purchase_date',
-        'purchase_date':  'purchase_date',
-        'garantie_bis':   'warranty_expiry',
-        'warranty_expiry':'warranty_expiry',
-        'ip_adresse':     'ip_address',
-        'ip_address':     'ip_address',
-        'mac_adresse':    'mac_address',
-        'mac_address':    'mac_address',
-        'cpu':            'cpu_info',
-        'cpu_info':       'cpu_info',
-        'ram':            'ram_info',
-        'ram_info':       'ram_info',
-        'hersteller':     'manufacturer',
-        'manufacturer':   'manufacturer',
-        'modell':         'model',
-        'model':          'model',
-        'notizen':        'notes',
-        'notes':          'notes',
-        'standort':       'location_id',
-        'location_id':    'location_id',
-        'kategorie':      'category',
-        'category':       'category',
-        'status':         'status',
-        'name':           'name',
-    }
-
     device_dict = dict(device)
-    for sid, fields in fields_by_section.items():
-        for field in fields:
-            cfk = field.get('core_field_key') or FIELD_KEY_AUTO_MAP.get(field.get('field_key', ''), '')
-            if not cfk:
-                continue
-            field['is_core_linked'] = True
-            if cfk == 'location_id':
-                field['value'] = device_dict.get('location_name') or ''
-                field['field_type'] = 'text'
-            elif cfk == 'category':
-                field['value'] = CATEGORY_LABELS.get(device_dict.get('category', ''), device_dict.get('category', ''))
-                field['field_type'] = 'text'
-            elif cfk == 'status':
-                field['value'] = STATUS_LABELS.get(device_dict.get('status', ''), device_dict.get('status', ''))
-                field['field_type'] = 'text'
-            elif cfk in device_dict:
-                field['value'] = device_dict.get(cfk) or ''
+    fields_by_section = {}
+
+    for s in sections:
+        rows = query_db(
+            """SELECT f.id as field_id, f.label, f.field_key, f.field_type,
+                      COALESCE(f.is_core,0) as is_core,
+                      sf.id as sf_id, sf.position,
+                      COALESCE(sf.visible, 1) as visible,
+                      COALESCE(sf.field_width, 'third') as field_width,
+                      COALESCE(sf.display_style, 'stacked') as display_style,
+                      COALESCE(sf.field_height, 1) as field_height
+               FROM section_fields sf
+               JOIN detail_fields f ON f.id = sf.field_id
+               WHERE sf.section_id = ?
+               ORDER BY sf.position""",
+            (s['id'],)
+        )
+        result = []
+        for row in rows:
+            f = dict(row)
+            fk = f['field_key']
+            # All values come from devices table
+            if fk == 'location_id':
+                f['value'] = device_dict.get('location_name') or ''
+                f['field_type'] = 'text'
+            elif fk == 'category':
+                f['value'] = CATEGORY_LABELS.get(device_dict.get('category', ''), device_dict.get('category', ''))
+                f['field_type'] = 'text'
+            elif fk == 'status':
+                f['value'] = STATUS_LABELS.get(device_dict.get('status', ''), device_dict.get('status', ''))
+                f['field_type'] = 'text'
+            else:
+                f['value'] = device_dict.get(fk) or ''
+            result.append(f)
+        fields_by_section[s['id']] = result
 
     is_admin = session.get('role') == 'admin'
     locations = query_db("SELECT * FROM locations ORDER BY name")
+    import json as _json
+
+    # List options for list-type fields
     list_fields = query_db("SELECT id FROM detail_fields WHERE field_type='list'")
     list_options_by_field = {}
     for lf in list_fields:
@@ -1249,11 +1317,16 @@ def device_detail(device_id):
             (lf['id'],)
         )
         list_options_by_field[lf['id']] = [dict(o) for o in opts]
-    import json as _json
     list_options_json = _json.dumps({str(k): v for k, v in list_options_by_field.items()})
-    core_visible = get_core_visible()
-    core_visible_json = _json.dumps(core_visible)
-    return render_template('device_detail.html', device=device,
+
+    # Get all custom fields (for edit form dynamic fields)
+    custom_fields_json = _json.dumps([
+        {'field_key': r['field_key'], 'label': r['label'], 'field_type': r['field_type']}
+        for r in query_db("SELECT field_key, label, field_type FROM detail_fields WHERE COALESCE(is_core,0)=0")
+    ])
+
+    return render_template('device_detail.html',
+                           device=device,
                            category_labels=CATEGORY_LABELS,
                            status_labels=STATUS_LABELS,
                            categories=CATEGORIES,
@@ -1263,8 +1336,6 @@ def device_detail(device_id):
                            fields_by_section=fields_by_section,
                            list_options_by_field=list_options_by_field,
                            list_options_json=list_options_json,
-                           core_visible=core_visible,
-                           core_visible_json=core_visible_json,
                            is_admin=is_admin)
 
 
@@ -1279,33 +1350,33 @@ def device_update_ajax(device_id):
     data = request.get_json() or {}
     name = (data.get('name') or '').strip()
     if not name:
-        return jsonify({'error': 'Gerätename ist erforderlich.'}), 400
-    execute_db(
-        """UPDATE devices SET
-           name=?, category=?, serial_number=?, mac_address=?, ip_address=?,
-           operating_system=?, status=?, location_id=?,
-           purchase_date=?, warranty_expiry=?, notes=?,
-           cpu_info=?, ram_info=?, manufacturer=?, model=?
-           WHERE id=?""",
-        (
-            name,
-            data.get('category', 'Other'),
-            data.get('serial_number', '').strip() or None,
-            data.get('mac_address', '').strip() or None,
-            data.get('ip_address', '').strip() or None,
-            data.get('operating_system', '').strip() or None,
-            data.get('status', 'active'),
-            data.get('location_id') or None,
-            data.get('purchase_date') or None,
-            data.get('warranty_expiry') or None,
-            data.get('notes', '').strip() or None,
-            data.get('cpu_info', '').strip() or None,
-            data.get('ram_info', '').strip() or None,
-            data.get('manufacturer', '').strip() or None,
-            data.get('model', '').strip() or None,
-            device_id,
-        )
-    )
+        return jsonify({'error': 'Name required'}), 400
+
+    db = get_db()
+
+    # Allowed core keys
+    ALLOWED_CORE = {
+        'category', 'status', 'location_id', 'serial_number', 'operating_system',
+        'mac_address', 'ip_address', 'manufacturer', 'model', 'cpu_info', 'ram_info',
+        'purchase_date', 'warranty_expiry', 'notes'
+    }
+    # All valid custom field keys from detail_fields
+    custom_keys = {
+        r[0] for r in db.execute(
+            "SELECT field_key FROM detail_fields WHERE COALESCE(is_core,0)=0"
+        ).fetchall()
+    }
+    allowed_keys = ALLOWED_CORE | custom_keys
+
+    updates = {'name': name}
+    for key, val in data.items():
+        if key in allowed_keys:
+            updates[key] = val or None
+
+    set_clause = ', '.join(f'"{k}"=?' for k in updates)
+    values = list(updates.values()) + [device_id]
+    db.execute(f'UPDATE devices SET {set_clause} WHERE id=?', values)
+    db.commit()
     return jsonify({'ok': True})
 
 
@@ -1807,28 +1878,9 @@ def scan_hardware_all():
 @app.route('/devices/<int:device_id>/fields', methods=['POST'])
 @login_required
 def device_save_fields(device_id):
+    # Stub: values are now saved via /devices/<id>/update
     if not validate_csrf_flexible():
         return jsonify({'error': 'CSRF validation failed'}), 403
-    device = query_db("SELECT id FROM devices WHERE id=?", (device_id,), one=True)
-    if not device:
-        abort(404)
-    if request.is_json:
-        data = request.get_json()
-    else:
-        data = request.form
-    if not data:
-        return jsonify({'error': 'No data'}), 400
-    db = get_db()
-    for field_id_str, value in data.items():
-        try:
-            field_id_int = int(field_id_str)
-        except (ValueError, TypeError):
-            continue
-        db.execute(
-            "INSERT OR REPLACE INTO device_field_values (device_id, field_id, value) VALUES (?,?,?)",
-            (device_id, field_id_int, str(value) if value is not None else '')
-        )
-    db.commit()
     return jsonify({'ok': True})
 
 
@@ -1842,11 +1894,16 @@ def layout_editor():
     sections = query_db("SELECT * FROM detail_sections ORDER BY position")
     fields_by_section = {}
     for s in sections:
-        fields = query_db(
-            "SELECT * FROM detail_fields WHERE section_id=? ORDER BY position",
+        rows = query_db(
+            """SELECT f.id as field_id, f.label, f.field_key, f.field_type,
+                      COALESCE(f.is_core,0) as is_core, sf.id as sf_id, sf.position
+               FROM section_fields sf
+               JOIN detail_fields f ON f.id = sf.field_id
+               WHERE sf.section_id = ?
+               ORDER BY sf.position""",
             (s['id'],)
         )
-        fields_by_section[s['id']] = fields
+        fields_by_section[s['id']] = [dict(r) for r in rows]
     return render_template('layout_editor.html', sections=sections,
                            fields_by_section=fields_by_section,
                            core_fields=CORE_FIELDS)
@@ -2001,6 +2058,8 @@ def layout_sections_reorder():
 @app.route('/layout/fields', methods=['POST'])
 @admin_required
 def layout_field_create():
+    if not validate_csrf_flexible():
+        return jsonify({'error': 'CSRF validation failed'}), 403
     data = request.get_json()
     if not data:
         return jsonify({'error': 'No data'}), 400
@@ -2013,18 +2072,30 @@ def layout_field_create():
     sec = db.execute("SELECT id FROM detail_sections WHERE id=?", (section_id,)).fetchone()
     if not sec:
         return jsonify({'error': 'Section not found'}), 404
-    max_pos = db.execute(
-        "SELECT COALESCE(MAX(position),0) FROM detail_fields WHERE section_id=?",
-        (section_id,)
-    ).fetchone()[0]
+
     field_key = _make_field_key(label, db)
+    col_type = 'INTEGER' if field_type == 'number' else 'TEXT'
+    try:
+        db.execute(f'ALTER TABLE devices ADD COLUMN "{field_key}" {col_type}')
+    except Exception:
+        pass  # column already exists
+
     cur = db.execute(
-        "INSERT INTO detail_fields (section_id, label, field_key, field_type, position) VALUES (?,?,?,?,?)",
-        (section_id, label, field_key, field_type, max_pos + 1)
+        "INSERT INTO detail_fields (label, field_key, field_type, is_core) VALUES (?,?,?,0)",
+        (label, field_key, field_type)
+    )
+    field_id = cur.lastrowid
+
+    max_pos = db.execute(
+        "SELECT COALESCE(MAX(position),0) FROM section_fields WHERE section_id=?", (section_id,)
+    ).fetchone()[0]
+    sf_cur = db.execute(
+        "INSERT INTO section_fields (section_id, field_id, position) VALUES (?,?,?)",
+        (section_id, field_id, max_pos + 1)
     )
     db.commit()
-    row = db.execute("SELECT * FROM detail_fields WHERE id=?", (cur.lastrowid,)).fetchone()
-    return jsonify(dict(row))
+    return jsonify({'ok': True, 'id': field_id, 'sf_id': sf_cur.lastrowid,
+                    'label': label, 'field_type': field_type, 'field_key': field_key})
 
 
 @app.route('/layout/sections/<int:section_id>/add-core-field', methods=['POST'])
@@ -2038,31 +2109,37 @@ def layout_add_core_field(section_id):
     if core_field_key not in valid_keys:
         return jsonify({'error': 'Ungültiger Systemfeld-Key'}), 400
     cf_def = next(cf for cf in CORE_FIELDS if cf['key'] == core_field_key)
-    label = cf_def['label']
-    type_map = {'list': 'text', 'location': 'text', 'textarea': 'textarea', 'date': 'date', 'text': 'text'}
-    field_type = type_map.get(cf_def['type'], 'text')
+
     db = get_db()
     sec = db.execute("SELECT id FROM detail_sections WHERE id=?", (section_id,)).fetchone()
     if not sec:
         return jsonify({'error': 'Sektion nicht gefunden'}), 404
+
+    field_row = db.execute("SELECT id FROM detail_fields WHERE field_key=?", (core_field_key,)).fetchone()
+    if not field_row:
+        return jsonify({'error': 'Systemfeld nicht in detail_fields gefunden'}), 404
+    field_id = field_row['id']
+
     existing = db.execute(
-        "SELECT id FROM detail_fields WHERE section_id=? AND core_field_key=?",
-        (section_id, core_field_key)
+        "SELECT id FROM section_fields WHERE section_id=? AND field_id=?", (section_id, field_id)
     ).fetchone()
     if existing:
-        return jsonify({'error': f'Systemfeld "{label}" ist bereits in dieser Box vorhanden.'}), 400
+        return jsonify({'error': f'Feld "{cf_def["label"]}" ist bereits in dieser Box vorhanden.'}), 400
+
     max_pos = db.execute(
-        "SELECT COALESCE(MAX(position),0) FROM detail_fields WHERE section_id=?",
-        (section_id,)
+        "SELECT COALESCE(MAX(position),0) FROM section_fields WHERE section_id=?", (section_id,)
     ).fetchone()[0]
-    field_key = _make_field_key(label, db)
-    cur = db.execute(
-        "INSERT INTO detail_fields (section_id, label, field_key, field_type, position, core_field_key) VALUES (?,?,?,?,?,?)",
-        (section_id, label, field_key, field_type, max_pos + 1, core_field_key)
+    sf_cur = db.execute(
+        "INSERT INTO section_fields (section_id, field_id, position) VALUES (?,?,?)",
+        (section_id, field_id, max_pos + 1)
     )
     db.commit()
-    row = db.execute("SELECT * FROM detail_fields WHERE id=?", (cur.lastrowid,)).fetchone()
-    return jsonify(dict(row))
+    type_map = {'list': 'text', 'location': 'text', 'textarea': 'textarea', 'date': 'date', 'text': 'text'}
+    return jsonify({
+        'ok': True, 'id': field_id, 'sf_id': sf_cur.lastrowid,
+        'label': cf_def['label'], 'field_type': type_map.get(cf_def['type'], 'text'),
+        'field_key': core_field_key, 'core_field_key': core_field_key
+    })
 
 
 @app.route('/layout/fields/<int:field_id>/update', methods=['POST'])
