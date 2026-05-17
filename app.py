@@ -431,7 +431,7 @@ def migrate_db():
 
     # Seed core fields in detail_fields
     _CORE_FIELD_SEEDS = [
-        ('name',             'Gerätename',    'text'),
+        ('name',             'Hostname',      'text'),
         ('category',         'Kategorie',     'list'),
         ('status',           'Status',        'list'),
         ('serial_number',    'Seriennummer',  'text'),
@@ -501,6 +501,12 @@ def migrate_db():
                     db.execute("UPDATE section_fields SET field_id=? WHERE id=?",
                                (core_f['id'], sf['id']))
             db.execute("DELETE FROM detail_fields WHERE id=?", (old_f['id'],))
+    db.commit()
+
+    # Rename 'Gerätename' → 'Hostname' for existing databases
+    db.execute(
+        "UPDATE detail_fields SET label='Hostname' WHERE field_key='name' AND label='Gerätename'"
+    )
     db.commit()
 
 
@@ -1120,7 +1126,7 @@ CATEGORY_LABELS = {
 }
 
 CORE_FIELDS = [
-    {'key': 'name',             'label': 'Gerätename',     'type': 'text'},
+    {'key': 'name',             'label': 'Hostname',       'type': 'text'},
     {'key': 'category',         'label': 'Kategorie',      'type': 'list'},
     {'key': 'status',           'label': 'Status',         'type': 'list'},
     {'key': 'serial_number',    'label': 'Seriennummer',   'type': 'text'},
@@ -1275,7 +1281,7 @@ def device_new():
     if request.method == 'POST':
         name      = request.form.get('name', '').strip()
         if not name:
-            flash('Gerätename ist erforderlich.', 'danger')
+            flash('Hostname ist erforderlich.', 'danger')
             return render_template('device_form.html', device=request.form,
                                    locations=locations,
                                    categories=CATEGORIES, statuses=STATUSES,
@@ -1467,7 +1473,7 @@ def device_edit(device_id):
     if request.method == 'POST':
         name = request.form.get('name', '').strip()
         if not name:
-            flash('Gerätename ist erforderlich.', 'danger')
+            flash('Hostname ist erforderlich.', 'danger')
             return render_template('device_form.html', device=request.form,
                                    locations=locations,
                                    categories=CATEGORIES, statuses=STATUSES,

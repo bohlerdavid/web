@@ -362,7 +362,7 @@ body.core-edit-mode #coreEditPanel { display: block; }
       <div id="coreEditPanel">
         <div class="row g-3">
           <div class="col-12 col-md-8">
-            <label class="form-label fw-semibold">Gerätename <span class="text-danger">*</span></label>
+            <label class="form-label fw-semibold">Hostname <span class="text-danger">*</span></label>
             <input type="text" id="ce_name" class="form-control" value="{{ device['name'] }}">
           </div>
           <div class="col-12 col-md-4">
@@ -871,7 +871,7 @@ function cancelCoreEdit() {
 
 async function saveCoreDevice() {
     const name = document.getElementById('ce_name').value.trim();
-    if (!name) { showToast('Gerätename ist erforderlich.', 'danger'); return; }
+    if (!name) { showToast('Hostname ist erforderlich.', 'danger'); return; }
     const payload = {
         name,
         category:      document.getElementById('ce_category').value,
@@ -906,7 +906,7 @@ async function saveCoreDevice() {
 /* ── Save field values + core device data ── */
 async function saveFieldValues() {
     const name = document.getElementById('ce_name').value.trim();
-    if (!name) { showToast('Gerätename ist erforderlich.', 'danger'); return; }
+    if (!name) { showToast('Hostname ist erforderlich.', 'danger'); return; }
 
     // Build one payload with core fields + all custom fields by field_key
     const payload = {
@@ -1281,7 +1281,7 @@ async function commitInlineEdit(sfId, fieldKey, value, fieldType, viewEl) {
     // Build a minimal payload with name (required) + this field
     const nameEl = document.getElementById('ce_name');
     const nameVal = nameEl ? nameEl.value.trim() : '';
-    if (!nameVal) { revertInlineEdit(sfId, viewEl); showToast('Gerätename fehlt', 'danger'); return; }
+    if (!nameVal) { revertInlineEdit(sfId, viewEl); showToast('Hostname fehlt', 'danger'); return; }
     const payload = {name: nameVal, [fieldKey]: value};
     try {
         const r = await fetch(`/devices/${DEVICE_ID}/update`, {
