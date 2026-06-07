@@ -485,7 +485,7 @@
     </div>
 
     <!-- ══ TAB: DACHFORM ══ -->
-    <div id="pane-dach" class="tab-pane" style="overflow-y:auto;padding:10px">
+    <div id="pane-dach" class="tab-pane" style="display:block;overflow-y:auto;padding:10px">
       <div class="panel-title">🏠 Dachform / Querschnitt</div>
       <div style="font-size:10px;color:#888;margin-bottom:8px;line-height:1.5">
         Definiere den Grundriss-Querschnitt als Vorlage.<br>
@@ -495,28 +495,36 @@
       <!-- SVG Preview -->
       <svg id="trap-preview" width="216" height="100" style="display:block;margin:0 auto 8px;background:#0f3460;border-radius:6px;border:1px solid #1a4a7a"></svg>
 
-      <div style="font-size:10px;color:#aaa;margin-bottom:4px;text-align:center">Seitenlängen (mm)</div>
-      <div class="dim-row" style="grid-template-columns:1fr 1fr;gap:6px">
+      <!-- Diagram -->
+      <div style="font-size:10px;color:#888;margin-bottom:2px;text-align:center">Leeres Feld = wird automatisch berechnet</div>
+      <svg id="trap-preview" width="216" height="110" style="display:block;margin:0 auto 6px;background:#0f3460;border-radius:6px;border:1px solid #1a4a7a"></svg>
+
+      <!-- 5-Wert Eingabe: S1, S2, H, S3, S4 — 4 von 5 genügen -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:4px">
         <div class="dim-cell">
-          <label>S1 — Unten</label>
+          <label>S1 — Unten (Traufe)</label>
           <input type="number" id="trap-s1" value="6000" min="0" step="100" oninput="calcMissingSide()">
         </div>
         <div class="dim-cell">
-          <label>S2 — Links ↑</label>
-          <input type="number" id="trap-s2" value="3000" min="0" step="100" oninput="calcMissingSide()">
+          <label>H — Firsthöhe</label>
+          <input type="number" id="trap-h" value="" min="0" step="100" placeholder="auto" oninput="calcMissingSide()">
         </div>
         <div class="dim-cell">
-          <label>S3 — Oben</label>
-          <input type="number" id="trap-s3" value="2000" min="0" step="100" oninput="calcMissingSide()">
+          <label>S2 — Links ↖</label>
+          <input type="number" id="trap-s2" value="4000" min="0" step="100" oninput="calcMissingSide()">
         </div>
         <div class="dim-cell">
           <label>S4 — Rechts ↗</label>
           <input type="number" id="trap-s4" value="" min="0" step="100" placeholder="auto" oninput="calcMissingSide()">
         </div>
+        <div class="dim-cell" style="grid-column:1/-1">
+          <label>S3 — Oben (First/Grat)</label>
+          <input type="number" id="trap-s3" value="0" min="0" step="100" oninput="calcMissingSide()">
+        </div>
       </div>
-      <div id="trap-info" style="font-size:10px;color:#4caf50;text-align:center;min-height:16px;margin:4px 0"></div>
+      <div id="trap-info" style="font-size:10px;color:#4caf50;text-align:center;min-height:16px;margin:2px 0"></div>
 
-      <div class="form-row" style="margin-top:6px">
+      <div class="form-row" style="margin-top:4px">
         <label>Gebäudetiefe</label>
         <input type="number" id="trap-depth" value="10000" min="100" step="100" oninput="updateRoofOutline()"> mm
       </div>
@@ -939,7 +947,8 @@ function showTab(name) {
   ['dach','balken','sel','list'].forEach(t => {
     document.getElementById('tab-' + t).classList.toggle('active', t === name);
     const pane = document.getElementById('pane-' + t);
-    pane.style.display = t === name ? 'flex' : 'none';
+    // list pane uses flex column, others use block scroll
+    pane.style.display = t === name ? (t === 'list' ? 'flex' : 'block') : 'none';
   });
 }
 
@@ -954,111 +963,192 @@ function setDims(b, h) {
 
 let roofMesh = null;
 
-function getTrapSides() {
-  return ['s1','s2','s3','s4'].map(id => {
-    const v = parseFloat(document.getElementById('trap-' + id).value);
-    return isNaN(v) || v <= 0 ? null : v;
-  });
+// Read a field — returns null if empty or zero (= needs calculation)
+function getV(id) {
+  const v = parseFloat(document.getElementById('trap-' + id).value);
+  return (isNaN(v) || v <= 0) ? null : v;
+}
+function setV(id, val) {
+  document.getElementById('trap-' + id).value = Math.round(val);
+}
+
+/*
+  Geometry (cross-section, viewed from end):
+    A=(0,0)  B=(s1,0)  C=(cx,H)  D=(dx,H)
+    S2 = |AD| = sqrt(dx²+H²)   → dx = sqrt(S2²-H²)
+    S3 = |DC| = cx - dx         → cx = dx + s3
+    S4 = |BC| = sqrt((s1-cx)²+H²)
+
+  5 unknowns: S1, S2, S3, S4, H
+  Need 4 known to solve the 5th.
+*/
+function solveRoof(inp) {
+  let {s1, s2, s3, s4, h} = inp;
+  s3 = s3 ?? 0; // default ridge = 0 (triangle)
+
+  // Helper: dx from S2 and H
+  const dx_of = (S2, H) => Math.sqrt(Math.max(0, S2*S2 - H*H));
+  // Helper: rx from S4 and H
+  const rx_of = (S4, H) => Math.sqrt(Math.max(0, S4*S4 - H*H));
+
+  const msgs = [];
+
+  if (h !== null && s2 !== null && s4 !== null && s1 !== null && s3 === 0 && inp.s3 === null) {
+    // compute S3
+    const dx = dx_of(s2, h), rx = rx_of(s4, h);
+    s3 = s1 - dx - rx;
+    msgs.push(`S3 = ${Math.round(s3)} mm`);
+  } else if (h !== null && s2 !== null && s4 === null) {
+    // compute S4
+    const dx = dx_of(s2, h);
+    const rx = s1 - dx - s3;
+    s4 = Math.sqrt(rx*rx + h*h);
+    msgs.push(`S4 = ${Math.round(s4)} mm`);
+  } else if (h !== null && s4 !== null && s2 === null) {
+    // compute S2
+    const rx = rx_of(s4, h);
+    const dx = s1 - rx - s3;
+    s2 = Math.sqrt(dx*dx + h*h);
+    msgs.push(`S2 = ${Math.round(s2)} mm`);
+  } else if (h !== null && s2 !== null && s1 === null) {
+    // compute S1
+    const dx = dx_of(s2, h), rx = rx_of(s4 ?? 0, h);
+    s1 = dx + s3 + rx;
+    msgs.push(`S1 = ${Math.round(s1)} mm`);
+  } else if (h === null && s1 !== null && s2 !== null && s4 !== null) {
+    // compute H numerically: dx(H)+s3+rx(H) = s1
+    // dx = sqrt(s2²-H²), rx = sqrt(s4²-H²)
+    // Binary search for H
+    const hMax = Math.min(s2, s4) * 0.9999;
+    let lo = 0, hi = hMax;
+    for (let i = 0; i < 60; i++) {
+      const mid = (lo + hi) / 2;
+      const val = Math.sqrt(Math.max(0, s2*s2 - mid*mid)) + s3 + Math.sqrt(Math.max(0, s4*s4 - mid*mid));
+      if (val > s1) lo = mid; else hi = mid;
+    }
+    h = (lo + hi) / 2;
+    msgs.push(`H = ${Math.round(h)} mm`);
+  } else if (h === null && s1 !== null && s2 !== null && s4 === null) {
+    // No H, no S4 — assume right-angle left side (H=S2), calc S4
+    h = s2;
+    const rx = s1 - s3;
+    s4 = Math.sqrt(rx*rx + h*h);
+    // Actually for right-angle left: lx=0, so:
+    // recalc: lx=sqrt(s2²-h²)=0 when h=s2, then rx=s1-s3
+    msgs.push(`S4 = ${Math.round(s4)} mm (Annahme: S2 senkrecht)`);
+  }
+
+  return { s1, s2, s3, s4, h, msgs };
 }
 
 function calcMissingSide() {
-  let [s1, s2, s3, s4] = getTrapSides();
+  const inp = {
+    s1: getV('s1'), s2: getV('s2'), s3: getV('s3'), s4: getV('s4'), h: getV('h')
+  };
+  const res = solveRoof(inp);
   const info = document.getElementById('trap-info');
-  const nulls = [s1,s2,s3,s4].filter(v => v === null).length;
 
-  if (nulls === 1) {
-    if (s4 === null && s1 && s2 && s3) {
-      s4 = Math.sqrt((s1-s3)**2 + s2**2);
-      document.getElementById('trap-s4').value = s4.toFixed(0);
-      info.textContent = `✓ S4 berechnet: ${s4.toFixed(0)} mm`;
-    } else if (s3 === null && s1 && s2 && s4) {
-      s3 = s1 - Math.sqrt(Math.max(0, s4**2 - s2**2));
-      document.getElementById('trap-s3').value = s3.toFixed(0);
-      info.textContent = `✓ S3 berechnet: ${s3.toFixed(0)} mm`;
-    } else if (s1 === null && s2 && s3 && s4) {
-      s1 = s3 + Math.sqrt(Math.max(0, s4**2 - s2**2));
-      document.getElementById('trap-s1').value = s1.toFixed(0);
-      info.textContent = `✓ S1 berechnet: ${s1.toFixed(0)} mm`;
-    } else if (s2 === null && s1 && s3 && s4) {
-      s2 = Math.sqrt(Math.max(0, s4**2 - (s1-s3)**2));
-      document.getElementById('trap-s2').value = s2.toFixed(0);
-      info.textContent = `✓ S2 berechnet: ${s2.toFixed(0)} mm`;
-    }
-  } else {
-    info.textContent = nulls > 1 ? '' : '';
-  }
+  if (res.s4 !== inp.s4 && res.s4 !== null) setV('s4', res.s4);
+  if (res.s2 !== inp.s2 && res.s2 !== null) setV('s2', res.s2);
+  if (res.s3 !== inp.s3 && res.s3 !== null) setV('s3', res.s3);
+  if (res.s1 !== inp.s1 && res.s1 !== null) setV('s1', res.s1);
+  if (res.h  !== inp.h  && res.h  !== null) setV('h',  res.h);
+
+  info.textContent = res.msgs.length ? '✓ Berechnet: ' + res.msgs.join(', ') : '';
+
   drawTrapPreview();
   updateRoofOutline();
 }
 
+// Compute final shape points (always called after solve)
+function getShapePoints() {
+  const s1 = getV('s1'), s2 = getV('s2'), s3 = getV('s3') ?? 0;
+  const s4 = getV('s4'), h  = getV('h');
+  if (!s1 || !s2) return null;
+
+  let H = h;
+  // If H unknown but we have s1,s2,s4 — was already solved; use s2 as fallback
+  if (!H) H = s2; // right-angle left side fallback
+
+  const dx = Math.sqrt(Math.max(0, s2*s2 - H*H)); // left horizontal run
+  const cx = dx + s3;                               // top-right x
+
+  return {
+    pts: [[0,0],[s1,0],[cx,H],[dx,H]],
+    H, dx, cx, s1, s2, s3,
+    s4: s4 || Math.sqrt((s1-cx)**2 + H**2)
+  };
+}
+
 function drawTrapPreview() {
   const svg = document.getElementById('trap-preview');
-  let [s1, s2, s3, s4] = getTrapSides();
-  if (!s1 || !s2) { svg.innerHTML = '<text x="108" y="55" fill="#555" font-size="11" text-anchor="middle">Werte eingeben…</text>'; return; }
-  s3 = s3 || 0;
-  const svgW = 216, svgH = 100, pad = 24;
-  const maxW = Math.max(s1, s3, 1);
-  const scaleX = (svgW - pad*2) / maxW;
-  const scaleY = (svgH - pad*2) / s2;
-  const sc = Math.min(scaleX, scaleY);
-  // Trapez: unten s1, links s2 (senkrecht), oben s3 (links-bündig), rechts schräg
-  const pts = [
-    [0,   0],
-    [s1,  0],
-    [s3, s2],
-    [0,  s2],
-  ].map(([x,y]) => `${pad + x*sc},${svgH - pad - y*sc}`).join(' ');
+  const g = getShapePoints();
+  if (!g) {
+    svg.innerHTML = '<text x="108" y="55" fill="#555" font-size="11" text-anchor="middle">Werte eingeben…</text>';
+    return;
+  }
+  const svgW = 216, svgH = 110, padX = 28, padY = 18;
+  const maxX = Math.max(...g.pts.map(p=>p[0]));
+  const maxY = Math.max(...g.pts.map(p=>p[1]));
+  const scX = (svgW - padX*2) / (maxX || 1);
+  const scY = (svgH - padY*2) / (maxY || 1);
+  const sc = Math.min(scX, scY);
+  const tx = x => padX + x * sc;
+  const ty = y => svgH - padY - y * sc;
 
-  const cx1 = pad + s1*sc/2, cy1 = svgH - pad + 11;
-  const cx4 = pad - 6,       cy4 = svgH - pad - s2*sc/2;
-  const cx3 = pad + s3*sc/2, cy3 = svgH - pad - s2*sc - 10;
-  const s4v = s4 ? Math.round(s4) : '?';
-  const cx2 = pad + (s1+s3)*sc/2 + 10, cy2 = svgH - pad - s2*sc/2;
+  const polyPts = g.pts.map(([x,y]) => `${tx(x)},${ty(y)}`).join(' ');
+
+  // Label positions
+  const midB  = [(g.pts[0][0]+g.pts[1][0])/2, -1];        // bottom mid, below
+  const midL  = [(g.pts[0][0]+g.pts[3][0])/2-2, (g.pts[0][1]+g.pts[3][1])/2]; // left mid
+  const midT  = [(g.pts[2][0]+g.pts[3][0])/2, g.H+1];     // top mid, above
+  const midR  = [(g.pts[1][0]+g.pts[2][0])/2+2, (g.pts[1][1]+g.pts[2][1])/2]; // right mid
+
+  const hLineY = ty(g.H/2);
+  const hLineX = tx(g.dx + g.s3 + (g.s1-g.cx)/2); // right of shape for H label
 
   svg.innerHTML = `
-    <polygon points="${pts}" fill="rgba(200,134,76,0.25)" stroke="#e94560" stroke-width="2"/>
-    <text x="${cx1}" y="${cy1}" fill="#ccc" font-size="10" text-anchor="middle">S1=${Math.round(s1)}</text>
-    <text x="${cx4}" y="${cy4}" fill="#ccc" font-size="10" text-anchor="end" dominant-baseline="middle">S2=${Math.round(s2)}</text>
-    <text x="${cx3}" y="${cy3}" fill="#ccc" font-size="10" text-anchor="middle">S3=${s3?Math.round(s3):0}</text>
-    <text x="${cx2}" y="${cy2}" fill="#aaa" font-size="10" dominant-baseline="middle">S4=${s4v}</text>
+    <polygon points="${polyPts}" fill="rgba(68,136,204,0.2)" stroke="#e94560" stroke-width="2"/>
+    <!-- S1 bottom -->
+    <text x="${tx(midB[0])}" y="${svgH-3}" fill="#ccc" font-size="9" text-anchor="middle">S1=${Math.round(g.s1)}</text>
+    <!-- S2 left -->
+    <text x="${tx(midL[0])-2}" y="${ty(midL[1])}" fill="#4caf50" font-size="9" text-anchor="end" dominant-baseline="middle">S2=${Math.round(g.s2)}</text>
+    <!-- S3 top -->
+    ${g.s3>0?`<text x="${tx(midT[0])}" y="${ty(g.H)+12}" fill="#ccc" font-size="9" text-anchor="middle">S3=${Math.round(g.s3)}</text>`:''}
+    <!-- S4 right -->
+    <text x="${tx(midR[0])+2}" y="${ty(midR[1])}" fill="#ff9800" font-size="9" dominant-baseline="middle">S4=${Math.round(g.s4)}</text>
+    <!-- H height arrow -->
+    <line x1="${tx(g.dx)}" y1="${ty(0)}" x2="${tx(g.dx)}" y2="${ty(g.H)}" stroke="#888" stroke-width="1" stroke-dasharray="3,2"/>
+    <text x="${tx(g.dx)-2}" y="${ty(g.H/2)}" fill="#888" font-size="9" text-anchor="end" dominant-baseline="middle">H=${Math.round(g.H)}</text>
   `;
 }
 
 function updateRoofOutline() {
-  calcMissingSide();
-  if (roofMesh) { scene.remove(roofMesh); roofMesh.geometry?.dispose(); roofMesh = null; }
+  if (roofMesh) {
+    roofMesh.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+    scene.remove(roofMesh);
+    roofMesh = null;
+  }
 
   const visible = document.getElementById('roof-visible').checked;
   if (!visible) return;
 
-  let [s1, s2, s3] = getTrapSides();
-  const depth = parseFloat(document.getElementById('trap-depth').value) || 10000;
-  if (!s1 || !s2) return;
-  s3 = s3 || 0;
+  const g = getShapePoints();
+  if (!g) return;
 
-  // Build cross-section shape (XY plane)
+  const depth = parseFloat(document.getElementById('trap-depth').value) || 10000;
+
   const shape = new THREE.Shape();
-  shape.moveTo(0, 0);
-  shape.lineTo(s1, 0);
-  shape.lineTo(s3, s2);
-  shape.lineTo(0, s2);
+  shape.moveTo(g.pts[0][0], g.pts[0][1]);
+  g.pts.slice(1).forEach(([x,y]) => shape.lineTo(x, y));
   shape.closePath();
 
   const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false });
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0x4488cc,
-    transparent: true,
-    opacity: 0.10,
-    side: THREE.DoubleSide,
-    depthWrite: false,
-  });
+  const mat = new THREE.MeshStandardMaterial({ color: 0x4488cc, transparent: true, opacity: 0.08, side: THREE.DoubleSide, depthWrite: false });
   roofMesh = new THREE.Mesh(geo, mat);
   roofMesh.userData.isRoof = true;
-
-  // Edge lines for clarity
-  const edgeMat = new THREE.LineBasicMaterial({ color: 0x4488cc, transparent: true, opacity: 0.6 });
+  const edgeMat = new THREE.LineBasicMaterial({ color: 0x4488cc, transparent: true, opacity: 0.7 });
   roofMesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat));
-
   scene.add(roofMesh);
 }
 
