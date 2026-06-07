@@ -706,10 +706,18 @@ controls.minDistance = 100;
 controls.maxDistance = 50000;
 // Mittlere Maustaste = Orbit, rechte Maustaste = Pan, Mausrad = Zoom
 controls.mouseButtons = {
-  LEFT: null,                  // linke Taste: Selektion/Drag (wir verwalten selbst)
-  MIDDLE: THREE.MOUSE.ROTATE,  // Mausrad gedrückt = Orbit/Drehen
-  RIGHT: null,                 // rechte Taste: Kontextmenü (kein OrbitControls-Pan)
+  LEFT: null,
+  MIDDLE: THREE.MOUSE.ROTATE,
+  RIGHT: null,
 };
+
+// Prevent browser autoscroll on middle mouse button so OrbitControls gets the events
+renderer.domElement.addEventListener('mousedown', e => {
+  if (e.button === 1) e.preventDefault();
+}, { passive: false });
+renderer.domElement.addEventListener('pointerdown', e => {
+  if (e.button === 1) e.preventDefault();
+}, { passive: false });
 
 // ── LIGHTING ──
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
