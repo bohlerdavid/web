@@ -704,20 +704,10 @@ controls.dampingFactor = 0.08;
 controls.screenSpacePanning = true;
 controls.minDistance = 100;
 controls.maxDistance = 50000;
-// Mittlere Maustaste = Orbit, rechte Maustaste = Pan, Mausrad = Zoom
-controls.mouseButtons = {
-  LEFT: null,
-  MIDDLE: THREE.MOUSE.ROTATE,
-  RIGHT: null,
-};
-
-// Prevent browser autoscroll on middle mouse button so OrbitControls gets the events
-renderer.domElement.addEventListener('mousedown', e => {
-  if (e.button === 1) e.preventDefault();
-}, { passive: false });
-renderer.domElement.addEventListener('pointerdown', e => {
-  if (e.button === 1) e.preventDefault();
-}, { passive: false });
+// OrbitControls nur für Zoom (Mausrad scrollen)
+// Orbit/Pan managen wir selbst über pointer-Events
+controls.mouseButtons = { LEFT: null, MIDDLE: null, RIGHT: null };
+controls.touches = { ONE: null, TWO: null };
 
 // ── LIGHTING ──
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
@@ -1180,7 +1170,7 @@ function setMode(mode) {
   document.getElementById('st-mode').textContent = { select:'Auswählen', move:'Verschieben', rotate:'Drehen' }[mode];
   const hint = document.getElementById('move-hint');
   hint.style.display = (mode === 'move') ? 'block' : 'none';
-  controls.enabled = (mode === 'select');
+  // controls managed via pointer events, not OrbitControls mode
 }
 
 // ══════════════════════════════════════════════
@@ -1221,134 +1211,183 @@ function resetCamera() {
 // MOUSE INTERACTION
 // ══════════════════════════════════════════════
 
-let isDragging = false;
+// ── Pointer state ──
+let isDragging = false;       // dragging a beam
+let isOrbiting = false;       // camera orbit with middle mouse
 let dragBeam = null;
 let dragOffset = new THREE.Vector3();
 let dragPlane = new THREE.Plane();
-let mouseDown = false;
-let mouseDownPos = { x: 0, y: 0 };
 let dragAltMode = false;
 let dragStartY = 0;
 let dragStartBeamY = 0;
+let orbitStart = { x: 0, y: 0 };
+let orbitSpherical = new THREE.Spherical();
+let panStart = { x: 0, y: 0 };
+let isPanning = false;
 
-renderer.domElement.addEventListener('mousedown', onMouseDown);
-renderer.domElement.addEventListener('mousemove', onMouseMove);
-renderer.domElement.addEventListener('mouseup', onMouseUp);
+// Use pointer events (works better cross-browser than mouse events)
+renderer.domElement.addEventListener('pointerdown', onPointerDown, { passive: false });
+renderer.domElement.addEventListener('pointermove', onPointerMove, { passive: false });
+renderer.domElement.addEventListener('pointerup',   onPointerUp);
+renderer.domElement.addEventListener('pointercancel', onPointerUp);
 renderer.domElement.addEventListener('dblclick', onDblClick);
 renderer.domElement.addEventListener('contextmenu', onContextMenu);
+renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
 document.addEventListener('click', closeCtxMenu);
 
-function getIntersects(event) {
+function getIntersects(clientX, clientY) {
   const rect = renderer.domElement.getBoundingClientRect();
-  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
   raycaster.setFromCamera(mouse, camera);
-  const meshes = beams.map(b => b.mesh);
-  return raycaster.intersectObjects(meshes, true);
+  return raycaster.intersectObjects(beams.map(b => b.mesh), true);
 }
 
-function getGroundIntersect(event) {
+function getGroundPoint(clientX, clientY) {
   const rect = renderer.domElement.getBoundingClientRect();
-  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
   raycaster.setFromCamera(mouse, camera);
   const target = new THREE.Vector3();
   raycaster.ray.intersectPlane(dragPlane, target);
   return target;
 }
 
-function onMouseDown(e) {
-  if (e.button !== 0) return;
-  mouseDown = true;
-  mouseDownPos = { x: e.clientX, y: e.clientY };
+function onPointerDown(e) {
+  e.preventDefault();
 
-  const hits = getIntersects(e);
+  // Middle mouse button → start orbit
+  if (e.button === 1) {
+    isOrbiting = true;
+    orbitStart.x = e.clientX;
+    orbitStart.y = e.clientY;
+    // snapshot current spherical coords
+    const offset = camera.position.clone().sub(controls.target);
+    orbitSpherical.setFromVector3(offset);
+    renderer.domElement.setPointerCapture(e.pointerId);
+    return;
+  }
+
+  // Right mouse → context menu handled in contextmenu event
+  if (e.button === 2) return;
+
+  // Left mouse button
+  if (e.button !== 0) return;
+
+  const hits = getIntersects(e.clientX, e.clientY);
   if (hits.length > 0) {
     let obj = hits[0].object;
     while (obj.parent && !obj.userData.beamId) obj = obj.parent;
     const beamId = obj.userData.beamId;
-    if (!beamId) return;
+    if (beamId) {
+      selectBeam(beamId);
+      updateUI();
 
-    selectBeam(beamId);
-    updateUI();
-
-    if (currentMode === 'move') {
+      // Start drag in move mode
       const beam = beams.find(b => b.id === beamId);
-      if (!beam) return;
-      isDragging = true;
-      dragBeam = beam;
-      dragAltMode = e.altKey; // Alt = Y-axis movement
-      controls.enabled = false;
-      dragStartY = e.clientY;
-      dragStartBeamY = beam.y;
+      if (beam) {
+        isDragging = true;
+        dragBeam = beam;
+        dragAltMode = e.altKey;
+        dragStartY = e.clientY;
+        dragStartBeamY = beam.y;
+        renderer.domElement.setPointerCapture(e.pointerId);
 
-      if (!dragAltMode) {
-        dragPlane.setFromNormalAndCoplanarPoint(
-          new THREE.Vector3(0, 1, 0),
-          beam.mesh.position
-        );
-        dragOffset.copy(beam.mesh.position).sub(hits[0].point);
+        if (!dragAltMode) {
+          dragPlane.setFromNormalAndCoplanarPoint(
+            new THREE.Vector3(0, 1, 0), beam.mesh.position
+          );
+          const groundPt = getGroundPoint(e.clientX, e.clientY);
+          if (groundPt) dragOffset.copy(beam.mesh.position).sub(groundPt);
+        }
       }
+      return;
     }
-  } else {
-    if (currentMode === 'select') selectBeam(null);
-    updateUI();
   }
+
+  // Clicked empty space → deselect
+  selectBeam(null);
+  updateUI();
 }
 
-function onMouseMove(e) {
+function onPointerMove(e) {
+  // Orbit camera with middle mouse
+  if (isOrbiting) {
+    const dx = (e.clientX - orbitStart.x) * 0.005;
+    const dy = (e.clientY - orbitStart.y) * 0.005;
+    orbitStart.x = e.clientX;
+    orbitStart.y = e.clientY;
+    const offset = camera.position.clone().sub(controls.target);
+    const sp = new THREE.Spherical().setFromVector3(offset);
+    sp.theta -= dx;
+    sp.phi   -= dy;
+    sp.phi = Math.max(0.05, Math.min(Math.PI - 0.05, sp.phi));
+    offset.setFromSpherical(sp);
+    camera.position.copy(controls.target).add(offset);
+    camera.lookAt(controls.target);
+    return;
+  }
+
+  // Drag beam
+  if (isDragging && dragBeam) {
+    if (dragAltMode || e.altKey) {
+      // Vertical mouse movement → Y axis
+      const dy = dragStartY - e.clientY;
+      dragBeam.y = snapValue(dragStartBeamY + dy * 2);
+    } else {
+      const pt = getGroundPoint(e.clientX, e.clientY);
+      if (pt) {
+        dragBeam.x = snapValue(pt.x + dragOffset.x - getBeamHalfW(dragBeam));
+        dragBeam.z = snapValue(pt.z + dragOffset.z - getBeamHalfD(dragBeam));
+      }
+    }
+    const hw = getBeamHalfW(dragBeam);
+    const hh = getBeamHalfH(dragBeam);
+    const hd = getBeamHalfD(dragBeam);
+    dragBeam.mesh.position.set(dragBeam.x + hw, dragBeam.y + hh, dragBeam.z + hd);
+    updateSelPanel();
+    return;
+  }
+
   // Hover tooltip
-  const hits = getIntersects(e);
+  const hits = getIntersects(e.clientX, e.clientY);
   const tooltip = document.getElementById('tooltip');
-  if (hits.length > 0 && currentMode === 'select') {
+  if (hits.length > 0) {
     let obj = hits[0].object;
     while (obj.parent && !obj.userData.beamId) obj = obj.parent;
     const b = beams.find(x => x.id === obj.userData.beamId);
     if (b) {
       tooltip.style.display = 'block';
-      tooltip.style.left = (e.clientX - viewport.getBoundingClientRect().left + 12) + 'px';
-      tooltip.style.top = (e.clientY - viewport.getBoundingClientRect().top + 12) + 'px';
+      const r = viewport.getBoundingClientRect();
+      tooltip.style.left = (e.clientX - r.left + 12) + 'px';
+      tooltip.style.top  = (e.clientY - r.top  + 12) + 'px';
       tooltip.textContent = `${b.name}\n${b.woodType}\n${b.L}×${b.B}×${b.H} mm\nPos: ${Math.round(b.x)},${Math.round(b.y)},${Math.round(b.z)}`;
+      return;
     }
-  } else {
-    tooltip.style.display = 'none';
   }
-
-  if (!isDragging || !dragBeam) return;
-
-  if (dragAltMode) {
-    // Alt held: move on Y axis based on vertical mouse movement
-    const dy = dragStartY - e.clientY; // up = positive
-    const sensitivity = 2;
-    dragBeam.y = snapValue(dragStartBeamY + dy * sensitivity);
-  } else {
-    const pt = getGroundIntersect(e);
-    if (!pt) return;
-    dragBeam.x = snapValue(pt.x + dragOffset.x - getBeamHalfW(dragBeam));
-    dragBeam.z = snapValue(pt.z + dragOffset.z - getBeamHalfD(dragBeam));
-  }
-
-  const hw = getBeamHalfW(dragBeam);
-  const hh = getBeamHalfH(dragBeam);
-  const hd = getBeamHalfD(dragBeam);
-  dragBeam.mesh.position.set(dragBeam.x + hw, dragBeam.y + hh, dragBeam.z + hd);
-  updateSelPanel();
+  tooltip.style.display = 'none';
 }
 
-function onMouseUp(e) {
+function onPointerUp(e) {
+  if (isOrbiting && e.button === 1) { isOrbiting = false; return; }
   if (isDragging) {
     isDragging = false;
     dragBeam = null;
-    controls.enabled = (currentMode === 'select');
     updateUI();
   }
-  mouseDown = false;
+}
+
+function onWheel(e) {
+  e.preventDefault();
+  // Zoom camera toward/away from target
+  const zoomFactor = e.deltaY > 0 ? 1.15 : 0.87;
+  const offset = camera.position.clone().sub(controls.target);
+  offset.multiplyScalar(zoomFactor);
+  camera.position.copy(controls.target).add(offset);
 }
 
 function onDblClick(e) {
-  if (currentMode === 'select') {
-    if (selectedId) resetCamera();
-  }
+  if (selectedId) resetCamera();
 }
 
 function onContextMenu(e) {
