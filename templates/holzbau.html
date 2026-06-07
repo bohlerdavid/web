@@ -388,6 +388,15 @@
   }
   .obj-item .obj-del:hover { color: #e94560; }
 
+  .ctx-item {
+    padding: 7px 14px;
+    font-size: 12px;
+    color: #ccc;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .ctx-item:hover { background: rgba(233,69,96,0.15); color: #fff; }
+
   .snap-indicator {
     position: absolute;
     bottom: 30px;
@@ -476,20 +485,60 @@
         <input type="text" id="beam-name" placeholder="z.B. Pfette" value="">
       </div>
 
-      <div style="font-size:10px;color:#888;margin-bottom:4px;text-align:center">Abmessungen (mm)</div>
-      <div class="dim-row">
-        <div class="dim-cell">
-          <label>Länge (L)</label>
-          <input type="number" id="dim-l" value="2000" min="1" step="10">
+      <div class="form-row">
+        <label>Form</label>
+        <select id="beam-shape" onchange="toggleShapeMode()">
+          <option value="rect">Rechteck</option>
+          <option value="trap">Freie Form (4 Seiten)</option>
+        </select>
+      </div>
+
+      <!-- RECHTECK -->
+      <div id="shape-rect">
+        <div style="font-size:10px;color:#888;margin-bottom:4px;text-align:center">Abmessungen (mm)</div>
+        <div class="dim-row">
+          <div class="dim-cell">
+            <label>Länge (L)</label>
+            <input type="number" id="dim-l" value="2000" min="1" step="10">
+          </div>
+          <div class="dim-cell">
+            <label>Breite (B)</label>
+            <input type="number" id="dim-b" value="80" min="1" step="5">
+          </div>
+          <div class="dim-cell">
+            <label>Höhe (H)</label>
+            <input type="number" id="dim-h" value="120" min="1" step="5">
+          </div>
         </div>
-        <div class="dim-cell">
-          <label>Breite (B)</label>
-          <input type="number" id="dim-b" value="80" min="1" step="5">
+      </div>
+
+      <!-- FREIE FORM / TRAPEZ -->
+      <div id="shape-trap" style="display:none">
+        <div style="font-size:10px;color:#888;margin-bottom:4px;text-align:center">Querschnitt (mm) — leer lassen = berechnen</div>
+        <svg id="trap-preview" width="220" height="90" style="display:block;margin:0 auto 6px;background:#0f3460;border-radius:4px"></svg>
+        <div class="dim-row" style="grid-template-columns:1fr 1fr">
+          <div class="dim-cell">
+            <label>S1 Unten</label>
+            <input type="number" id="trap-s1" value="200" min="0" step="5" oninput="calcMissingSide('s1')">
+          </div>
+          <div class="dim-cell">
+            <label>S2 Links ↑</label>
+            <input type="number" id="trap-s2" value="120" min="0" step="5" oninput="calcMissingSide('s2')">
+          </div>
+          <div class="dim-cell">
+            <label>S3 Oben</label>
+            <input type="number" id="trap-s3" value="120" min="0" step="5" oninput="calcMissingSide('s3')">
+          </div>
+          <div class="dim-cell">
+            <label>S4 Rechts ↗</label>
+            <input type="number" id="trap-s4" value="" min="0" step="5" placeholder="auto" oninput="calcMissingSide('s4')">
+          </div>
         </div>
-        <div class="dim-cell">
-          <label>Höhe (H)</label>
-          <input type="number" id="dim-h" value="120" min="1" step="5">
+        <div class="dim-cell" style="margin-bottom:6px">
+          <label>Tiefe (Länge)</label>
+          <input type="number" id="trap-depth" value="2000" min="1" step="10" style="width:100%;background:#0f3460;border:1px solid #1a4a7a;color:#e0e0e0;padding:4px;border-radius:4px;font-size:12px;text-align:center">
         </div>
+        <div id="trap-info" style="font-size:10px;color:#4caf50;text-align:center;margin-bottom:4px"></div>
       </div>
 
       <div class="form-row">
@@ -565,7 +614,7 @@
       <button class="view-btn" title="Zoom Reset" onclick="resetCamera()">⊡</button>
     </div>
     <div id="tooltip"></div>
-    <div id="move-hint">Pfeiltasten: Verschieben | PgUp/PgDn: Hoch/Tief | Esc: Abbrechen</div>
+    <div id="move-hint">Ziehen: XZ-Ebene | Alt+Ziehen: Höhe (Y) | Pfeiltasten: XZ | PgUp/PgDn: Y | Esc: Abbrechen</div>
     <div id="snap-indicator" class="snap-indicator on">Raster: EIN</div>
   </div>
 
@@ -584,6 +633,23 @@
   <span>Kamera: <strong id="st-cam">Isometrisch</strong></span>
   <span>Modus: <strong id="st-mode">Auswählen</strong></span>
   <span style="margin-left:auto;color:#555">Holzbau 3D · Strg+Z = Rückgängig · Entf = Löschen · F = Fokus</span>
+</div>
+
+<!-- ═══════════════════════════ KONTEXTMENÜ ═══════════════════════════ -->
+<div id="ctx-menu" style="display:none;position:fixed;z-index:500;background:#16213e;border:1px solid #e94560;border-radius:6px;min-width:170px;box-shadow:0 4px 20px rgba(0,0,0,0.5)">
+  <div style="padding:6px 10px;font-size:10px;color:#e94560;border-bottom:1px solid #0f3460;font-weight:600">OBJEKT DREHEN</div>
+  <div class="ctx-item" onclick="rotateSelected('x',90)">↻ X-Achse +90°</div>
+  <div class="ctx-item" onclick="rotateSelected('x',180)">↺ X-Achse 180°</div>
+  <div class="ctx-item" onclick="rotateSelected('y',90)">↻ Y-Achse +90°</div>
+  <div class="ctx-item" onclick="rotateSelected('y',180)">↺ Y-Achse 180°</div>
+  <div class="ctx-item" onclick="rotateSelected('z',90)">↻ Z-Achse +90°</div>
+  <div class="ctx-item" onclick="rotateSelected('z',180)">↺ Z-Achse 180°</div>
+  <div style="border-top:1px solid #0f3460;margin-top:2px"></div>
+  <div class="ctx-item" onclick="switchAxis('x')">→ Ausrichtung X</div>
+  <div class="ctx-item" onclick="switchAxis('y')">↑ Ausrichtung Y</div>
+  <div class="ctx-item" onclick="switchAxis('z')">↗ Ausrichtung Z</div>
+  <div style="border-top:1px solid #0f3460;margin-top:2px"></div>
+  <div class="ctx-item" style="color:#e94560" onclick="deleteSelected();closeCtxMenu()">✕ Löschen</div>
 </div>
 
 <!-- ═══════════════════════════ MODALS ═══════════════════════════ -->
@@ -635,9 +701,15 @@ camera.lookAt(0, 0, 0);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
-controls.screenSpacePanning = false;
+controls.screenSpacePanning = true;
 controls.minDistance = 100;
 controls.maxDistance = 50000;
+// Mittlere Maustaste = Orbit, rechte Maustaste = Pan, Mausrad = Zoom
+controls.mouseButtons = {
+  LEFT: null,                  // linke Taste: Selektion/Drag (wir verwalten selbst)
+  MIDDLE: THREE.MOUSE.ROTATE,  // Mausrad gedrückt = Orbit/Drehen
+  RIGHT: null,                 // rechte Taste: Kontextmenü (kein OrbitControls-Pan)
+};
 
 // ── LIGHTING ──
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
@@ -717,34 +789,147 @@ const mouse = new THREE.Vector2();
 // ══════════════════════════════════════════════
 
 function createBeamMesh(beam) {
-  let W, H, D; // Three.js box dimensions (x, y, z)
+  const color = WOOD_COLORS[beam.woodType] || 0xc8864c;
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.85, metalness: 0.0 });
+
+  let geo;
+  let W, H, D;
+
+  if (beam.shape === 'trap' && beam.sides) {
+    // Trapezoid cross-section extruded along axis
+    // sides: [s1(bottom), s2(left), s3(top), s4(right)]
+    const [s1, s2, s3, s4] = beam.sides;
+    const depth = beam.trapDepth || 2000;
+
+    // Shape points (cross-section in local XY, extruded along Z = depth axis):
+    // (0,0) → (s1,0) → (s1-(s1-s3),s2) → (0,s2)
+    // i.e. right side goes from (s1,0) to (s3,s2)
+    const shape = new THREE.Shape();
+    shape.moveTo(0, 0);
+    shape.lineTo(s1, 0);
+    shape.lineTo(s3, s2);
+    shape.lineTo(0, s2);
+    shape.closePath();
+
+    geo = new THREE.ExtrudeGeometry(shape, {
+      depth: depth,
+      bevelEnabled: false,
+    });
+
+    // Rotate/reposition based on axis
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.userData.beamId = beam.id;
+
+    if (beam.axis === 'x') {
+      // extrude is along Z by default; rotate so it runs along X
+      mesh.rotation.y = -Math.PI / 2;
+      mesh.position.set(beam.x + depth, beam.y, beam.z);
+    } else if (beam.axis === 'y') {
+      // run along Y
+      mesh.rotation.x = Math.PI / 2;
+      mesh.position.set(beam.x, beam.y + depth, beam.z + s2);
+    } else {
+      // Z-axis — default extrude direction
+      mesh.position.set(beam.x, beam.y, beam.z);
+    }
+
+    const edges = new THREE.EdgesGeometry(geo);
+    const lineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 });
+    mesh.add(new THREE.LineSegments(edges, lineMat));
+    return mesh;
+  }
+
+  // Standard rectangular beam
   if (beam.axis === 'x') { W = beam.L; H = beam.H; D = beam.B; }
   else if (beam.axis === 'y') { W = beam.B; H = beam.L; D = beam.H; }
-  else { W = beam.B; H = beam.H; D = beam.L; } // z-axis
+  else { W = beam.B; H = beam.H; D = beam.L; }
 
-  const geo = new THREE.BoxGeometry(W, H, D);
-  const color = WOOD_COLORS[beam.woodType] || 0xc8864c;
-
-  // Wood grain texture via vertex colors — simplified with material
-  const mat = new THREE.MeshStandardMaterial({
-    color: color,
-    roughness: 0.85,
-    metalness: 0.0,
-  });
-
+  geo = new THREE.BoxGeometry(W, H, D);
   const mesh = new THREE.Mesh(geo, mat);
   mesh.position.set(beam.x + W/2, beam.y + H/2, beam.z + D/2);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   mesh.userData.beamId = beam.id;
 
-  // Edge lines
   const edges = new THREE.EdgesGeometry(geo);
   const lineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 });
-  const lineSegs = new THREE.LineSegments(edges, lineMat);
-  mesh.add(lineSegs);
-
+  mesh.add(new THREE.LineSegments(edges, lineMat));
   return mesh;
+}
+
+// ── Trapez UI helpers ──
+
+function toggleShapeMode() {
+  const mode = document.getElementById('beam-shape').value;
+  document.getElementById('shape-rect').style.display = mode === 'rect' ? '' : 'none';
+  document.getElementById('shape-trap').style.display = mode === 'trap' ? '' : 'none';
+  if (mode === 'trap') { calcMissingSide(null); drawTrapPreview(); }
+}
+
+function getTrapSides() {
+  return ['s1','s2','s3','s4'].map(id => {
+    const v = parseFloat(document.getElementById('trap-' + id).value);
+    return isNaN(v) || v <= 0 ? null : v;
+  });
+}
+
+function calcMissingSide(changed) {
+  let [s1, s2, s3, s4] = getTrapSides();
+  const missing = [s1,s2,s3,s4].filter(v => v === null).length;
+  const info = document.getElementById('trap-info');
+
+  if (missing === 1) {
+    // right slant: s4 = sqrt((s1-s3)² + s2²)
+    if (s4 === null && s1 !== null && s2 !== null && s3 !== null) {
+      s4 = Math.sqrt((s1-s3)**2 + s2**2);
+      document.getElementById('trap-s4').value = s4.toFixed(1);
+      info.textContent = `S4 berechnet: ${s4.toFixed(1)} mm`;
+    } else if (s3 === null && s1 !== null && s2 !== null && s4 !== null) {
+      const diff = Math.sqrt(Math.max(0, s4**2 - s2**2));
+      s3 = s1 - diff;
+      document.getElementById('trap-s3').value = s3.toFixed(1);
+      info.textContent = `S3 berechnet: ${s3.toFixed(1)} mm`;
+    } else if (s1 === null && s2 !== null && s3 !== null && s4 !== null) {
+      const diff = Math.sqrt(Math.max(0, s4**2 - s2**2));
+      s1 = s3 + diff;
+      document.getElementById('trap-s1').value = s1.toFixed(1);
+      info.textContent = `S1 berechnet: ${s1.toFixed(1)} mm`;
+    } else if (s2 === null && s1 !== null && s3 !== null && s4 !== null) {
+      s2 = Math.sqrt(Math.max(0, s4**2 - (s1-s3)**2));
+      document.getElementById('trap-s2').value = s2.toFixed(1);
+      info.textContent = `S2 berechnet: ${s2.toFixed(1)} mm`;
+    }
+  } else if (missing === 0) {
+    info.textContent = '';
+  } else {
+    info.textContent = '';
+  }
+  drawTrapPreview();
+}
+
+function drawTrapPreview() {
+  const svg = document.getElementById('trap-preview');
+  let [s1, s2, s3, s4] = getTrapSides();
+  if (!s1 || !s2 || !s3) { svg.innerHTML = ''; return; }
+  const pad = 18;
+  const W = 220, H = 90;
+  const maxW = Math.max(s1, s3);
+  const scaleX = (W - pad*2) / maxW;
+  const scaleY = (H - pad*2) / s2;
+  const scale = Math.min(scaleX, scaleY);
+  // Points: bottom-left(0,s2), bottom-right(s1,s2), top-right(s3,0), top-left(0,0)
+  const pts = [
+    [0, s2], [s1, s2], [s3, 0], [0, 0]
+  ].map(([x, y]) => `${pad + x*scale},${pad + (s2 - y)*scale}`).join(' ');
+  svg.innerHTML = `
+    <polygon points="${pts}" fill="#c8864c" fill-opacity="0.7" stroke="#e94560" stroke-width="1.5"/>
+    <text x="${pad + s1*scale/2}" y="${H-4}" fill="#aaa" font-size="9" text-anchor="middle">S1=${s1}</text>
+    <text x="${pad - 2}" y="${pad + s2*scale/2}" fill="#aaa" font-size="9" text-anchor="end" dominant-baseline="middle">S2=${s2}</text>
+    <text x="${pad + s3*scale/2}" y="${pad - 3}" fill="#aaa" font-size="9" text-anchor="middle">S3=${s3}</text>
+    ${s4 ? `<text x="${pad + (s1+s3)*scale/2 + 8}" y="${pad + s2*scale/2}" fill="#aaa" font-size="9" dominant-baseline="middle">S4=${Math.round(s4*10)/10}</text>` : ''}
+  `;
 }
 
 function makeSelectionHighlight(mesh, on) {
@@ -760,31 +945,31 @@ function makeSelectionHighlight(mesh, on) {
 }
 
 function addBeam() {
-  const L = parseFloat(document.getElementById('dim-l').value) || 2000;
-  const B = parseFloat(document.getElementById('dim-b').value) || 80;
-  const H = parseFloat(document.getElementById('dim-h').value) || 120;
   const woodType = document.getElementById('wood-type').value;
   const axis = document.getElementById('beam-axis').value;
   let name = document.getElementById('beam-name').value.trim();
-  if (!name) name = `${woodType} ${L}×${B}×${H}`;
+  const shapeMode = document.getElementById('beam-shape').value;
 
-  const snapSize = parseFloat(document.getElementById('snap-size').value) || 100;
-
-  // Place at origin or snapped position
-  let x = 0, y = 0, z = 0;
-  if (snapEnabled) {
-    x = Math.round(x / snapSize) * snapSize;
-    y = Math.round(y / snapSize) * snapSize;
-    z = Math.round(z / snapSize) * snapSize;
+  let beam;
+  if (shapeMode === 'trap') {
+    calcMissingSide(null);
+    const [s1, s2, s3, s4] = getTrapSides();
+    if (!s1 || !s2 || !s3) { alert('Bitte mindestens S1, S2 und S3 eingeben.'); return; }
+    const depth = parseFloat(document.getElementById('trap-depth').value) || 2000;
+    if (!name) name = `${woodType} Trapez ${s1}/${s3}×${s2}`;
+    beam = { id: idCounter++, name, woodType, shape: 'trap', sides: [s1, s2, s3, s4 || Math.sqrt((s1-s3)**2+s2**2)], trapDepth: depth, L: depth, B: Math.max(s1,s3), H: s2, axis, x: 0, y: 0, z: 0, mesh: null };
+  } else {
+    const L = parseFloat(document.getElementById('dim-l').value) || 2000;
+    const B = parseFloat(document.getElementById('dim-b').value) || 80;
+    const H = parseFloat(document.getElementById('dim-h').value) || 120;
+    if (!name) name = `${woodType} ${L}×${B}×${H}`;
+    beam = { id: idCounter++, name, woodType, shape: 'rect', L, B, H, axis, x: 0, y: 0, z: 0, mesh: null };
   }
 
   pushHistory();
-
-  const beam = { id: idCounter++, name, woodType, L, B, H, axis, x, y, z, mesh: null };
   beam.mesh = createBeamMesh(beam);
   scene.add(beam.mesh);
   beams.push(beam);
-
   selectBeam(beam.id);
   updateUI();
 }
@@ -1034,11 +1219,16 @@ let dragOffset = new THREE.Vector3();
 let dragPlane = new THREE.Plane();
 let mouseDown = false;
 let mouseDownPos = { x: 0, y: 0 };
+let dragAltMode = false;
+let dragStartY = 0;
+let dragStartBeamY = 0;
 
 renderer.domElement.addEventListener('mousedown', onMouseDown);
 renderer.domElement.addEventListener('mousemove', onMouseMove);
 renderer.domElement.addEventListener('mouseup', onMouseUp);
 renderer.domElement.addEventListener('dblclick', onDblClick);
+renderer.domElement.addEventListener('contextmenu', onContextMenu);
+document.addEventListener('click', closeCtxMenu);
 
 function getIntersects(event) {
   const rect = renderer.domElement.getBoundingClientRect();
@@ -1079,14 +1269,18 @@ function onMouseDown(e) {
       if (!beam) return;
       isDragging = true;
       dragBeam = beam;
+      dragAltMode = e.altKey; // Alt = Y-axis movement
       controls.enabled = false;
+      dragStartY = e.clientY;
+      dragStartBeamY = beam.y;
 
-      // Drag on horizontal plane at beam's y position
-      dragPlane.setFromNormalAndCoplanarPoint(
-        new THREE.Vector3(0, 1, 0),
-        beam.mesh.position
-      );
-      dragOffset.copy(beam.mesh.position).sub(hits[0].point);
+      if (!dragAltMode) {
+        dragPlane.setFromNormalAndCoplanarPoint(
+          new THREE.Vector3(0, 1, 0),
+          beam.mesh.position
+        );
+        dragOffset.copy(beam.mesh.position).sub(hits[0].point);
+      }
     }
   } else {
     if (currentMode === 'select') selectBeam(null);
@@ -1114,13 +1308,17 @@ function onMouseMove(e) {
 
   if (!isDragging || !dragBeam) return;
 
-  const pt = getGroundIntersect(e);
-  if (!pt) return;
-
-  let nx = snapValue(pt.x + dragOffset.x - getBeamHalfW(dragBeam));
-  let nz = snapValue(pt.z + dragOffset.z - getBeamHalfD(dragBeam));
-  dragBeam.x = nx;
-  dragBeam.z = nz;
+  if (dragAltMode) {
+    // Alt held: move on Y axis based on vertical mouse movement
+    const dy = dragStartY - e.clientY; // up = positive
+    const sensitivity = 2;
+    dragBeam.y = snapValue(dragStartBeamY + dy * sensitivity);
+  } else {
+    const pt = getGroundIntersect(e);
+    if (!pt) return;
+    dragBeam.x = snapValue(pt.x + dragOffset.x - getBeamHalfW(dragBeam));
+    dragBeam.z = snapValue(pt.z + dragOffset.z - getBeamHalfD(dragBeam));
+  }
 
   const hw = getBeamHalfW(dragBeam);
   const hh = getBeamHalfH(dragBeam);
@@ -1141,9 +1339,63 @@ function onMouseUp(e) {
 
 function onDblClick(e) {
   if (currentMode === 'select') {
-    // Focus selected
     if (selectedId) resetCamera();
   }
+}
+
+function onContextMenu(e) {
+  e.preventDefault();
+  const hits = getIntersects(e);
+  if (hits.length > 0) {
+    let obj = hits[0].object;
+    while (obj.parent && !obj.userData.beamId) obj = obj.parent;
+    if (obj.userData.beamId) {
+      selectBeam(obj.userData.beamId);
+      updateUI();
+      const menu = document.getElementById('ctx-menu');
+      menu.style.display = 'block';
+      menu.style.left = e.clientX + 'px';
+      menu.style.top = e.clientY + 'px';
+      // keep menu on screen
+      const rect = menu.getBoundingClientRect();
+      if (rect.right > window.innerWidth) menu.style.left = (e.clientX - rect.width) + 'px';
+      if (rect.bottom > window.innerHeight) menu.style.top = (e.clientY - rect.height) + 'px';
+    }
+  }
+}
+
+function closeCtxMenu() {
+  document.getElementById('ctx-menu').style.display = 'none';
+}
+
+function rotateSelected(axis, deg) {
+  closeCtxMenu();
+  if (!selectedId) return;
+  const b = beams.find(x => x.id === selectedId);
+  if (!b) return;
+  pushHistory();
+  const rad = deg * Math.PI / 180;
+  b.mesh.rotation[axis] += rad;
+  // Sync axis change based on 90° rotation
+  if (deg === 90 || deg === -90) {
+    const map = { x: ['y','z','x'], y: ['z','x','y'], z: ['x','y','z'] };
+    // swap L/B/H when rotating 90°
+    if (axis === 'z') { const tmp = b.L; b.L = b.H; b.H = tmp; }
+    if (axis === 'x') { const tmp = b.H; b.H = b.B; b.B = tmp; }
+    if (axis === 'y') { const tmp = b.L; b.L = b.B; b.B = tmp; }
+  }
+  updateUI();
+}
+
+function switchAxis(newAxis) {
+  closeCtxMenu();
+  if (!selectedId) return;
+  const b = beams.find(x => x.id === selectedId);
+  if (!b) return;
+  pushHistory();
+  b.axis = newAxis;
+  rebuildMesh(b);
+  updateUI();
 }
 
 function getBeamHalfW(b) { return (b.axis === 'x' ? b.L : b.B) / 2; }
@@ -1371,6 +1623,8 @@ Object.assign(window, {
   setMode, toggleSnap, setView, resetCamera,
   newProject, saveProject, loadProject, loadFromModal, closeModal,
   exportStückliste, applyEdit, deleteBeam,
+  toggleShapeMode, calcMissingSide,
+  rotateSelected, switchAxis, closeCtxMenu,
 });
 </script>
 </body>
