@@ -960,71 +960,68 @@ function setV(id, val) {
 }
 
 /*
-  Grundriss (floor plan, top view) — trapezoid on the ground:
-    A=(0,0)  B=(s1,0)  C=(s1,s2)  D=(dx,s2)
-    Left side S2 is perpendicular (along Z).
-    Right side S4 = sqrt((s1-dx)²+s2²) where dx = s3's start offset.
-
-  Simplest well-defined shape:
-    A=(0,0), B=(s1,0), C=(s1,s2), D=(s1-s3_offset, s2)
-    where s3_offset = s3 (back wall length, left-aligned to right corner)
-
-  Actually:
-    A=(0,0)   front-left
-    B=(s1,0)  front-right
-    C=(s1,s2) back-right  (right wall S2 is perpendicular → 90° at B)
-    D=(s1-s3_x, s2) where s3_x = the back wall length measured from right
-
-  Hmm, let's just say:
-    A=(0,0), B=(s1,0), C=(cx,s2), D=(0,s2)
-    Left wall S2 = perpendicular → D=(0,s2)
-    Back wall S3 = |DC| → C=(s3,s2)
-    Right wall S4 = |BC| = sqrt((s1-s3)²+s2²)
-
-  So for a rectangle: s1=s3, s2=s4.
+  Grundriss (floor plan, top view) — general quadrilateral:
+    A=(0,0)    front-left
+    B=(s1,0)   front-right
+    C=(s1,s4)  back-right  (right wall S4 perpendicular to front)
+    D=(0,s2)   back-left   (left wall S2 perpendicular to front)
+    S3 = |DC| = sqrt(s1²+(s2-s4)²)  (back wall, diagonal if s2≠s4)
+  Rectangle when s2=s4.
 */
 function calcFloorPlan() {
+  // Geometry: A=(0,0) front-left, B=(s1,0) front-right,
+  //           C=(s1,s4) back-right, D=(0,s2) back-left
+  // Left wall S2 and right wall S4 are perpendicular to front.
+  // Back wall S3 = sqrt(s1²+(s2-s4)²)
   let s1 = getV('fp-s1'), s2 = getV('fp-s2'), s3 = getV('fp-s3'), s4 = getV('fp-s4');
   const info = document.getElementById('fp-info');
   const nullCount = [s1,s2,s3,s4].filter(v=>v===null).length;
 
   if (nullCount === 1) {
-    if (s4 === null && s1 && s2 && s3) {
-      s4 = Math.sqrt((s1-s3)**2 + s2**2);
-      setV('fp-s4', s4);
-      info.textContent = `✓ S4 berechnet: ${Math.round(s4)} mm`;
-    } else if (s3 === null && s1 && s2 && s4) {
-      const d = Math.sqrt(Math.max(0, s4**2 - s2**2));
-      s3 = s1 - d;
-      setV('fp-s3', s3);
+    if (s3 === null && s1 && s2 && s4 !== null) {
+      s4 = s4 ?? s2;
+      s3 = Math.sqrt(s1**2 + (s2 - s4)**2);
+      setV('fp-s3', Math.round(s3));
       info.textContent = `✓ S3 berechnet: ${Math.round(s3)} mm`;
-    } else if (s1 === null && s2 && s3 && s4) {
-      const d = Math.sqrt(Math.max(0, s4**2 - s2**2));
-      s1 = s3 + d;
-      setV('fp-s1', s1);
+    } else if (s4 === null && s1 && s2 && s3) {
+      const diff2 = s3**2 - s1**2;
+      if (diff2 < 0) { info.textContent = '⚠ S3 zu klein für S1'; return; }
+      s4 = s2 - Math.sqrt(diff2);
+      setV('fp-s4', Math.round(s4));
+      info.textContent = `✓ S4 berechnet: ${Math.round(s4)} mm`;
+    } else if (s1 === null && s2 && s3 && s4 !== null) {
+      s4 = s4 ?? s2;
+      const diff2 = s3**2 - (s2 - s4)**2;
+      if (diff2 < 0) { info.textContent = '⚠ Ungültige Masse'; return; }
+      s1 = Math.sqrt(diff2);
+      setV('fp-s1', Math.round(s1));
       info.textContent = `✓ S1 berechnet: ${Math.round(s1)} mm`;
-    } else if (s2 === null && s1 && s3 && s4) {
-      s2 = Math.sqrt(Math.max(0, s4**2 - (s1-s3)**2));
-      setV('fp-s2', s2);
+    } else if (s2 === null && s1 && s3 && s4 !== null) {
+      s4 = s4 ?? 0;
+      const diff2 = s3**2 - s1**2;
+      if (diff2 < 0) { info.textContent = '⚠ S3 zu klein für S1'; return; }
+      s2 = s4 + Math.sqrt(diff2);
+      setV('fp-s2', Math.round(s2));
       info.textContent = `✓ S2 berechnet: ${Math.round(s2)} mm`;
     }
   } else {
     info.textContent = '';
   }
 
-  drawFloorPreview(s1, s2, s3, s4);
-  updateFloorOutline(s1, s2, s3, s4);
+  // Default s4=s2 if not provided (rectangle)
+  const s4eff = s4 ?? s2;
+  drawFloorPreview(s1, s2, s3, s4eff);
+  updateFloorOutline(s1, s2, s3, s4eff);
 }
 
 function getFloorPoints(s1, s2, s3, s4) {
   s1 = s1 ?? getV('fp-s1');
   s2 = s2 ?? getV('fp-s2');
-  s3 = s3 ?? getV('fp-s3') ?? s1;
-  s4 = s4 ?? getV('fp-s4');
+  s4 = s4 ?? getV('fp-s4') ?? s2;
   if (!s1 || !s2) return null;
-  // A=(0,0), B=(s1,0), C=(s3,s2), D=(0,s2)
-  // left wall perpendicular, back wall starts from D
-  return { s1, s2, s3: s3||s1, s4, pts: [[0,0],[s1,0],[s3||s1,s2],[0,s2]] };
+  // A=(0,0), B=(s1,0), C=(s1,s4), D=(0,s2)
+  s3 = s3 ?? getV('fp-s3') ?? Math.sqrt(s1**2 + (s2 - s4)**2);
+  return { s1, s2, s3, s4, pts: [[0,0],[s1,0],[s1,s4],[0,s2]] };
 }
 
 function drawFloorPreview(s1, s2, s3, s4) {
@@ -1034,36 +1031,32 @@ function drawFloorPreview(s1, s2, s3, s4) {
     svg.innerHTML = '<text x="108" y="65" fill="#555" font-size="11" text-anchor="middle">Werte eingeben…</text>';
     return;
   }
-  const svgW=216, svgH=130, padX=30, padY=20;
+  const svgW=216, svgH=130, padX=36, padY=20;
   const maxX = Math.max(...g.pts.map(p=>p[0]));
   const maxY = Math.max(...g.pts.map(p=>p[1]));
   const sc = Math.min((svgW-padX*2)/(maxX||1), (svgH-padY*2)/(maxY||1));
-  // In SVG: X=right, Y=down. Floor plan: X=right, Z=up-in-SVG (= down in SVG coords)
   const tx = x => padX + x*sc;
-  const ty = y => svgH - padY - y*sc;
+  const ty = y => svgH - padY - y*sc;  // SVG Y inverted
 
   const poly = g.pts.map(([x,y])=>`${tx(x)},${ty(y)}`).join(' ');
-  const s4v = g.s4 ? Math.round(g.s4) : Math.round(Math.sqrt((g.s1-g.s3)**2+g.s2**2));
+  const s3v = Math.round(g.s3);
+  const m = 6; // right-angle mark size in pixels
 
-  // Compass label
   const labels = [
-    // S1 front (bottom of SVG)
-    `<text x="${tx(g.s1/2)}" y="${svgH-5}" fill="#ccc" font-size="10" text-anchor="middle">S1 Vorne = ${Math.round(g.s1)}</text>`,
-    // S2 left
+    `<text x="${tx(g.s1/2)}" y="${svgH-4}" fill="#aaa" font-size="10" text-anchor="middle">S1=${Math.round(g.s1)}</text>`,
     `<text x="${tx(0)-3}" y="${ty(g.s2/2)}" fill="#4caf50" font-size="10" text-anchor="end" dominant-baseline="middle">S2=${Math.round(g.s2)}</text>`,
-    // S3 back
-    `<text x="${tx(g.s3/2)}" y="${ty(g.s2)+12}" fill="#ccc" font-size="10" text-anchor="middle">S3 Hinten = ${Math.round(g.s3)}</text>`,
-    // S4 right (slant)
-    `<text x="${tx((g.s1+g.s3)/2)+4}" y="${ty(g.s2/2)}" fill="#ff9800" font-size="10" dominant-baseline="middle">S4=${s4v}</text>`,
-    // N arrow
-    `<text x="${svgW-8}" y="14" fill="#555" font-size="9" text-anchor="end">▲ Norden</text>`,
+    `<text x="${tx(g.s1)+3}" y="${ty(g.s4/2)}" fill="#ff9800" font-size="10" dominant-baseline="middle">S4=${Math.round(g.s4)}</text>`,
+    `<text x="${tx(g.s1/2)}" y="${ty(Math.max(g.s2,g.s4))+12}" fill="#aaa" font-size="10" text-anchor="middle">S3=${s3v}</text>`,
+    `<text x="${svgW-4}" y="14" fill="#555" font-size="9" text-anchor="end">▲N</text>`,
   ];
+
+  // Right-angle marks at A (front-left) and B (front-right)
+  const raA = `<polyline points="${tx(m)},${ty(0)} ${tx(m)},${ty(m)} ${tx(0)},${ty(m)}" fill="none" stroke="#555" stroke-width="1"/>`;
+  const raB = `<polyline points="${tx(g.s1-m)},${ty(0)} ${tx(g.s1-m)},${ty(m)} ${tx(g.s1)},${ty(m)}" fill="none" stroke="#555" stroke-width="1"/>`;
 
   svg.innerHTML = `
     <polygon points="${poly}" fill="rgba(68,136,204,0.18)" stroke="#e94560" stroke-width="2"/>
-    <!-- right angle marks at A and D -->
-    <polyline points="${tx(8)},${ty(0)} ${tx(8)},${ty(8)} ${tx(0)},${ty(8)}" fill="none" stroke="#555" stroke-width="1"/>
-    <polyline points="${tx(0)},${ty(g.s2-8)} ${tx(8)},${ty(g.s2-8)} ${tx(8)},${ty(g.s2)}" fill="none" stroke="#555" stroke-width="1"/>
+    ${raA}${raB}
     ${labels.join('')}
   `;
 }
@@ -1078,7 +1071,8 @@ function updateFloorOutline(s1, s2, s3, s4) {
   const visible = document.getElementById('floor-visible')?.checked ?? true;
   if (!visible) return;
 
-  const g = getFloorPoints(s1, s2, s3, s4);
+  const s4eff = s4 ?? getV('fp-s4') ?? s2 ?? getV('fp-s2');
+  const g = getFloorPoints(s1, s2, s3, s4eff);
   if (!g) return;
 
   // Build flat shape on XZ plane (Y=0), pts are [x, z]
