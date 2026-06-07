@@ -496,23 +496,28 @@
       <svg id="floor-preview" width="216" height="140" style="display:block;margin:0 auto 8px;background:#0f3460;border-radius:6px;border:1px solid #1a4a7a"></svg>
 
       <!-- Inputs: the 4 sides of the floor plan -->
+      <div style="font-size:10px;color:#aaa;margin-bottom:6px;line-height:1.4">
+        S2 und S4 stehen im rechten Winkel zu S1.<br>
+        S3 (Diagonale hinten) wird automatisch berechnet.
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:6px">
         <div class="dim-cell" style="grid-column:1/-1">
-          <label>S1 — Vorne (Breite)</label>
+          <label>S1 — Vorne (Breite) [mm]</label>
           <input type="number" id="fp-s1" value="8000" min="0" step="100" oninput="calcFloorPlan()">
         </div>
         <div class="dim-cell">
-          <label>S2 — Links (Tiefe)</label>
+          <label>S2 — Links (Tiefe) [mm]</label>
           <input type="number" id="fp-s2" value="6000" min="0" step="100" oninput="calcFloorPlan()">
         </div>
         <div class="dim-cell">
-          <label>S4 — Rechts</label>
-          <input type="number" id="fp-s4" value="" min="0" step="100" placeholder="auto" oninput="calcFloorPlan()">
+          <label>S4 — Rechts (Tiefe) [mm]</label>
+          <input type="number" id="fp-s4" value="" min="0" step="100" placeholder="= S2" oninput="calcFloorPlan()">
         </div>
         <div class="dim-cell" style="grid-column:1/-1">
-          <label>S3 — Hinten <span style="font-size:9px;color:#888">(wird berechnet)</span></label>
-          <input type="number" id="fp-s3" value="" min="0" step="100" placeholder="auto" readonly
-                 style="opacity:0.7;background:#1a1a2e" title="Wird aus S1/S2/S4 berechnet">
+          <label style="color:#888">S3 — Diagonale hinten [mm] <em style="font-size:9px">(berechnet)</em></label>
+          <input type="number" id="fp-s3" value="" min="0" step="100" placeholder="—" readonly
+                 style="color:#888;background:#111827;cursor:not-allowed" tabindex="-1"
+                 title="Wird automatisch aus S1/S2/S4 berechnet: sqrt(S1²+(S2-S4)²)">
         </div>
       </div>
       <div id="fp-info" style="font-size:10px;color:#4caf50;text-align:center;min-height:16px;margin:2px 0"></div>
