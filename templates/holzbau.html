@@ -503,15 +503,16 @@
         </div>
         <div class="dim-cell">
           <label>S2 — Links (Tiefe)</label>
-          <input type="number" id="fp-s2" value="10000" min="0" step="100" oninput="calcFloorPlan()">
+          <input type="number" id="fp-s2" value="6000" min="0" step="100" oninput="calcFloorPlan()">
         </div>
         <div class="dim-cell">
           <label>S4 — Rechts</label>
           <input type="number" id="fp-s4" value="" min="0" step="100" placeholder="auto" oninput="calcFloorPlan()">
         </div>
         <div class="dim-cell" style="grid-column:1/-1">
-          <label>S3 — Hinten (Breite)</label>
-          <input type="number" id="fp-s3" value="8000" min="0" step="100" oninput="calcFloorPlan()">
+          <label>S3 — Hinten <span style="font-size:9px;color:#888">(wird berechnet)</span></label>
+          <input type="number" id="fp-s3" value="" min="0" step="100" placeholder="auto" readonly
+                 style="opacity:0.7;background:#1a1a2e" title="Wird aus S1/S2/S4 berechnet">
         </div>
       </div>
       <div id="fp-info" style="font-size:10px;color:#4caf50;text-align:center;min-height:16px;margin:2px 0"></div>
@@ -971,47 +972,29 @@ function setV(id, val) {
 function calcFloorPlan() {
   // Geometry: A=(0,0) front-left, B=(s1,0) front-right,
   //           C=(s1,s4) back-right, D=(0,s2) back-left
-  // Left wall S2 and right wall S4 are perpendicular to front.
-  // Back wall S3 = sqrt(s1²+(s2-s4)²)
-  let s1 = getV('fp-s1'), s2 = getV('fp-s2'), s3 = getV('fp-s3'), s4 = getV('fp-s4');
+  // S3 = sqrt(s1²+(s2-s4)²) is always derived — it is readonly.
+  let s1 = getV('fp-s1'), s2 = getV('fp-s2'), s4 = getV('fp-s4');
   const info = document.getElementById('fp-info');
-  const nullCount = [s1,s2,s3,s4].filter(v=>v===null).length;
 
-  if (nullCount === 1) {
-    if (s3 === null && s1 && s2 && s4 !== null) {
-      s4 = s4 ?? s2;
-      s3 = Math.sqrt(s1**2 + (s2 - s4)**2);
-      setV('fp-s3', Math.round(s3));
-      info.textContent = `✓ S3 berechnet: ${Math.round(s3)} mm`;
-    } else if (s4 === null && s1 && s2 && s3) {
-      const diff2 = s3**2 - s1**2;
-      if (diff2 < 0) { info.textContent = '⚠ S3 zu klein für S1'; return; }
-      s4 = s2 - Math.sqrt(diff2);
-      setV('fp-s4', Math.round(s4));
-      info.textContent = `✓ S4 berechnet: ${Math.round(s4)} mm`;
-    } else if (s1 === null && s2 && s3 && s4 !== null) {
-      s4 = s4 ?? s2;
-      const diff2 = s3**2 - (s2 - s4)**2;
-      if (diff2 < 0) { info.textContent = '⚠ Ungültige Masse'; return; }
-      s1 = Math.sqrt(diff2);
-      setV('fp-s1', Math.round(s1));
-      info.textContent = `✓ S1 berechnet: ${Math.round(s1)} mm`;
-    } else if (s2 === null && s1 && s3 && s4 !== null) {
-      s4 = s4 ?? 0;
-      const diff2 = s3**2 - s1**2;
-      if (diff2 < 0) { info.textContent = '⚠ S3 zu klein für S1'; return; }
-      s2 = s4 + Math.sqrt(diff2);
-      setV('fp-s2', Math.round(s2));
-      info.textContent = `✓ S2 berechnet: ${Math.round(s2)} mm`;
+  // Default s4 = s2 (rectangle) when not provided
+  const s4eff = (s4 !== null) ? s4 : (s2 ?? 0);
+
+  if (s1 && s2) {
+    // Always compute S3 from the three primary inputs
+    const s3 = Math.sqrt(s1**2 + (s2 - s4eff)**2);
+    document.getElementById('fp-s3').value = Math.round(s3);
+    if (s4 === null) {
+      info.textContent = `Rechteck: S4=S2=${Math.round(s2)} mm, S3=${Math.round(s3)} mm`;
+    } else {
+      info.textContent = `S3 = ${Math.round(s3)} mm`;
     }
+    drawFloorPreview(s1, s2, s3, s4eff);
+    updateFloorOutline(s1, s2, s3, s4eff);
   } else {
-    info.textContent = '';
+    info.textContent = 'S1 und S2 eingeben…';
+    document.getElementById('fp-s3').value = '';
+    drawFloorPreview(null, null, null, null);
   }
-
-  // Default s4=s2 if not provided (rectangle)
-  const s4eff = s4 ?? s2;
-  drawFloorPreview(s1, s2, s3, s4eff);
-  updateFloorOutline(s1, s2, s3, s4eff);
 }
 
 function getFloorPoints(s1, s2, s3, s4) {
@@ -1019,8 +1002,8 @@ function getFloorPoints(s1, s2, s3, s4) {
   s2 = s2 ?? getV('fp-s2');
   s4 = s4 ?? getV('fp-s4') ?? s2;
   if (!s1 || !s2) return null;
-  // A=(0,0), B=(s1,0), C=(s1,s4), D=(0,s2)
-  s3 = s3 ?? getV('fp-s3') ?? Math.sqrt(s1**2 + (s2 - s4)**2);
+  // A=(0,0), B=(s1,0), C=(s1,s4), D=(0,s2) — S3 always derived
+  s3 = Math.sqrt(s1**2 + (s2 - s4)**2);
   return { s1, s2, s3, s4, pts: [[0,0],[s1,0],[s1,s4],[0,s2]] };
 }
 
@@ -1071,8 +1054,8 @@ function updateFloorOutline(s1, s2, s3, s4) {
   const visible = document.getElementById('floor-visible')?.checked ?? true;
   if (!visible) return;
 
-  const s4eff = s4 ?? getV('fp-s4') ?? s2 ?? getV('fp-s2');
-  const g = getFloorPoints(s1, s2, s3, s4eff);
+  const s4eff = (s4 !== undefined && s4 !== null) ? s4 : (getV('fp-s4') ?? s2 ?? getV('fp-s2'));
+  const g = getFloorPoints(s1, s2, null, s4eff);
   if (!g) return;
 
   // Build flat shape on XZ plane (Y=0), pts are [x, z]
