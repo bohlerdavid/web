@@ -388,6 +388,22 @@
   }
   .obj-item .obj-del:hover { color: #e94560; }
 
+  .tab-btn {
+    flex: 1;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: #666;
+    padding: 7px 4px;
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .tab-btn:hover { color: #ccc; }
+  .tab-btn.active { color: #e94560; border-bottom-color: #e94560; background: rgba(233,69,96,0.08); }
+  .tab-pane { display: flex; flex-direction: column; }
+
   .ctx-item {
     padding: 7px 14px;
     font-size: 12px;
@@ -460,8 +476,61 @@
   <!-- ── LEFT PANEL ── -->
   <div id="left-panel">
 
-    <!-- Add Beam -->
-    <div class="panel-section">
+    <!-- TAB NAVIGATION -->
+    <div style="display:flex;border-bottom:2px solid #0f3460;flex-shrink:0">
+      <button class="tab-btn active" id="tab-dach" onclick="showTab('dach')">🏠 Dachform</button>
+      <button class="tab-btn" id="tab-balken" onclick="showTab('balken')">📐 Balken</button>
+      <button class="tab-btn" id="tab-sel" onclick="showTab('sel')">✎ Auswahl</button>
+      <button class="tab-btn" id="tab-list" onclick="showTab('list')">📋 Liste</button>
+    </div>
+
+    <!-- ══ TAB: DACHFORM ══ -->
+    <div id="pane-dach" class="tab-pane" style="overflow-y:auto;padding:10px">
+      <div class="panel-title">🏠 Dachform / Querschnitt</div>
+      <div style="font-size:10px;color:#888;margin-bottom:8px;line-height:1.5">
+        Definiere den Grundriss-Querschnitt als Vorlage.<br>
+        Eine Seite leer lassen → wird berechnet.
+      </div>
+
+      <!-- SVG Preview -->
+      <svg id="trap-preview" width="216" height="100" style="display:block;margin:0 auto 8px;background:#0f3460;border-radius:6px;border:1px solid #1a4a7a"></svg>
+
+      <div style="font-size:10px;color:#aaa;margin-bottom:4px;text-align:center">Seitenlängen (mm)</div>
+      <div class="dim-row" style="grid-template-columns:1fr 1fr;gap:6px">
+        <div class="dim-cell">
+          <label>S1 — Unten</label>
+          <input type="number" id="trap-s1" value="6000" min="0" step="100" oninput="calcMissingSide()">
+        </div>
+        <div class="dim-cell">
+          <label>S2 — Links ↑</label>
+          <input type="number" id="trap-s2" value="3000" min="0" step="100" oninput="calcMissingSide()">
+        </div>
+        <div class="dim-cell">
+          <label>S3 — Oben</label>
+          <input type="number" id="trap-s3" value="2000" min="0" step="100" oninput="calcMissingSide()">
+        </div>
+        <div class="dim-cell">
+          <label>S4 — Rechts ↗</label>
+          <input type="number" id="trap-s4" value="" min="0" step="100" placeholder="auto" oninput="calcMissingSide()">
+        </div>
+      </div>
+      <div id="trap-info" style="font-size:10px;color:#4caf50;text-align:center;min-height:16px;margin:4px 0"></div>
+
+      <div class="form-row" style="margin-top:6px">
+        <label>Gebäudetiefe</label>
+        <input type="number" id="trap-depth" value="10000" min="100" step="100" oninput="updateRoofOutline()"> mm
+      </div>
+      <div class="form-row">
+        <label>Sichtbar</label>
+        <input type="checkbox" id="roof-visible" checked onchange="updateRoofOutline()" style="width:auto">
+        <span style="font-size:11px;color:#888">Dachform anzeigen</span>
+      </div>
+
+      <button class="add-btn" onclick="updateRoofOutline()" style="margin-top:6px">↺ Dachform aktualisieren</button>
+    </div>
+
+    <!-- ══ TAB: BALKEN ══ -->
+    <div id="pane-balken" class="tab-pane" style="display:none;overflow-y:auto;padding:10px">
       <div class="panel-title">⊕ Balken hinzufügen</div>
 
       <div class="form-row">
@@ -482,63 +551,23 @@
 
       <div class="form-row">
         <label>Bezeichnung</label>
-        <input type="text" id="beam-name" placeholder="z.B. Pfette" value="">
+        <input type="text" id="beam-name" placeholder="z.B. Sparren">
       </div>
 
-      <div class="form-row">
-        <label>Form</label>
-        <select id="beam-shape" onchange="toggleShapeMode()">
-          <option value="rect">Rechteck</option>
-          <option value="trap">Freie Form (4 Seiten)</option>
-        </select>
-      </div>
-
-      <!-- RECHTECK -->
-      <div id="shape-rect">
-        <div style="font-size:10px;color:#888;margin-bottom:4px;text-align:center">Abmessungen (mm)</div>
-        <div class="dim-row">
-          <div class="dim-cell">
-            <label>Länge (L)</label>
-            <input type="number" id="dim-l" value="2000" min="1" step="10">
-          </div>
-          <div class="dim-cell">
-            <label>Breite (B)</label>
-            <input type="number" id="dim-b" value="80" min="1" step="5">
-          </div>
-          <div class="dim-cell">
-            <label>Höhe (H)</label>
-            <input type="number" id="dim-h" value="120" min="1" step="5">
-          </div>
+      <div style="font-size:10px;color:#888;margin-bottom:4px;text-align:center">Balken-Querschnitt & Länge (mm)</div>
+      <div class="dim-row">
+        <div class="dim-cell">
+          <label>Länge (L)</label>
+          <input type="number" id="dim-l" value="4000" min="1" step="10">
         </div>
-      </div>
-
-      <!-- FREIE FORM / TRAPEZ -->
-      <div id="shape-trap" style="display:none">
-        <div style="font-size:10px;color:#888;margin-bottom:4px;text-align:center">Querschnitt (mm) — leer lassen = berechnen</div>
-        <svg id="trap-preview" width="220" height="90" style="display:block;margin:0 auto 6px;background:#0f3460;border-radius:4px"></svg>
-        <div class="dim-row" style="grid-template-columns:1fr 1fr">
-          <div class="dim-cell">
-            <label>S1 Unten</label>
-            <input type="number" id="trap-s1" value="200" min="0" step="5" oninput="calcMissingSide('s1')">
-          </div>
-          <div class="dim-cell">
-            <label>S2 Links ↑</label>
-            <input type="number" id="trap-s2" value="120" min="0" step="5" oninput="calcMissingSide('s2')">
-          </div>
-          <div class="dim-cell">
-            <label>S3 Oben</label>
-            <input type="number" id="trap-s3" value="120" min="0" step="5" oninput="calcMissingSide('s3')">
-          </div>
-          <div class="dim-cell">
-            <label>S4 Rechts ↗</label>
-            <input type="number" id="trap-s4" value="" min="0" step="5" placeholder="auto" oninput="calcMissingSide('s4')">
-          </div>
+        <div class="dim-cell">
+          <label>Breite (B)</label>
+          <input type="number" id="dim-b" value="80" min="1" step="5">
         </div>
-        <div class="dim-cell" style="margin-bottom:6px">
-          <label>Tiefe (Länge)</label>
-          <input type="number" id="trap-depth" value="2000" min="1" step="10" style="width:100%;background:#0f3460;border:1px solid #1a4a7a;color:#e0e0e0;padding:4px;border-radius:4px;font-size:12px;text-align:center">
+        <div class="dim-cell">
+          <label>Höhe (H)</label>
+          <input type="number" id="dim-h" value="160" min="1" step="5">
         </div>
-        <div id="trap-info" style="font-size:10px;color:#4caf50;text-align:center;margin-bottom:4px"></div>
       </div>
 
       <div class="form-row">
@@ -550,14 +579,50 @@
         </select>
       </div>
 
+      <div style="font-size:10px;color:#888;margin-bottom:4px;text-align:center">Winkel (°) — Drehung um Achsen</div>
+      <div class="dim-row">
+        <div class="dim-cell">
+          <label>Rot X</label>
+          <input type="number" id="rot-x" value="0" step="1" min="-180" max="180">
+        </div>
+        <div class="dim-cell">
+          <label>Rot Y</label>
+          <input type="number" id="rot-y" value="0" step="1" min="-180" max="180">
+        </div>
+        <div class="dim-cell">
+          <label>Rot Z</label>
+          <input type="number" id="rot-z" value="0" step="1" min="-180" max="180">
+        </div>
+      </div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">
+        <button class="tb-btn" style="font-size:10px;padding:3px 6px" onclick="setAngle(0,0,0)">0°</button>
+        <button class="tb-btn" style="font-size:10px;padding:3px 6px" onclick="setAngle(0,45,0)">Y 45°</button>
+        <button class="tb-btn" style="font-size:10px;padding:3px 6px" onclick="setAngle(0,90,0)">Y 90°</button>
+        <button class="tb-btn" style="font-size:10px;padding:3px 6px" onclick="setAngle(30,0,0)">X 30°</button>
+        <button class="tb-btn" style="font-size:10px;padding:3px 6px" onclick="setAngle(45,0,0)">X 45°</button>
+        <button class="tb-btn" style="font-size:10px;padding:3px 6px" onclick="setAngle(0,0,45)">Z 45°</button>
+      </div>
+
       <button class="add-btn" onclick="addBeam()">+ Balken hinzufügen</button>
+
+      <div style="margin-top:10px;padding-top:8px;border-top:1px solid #0f3460">
+        <div style="font-size:10px;color:#888;margin-bottom:6px">Schnellauswahl Standardmaße:</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px">
+          <button class="tb-btn" style="font-size:10px;padding:3px 6px" onclick="setDims(60,80)">60×80</button>
+          <button class="tb-btn" style="font-size:10px;padding:3px 6px" onclick="setDims(80,120)">80×120</button>
+          <button class="tb-btn" style="font-size:10px;padding:3px 6px" onclick="setDims(100,160)">100×160</button>
+          <button class="tb-btn" style="font-size:10px;padding:3px 6px" onclick="setDims(120,200)">120×200</button>
+          <button class="tb-btn" style="font-size:10px;padding:3px 6px" onclick="setDims(140,220)">140×220</button>
+          <button class="tb-btn" style="font-size:10px;padding:3px 6px" onclick="setDims(160,240)">160×240</button>
+        </div>
+      </div>
     </div>
 
-    <!-- Selected Object -->
-    <div class="panel-section">
+    <!-- ══ TAB: AUSWAHL ══ -->
+    <div id="pane-sel" class="tab-pane" style="display:none;overflow-y:auto;padding:10px">
       <div class="panel-title">✎ Auswahl bearbeiten</div>
       <div id="sel-info" style="color:#666;font-size:11px">Kein Objekt ausgewählt</div>
-      <div id="sel-edit" style="display:none; margin-top:8px">
+      <div id="sel-edit" style="display:none;margin-top:8px">
         <div class="dim-row">
           <div class="dim-cell">
             <label>Länge</label>
@@ -587,21 +652,23 @@
       </div>
     </div>
 
-    <!-- Parts list -->
-    <div class="panel-title" style="padding:8px 10px 4px; flex-shrink:0">📋 Stückliste</div>
-    <div id="parts-scroll" style="flex:1;overflow-y:auto">
-      <table id="parts-table">
-        <thead>
-          <tr>
-            <th>Anz.</th>
-            <th>Bezeichnung</th>
-            <th>L×B×H (mm)</th>
-          </tr>
-        </thead>
-        <tbody id="parts-body"></tbody>
-      </table>
+    <!-- ══ TAB: STÜCKLISTE ══ -->
+    <div id="pane-list" class="tab-pane" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+      <div id="parts-scroll" style="flex:1;overflow-y:auto">
+        <table id="parts-table">
+          <thead>
+            <tr>
+              <th>Anz.</th>
+              <th>Bezeichnung</th>
+              <th>L×B×H (mm)</th>
+            </tr>
+          </thead>
+          <tbody id="parts-body"></tbody>
+        </table>
+      </div>
+      <div class="parts-total" id="parts-total">Gesamt: <strong>0</strong> Teile</div>
     </div>
-    <div class="parts-total" id="parts-total">Gesamt: <strong>0</strong> Teile</div>
+
   </div>
 
   <!-- ── 3D VIEWPORT ── -->
@@ -847,6 +914,13 @@ function createBeamMesh(beam) {
   geo = new THREE.BoxGeometry(W, H, D);
   const mesh = new THREE.Mesh(geo, mat);
   mesh.position.set(beam.x + W/2, beam.y + H/2, beam.z + D/2);
+  // Apply user-defined rotation (in degrees)
+  const toRad = Math.PI / 180;
+  mesh.rotation.set(
+    (beam.rx || 0) * toRad,
+    (beam.ry || 0) * toRad,
+    (beam.rz || 0) * toRad
+  );
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   mesh.userData.beamId = beam.id;
@@ -857,14 +931,28 @@ function createBeamMesh(beam) {
   return mesh;
 }
 
-// ── Trapez UI helpers ──
+// ══════════════════════════════════════════════
+// TABS
+// ══════════════════════════════════════════════
 
-function toggleShapeMode() {
-  const mode = document.getElementById('beam-shape').value;
-  document.getElementById('shape-rect').style.display = mode === 'rect' ? '' : 'none';
-  document.getElementById('shape-trap').style.display = mode === 'trap' ? '' : 'none';
-  if (mode === 'trap') { calcMissingSide(null); drawTrapPreview(); }
+function showTab(name) {
+  ['dach','balken','sel','list'].forEach(t => {
+    document.getElementById('tab-' + t).classList.toggle('active', t === name);
+    const pane = document.getElementById('pane-' + t);
+    pane.style.display = t === name ? 'flex' : 'none';
+  });
 }
+
+function setDims(b, h) {
+  document.getElementById('dim-b').value = b;
+  document.getElementById('dim-h').value = h;
+}
+
+// ══════════════════════════════════════════════
+// DACHFORM (ROOF OUTLINE)
+// ══════════════════════════════════════════════
+
+let roofMesh = null;
 
 function getTrapSides() {
   return ['s1','s2','s3','s4'].map(id => {
@@ -873,61 +961,105 @@ function getTrapSides() {
   });
 }
 
-function calcMissingSide(changed) {
+function calcMissingSide() {
   let [s1, s2, s3, s4] = getTrapSides();
-  const missing = [s1,s2,s3,s4].filter(v => v === null).length;
   const info = document.getElementById('trap-info');
+  const nulls = [s1,s2,s3,s4].filter(v => v === null).length;
 
-  if (missing === 1) {
-    // right slant: s4 = sqrt((s1-s3)² + s2²)
-    if (s4 === null && s1 !== null && s2 !== null && s3 !== null) {
+  if (nulls === 1) {
+    if (s4 === null && s1 && s2 && s3) {
       s4 = Math.sqrt((s1-s3)**2 + s2**2);
-      document.getElementById('trap-s4').value = s4.toFixed(1);
-      info.textContent = `S4 berechnet: ${s4.toFixed(1)} mm`;
-    } else if (s3 === null && s1 !== null && s2 !== null && s4 !== null) {
-      const diff = Math.sqrt(Math.max(0, s4**2 - s2**2));
-      s3 = s1 - diff;
-      document.getElementById('trap-s3').value = s3.toFixed(1);
-      info.textContent = `S3 berechnet: ${s3.toFixed(1)} mm`;
-    } else if (s1 === null && s2 !== null && s3 !== null && s4 !== null) {
-      const diff = Math.sqrt(Math.max(0, s4**2 - s2**2));
-      s1 = s3 + diff;
-      document.getElementById('trap-s1').value = s1.toFixed(1);
-      info.textContent = `S1 berechnet: ${s1.toFixed(1)} mm`;
-    } else if (s2 === null && s1 !== null && s3 !== null && s4 !== null) {
+      document.getElementById('trap-s4').value = s4.toFixed(0);
+      info.textContent = `✓ S4 berechnet: ${s4.toFixed(0)} mm`;
+    } else if (s3 === null && s1 && s2 && s4) {
+      s3 = s1 - Math.sqrt(Math.max(0, s4**2 - s2**2));
+      document.getElementById('trap-s3').value = s3.toFixed(0);
+      info.textContent = `✓ S3 berechnet: ${s3.toFixed(0)} mm`;
+    } else if (s1 === null && s2 && s3 && s4) {
+      s1 = s3 + Math.sqrt(Math.max(0, s4**2 - s2**2));
+      document.getElementById('trap-s1').value = s1.toFixed(0);
+      info.textContent = `✓ S1 berechnet: ${s1.toFixed(0)} mm`;
+    } else if (s2 === null && s1 && s3 && s4) {
       s2 = Math.sqrt(Math.max(0, s4**2 - (s1-s3)**2));
-      document.getElementById('trap-s2').value = s2.toFixed(1);
-      info.textContent = `S2 berechnet: ${s2.toFixed(1)} mm`;
+      document.getElementById('trap-s2').value = s2.toFixed(0);
+      info.textContent = `✓ S2 berechnet: ${s2.toFixed(0)} mm`;
     }
-  } else if (missing === 0) {
-    info.textContent = '';
   } else {
-    info.textContent = '';
+    info.textContent = nulls > 1 ? '' : '';
   }
   drawTrapPreview();
+  updateRoofOutline();
 }
 
 function drawTrapPreview() {
   const svg = document.getElementById('trap-preview');
   let [s1, s2, s3, s4] = getTrapSides();
-  if (!s1 || !s2 || !s3) { svg.innerHTML = ''; return; }
-  const pad = 18;
-  const W = 220, H = 90;
-  const maxW = Math.max(s1, s3);
-  const scaleX = (W - pad*2) / maxW;
-  const scaleY = (H - pad*2) / s2;
-  const scale = Math.min(scaleX, scaleY);
-  // Points: bottom-left(0,s2), bottom-right(s1,s2), top-right(s3,0), top-left(0,0)
+  if (!s1 || !s2) { svg.innerHTML = '<text x="108" y="55" fill="#555" font-size="11" text-anchor="middle">Werte eingeben…</text>'; return; }
+  s3 = s3 || 0;
+  const svgW = 216, svgH = 100, pad = 24;
+  const maxW = Math.max(s1, s3, 1);
+  const scaleX = (svgW - pad*2) / maxW;
+  const scaleY = (svgH - pad*2) / s2;
+  const sc = Math.min(scaleX, scaleY);
+  // Trapez: unten s1, links s2 (senkrecht), oben s3 (links-bündig), rechts schräg
   const pts = [
-    [0, s2], [s1, s2], [s3, 0], [0, 0]
-  ].map(([x, y]) => `${pad + x*scale},${pad + (s2 - y)*scale}`).join(' ');
+    [0,   0],
+    [s1,  0],
+    [s3, s2],
+    [0,  s2],
+  ].map(([x,y]) => `${pad + x*sc},${svgH - pad - y*sc}`).join(' ');
+
+  const cx1 = pad + s1*sc/2, cy1 = svgH - pad + 11;
+  const cx4 = pad - 6,       cy4 = svgH - pad - s2*sc/2;
+  const cx3 = pad + s3*sc/2, cy3 = svgH - pad - s2*sc - 10;
+  const s4v = s4 ? Math.round(s4) : '?';
+  const cx2 = pad + (s1+s3)*sc/2 + 10, cy2 = svgH - pad - s2*sc/2;
+
   svg.innerHTML = `
-    <polygon points="${pts}" fill="#c8864c" fill-opacity="0.7" stroke="#e94560" stroke-width="1.5"/>
-    <text x="${pad + s1*scale/2}" y="${H-4}" fill="#aaa" font-size="9" text-anchor="middle">S1=${s1}</text>
-    <text x="${pad - 2}" y="${pad + s2*scale/2}" fill="#aaa" font-size="9" text-anchor="end" dominant-baseline="middle">S2=${s2}</text>
-    <text x="${pad + s3*scale/2}" y="${pad - 3}" fill="#aaa" font-size="9" text-anchor="middle">S3=${s3}</text>
-    ${s4 ? `<text x="${pad + (s1+s3)*scale/2 + 8}" y="${pad + s2*scale/2}" fill="#aaa" font-size="9" dominant-baseline="middle">S4=${Math.round(s4*10)/10}</text>` : ''}
+    <polygon points="${pts}" fill="rgba(200,134,76,0.25)" stroke="#e94560" stroke-width="2"/>
+    <text x="${cx1}" y="${cy1}" fill="#ccc" font-size="10" text-anchor="middle">S1=${Math.round(s1)}</text>
+    <text x="${cx4}" y="${cy4}" fill="#ccc" font-size="10" text-anchor="end" dominant-baseline="middle">S2=${Math.round(s2)}</text>
+    <text x="${cx3}" y="${cy3}" fill="#ccc" font-size="10" text-anchor="middle">S3=${s3?Math.round(s3):0}</text>
+    <text x="${cx2}" y="${cy2}" fill="#aaa" font-size="10" dominant-baseline="middle">S4=${s4v}</text>
   `;
+}
+
+function updateRoofOutline() {
+  calcMissingSide();
+  if (roofMesh) { scene.remove(roofMesh); roofMesh.geometry?.dispose(); roofMesh = null; }
+
+  const visible = document.getElementById('roof-visible').checked;
+  if (!visible) return;
+
+  let [s1, s2, s3] = getTrapSides();
+  const depth = parseFloat(document.getElementById('trap-depth').value) || 10000;
+  if (!s1 || !s2) return;
+  s3 = s3 || 0;
+
+  // Build cross-section shape (XY plane)
+  const shape = new THREE.Shape();
+  shape.moveTo(0, 0);
+  shape.lineTo(s1, 0);
+  shape.lineTo(s3, s2);
+  shape.lineTo(0, s2);
+  shape.closePath();
+
+  const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false });
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x4488cc,
+    transparent: true,
+    opacity: 0.10,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  roofMesh = new THREE.Mesh(geo, mat);
+  roofMesh.userData.isRoof = true;
+
+  // Edge lines for clarity
+  const edgeMat = new THREE.LineBasicMaterial({ color: 0x4488cc, transparent: true, opacity: 0.6 });
+  roofMesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat));
+
+  scene.add(roofMesh);
 }
 
 function makeSelectionHighlight(mesh, on) {
@@ -946,30 +1078,27 @@ function addBeam() {
   const woodType = document.getElementById('wood-type').value;
   const axis = document.getElementById('beam-axis').value;
   let name = document.getElementById('beam-name').value.trim();
-  const shapeMode = document.getElementById('beam-shape').value;
-
-  let beam;
-  if (shapeMode === 'trap') {
-    calcMissingSide(null);
-    const [s1, s2, s3, s4] = getTrapSides();
-    if (!s1 || !s2 || !s3) { alert('Bitte mindestens S1, S2 und S3 eingeben.'); return; }
-    const depth = parseFloat(document.getElementById('trap-depth').value) || 2000;
-    if (!name) name = `${woodType} Trapez ${s1}/${s3}×${s2}`;
-    beam = { id: idCounter++, name, woodType, shape: 'trap', sides: [s1, s2, s3, s4 || Math.sqrt((s1-s3)**2+s2**2)], trapDepth: depth, L: depth, B: Math.max(s1,s3), H: s2, axis, x: 0, y: 0, z: 0, mesh: null };
-  } else {
-    const L = parseFloat(document.getElementById('dim-l').value) || 2000;
-    const B = parseFloat(document.getElementById('dim-b').value) || 80;
-    const H = parseFloat(document.getElementById('dim-h').value) || 120;
-    if (!name) name = `${woodType} ${L}×${B}×${H}`;
-    beam = { id: idCounter++, name, woodType, shape: 'rect', L, B, H, axis, x: 0, y: 0, z: 0, mesh: null };
-  }
-
+  const L = parseFloat(document.getElementById('dim-l').value) || 4000;
+  const B = parseFloat(document.getElementById('dim-b').value) || 80;
+  const H = parseFloat(document.getElementById('dim-h').value) || 160;
+  const rx = parseFloat(document.getElementById('rot-x').value) || 0;
+  const ry = parseFloat(document.getElementById('rot-y').value) || 0;
+  const rz = parseFloat(document.getElementById('rot-z').value) || 0;
+  if (!name) name = `${woodType} ${L}×${B}×${H}`;
+  const beam = { id: idCounter++, name, woodType, shape: 'rect', L, B, H, axis, rx, ry, rz, x: 0, y: 0, z: 0, mesh: null };
   pushHistory();
   beam.mesh = createBeamMesh(beam);
   scene.add(beam.mesh);
   beams.push(beam);
   selectBeam(beam.id);
+  showTab('sel');
   updateUI();
+}
+
+function setAngle(x, y, z) {
+  document.getElementById('rot-x').value = x;
+  document.getElementById('rot-y').value = y;
+  document.getElementById('rot-z').value = z;
 }
 
 function deleteBeam(id) {
@@ -1231,9 +1360,9 @@ renderer.domElement.addEventListener('pointermove', onPointerMove, { passive: fa
 renderer.domElement.addEventListener('pointerup',   onPointerUp);
 renderer.domElement.addEventListener('pointercancel', onPointerUp);
 renderer.domElement.addEventListener('dblclick', onDblClick);
-renderer.domElement.addEventListener('contextmenu', onContextMenu);
+renderer.domElement.addEventListener('contextmenu', onContextMenu, true);
 renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
-document.addEventListener('click', closeCtxMenu);
+document.addEventListener('click', e => { if (!document.getElementById('ctx-menu').contains(e.target)) closeCtxMenu(); });
 
 function getIntersects(clientX, clientY) {
   const rect = renderer.domElement.getBoundingClientRect();
@@ -1268,8 +1397,21 @@ function onPointerDown(e) {
     return;
   }
 
-  // Right mouse → context menu handled in contextmenu event
-  if (e.button === 2) return;
+  // Right mouse → show context menu
+  if (e.button === 2) {
+    e.preventDefault();
+    const hits = getIntersects(e.clientX, e.clientY);
+    if (hits.length > 0) {
+      let obj = hits[0].object;
+      while (obj.parent && !obj.userData.beamId) obj = obj.parent;
+      if (obj.userData.beamId) {
+        selectBeam(obj.userData.beamId);
+        updateUI();
+        showContextMenu(e.clientX, e.clientY);
+      }
+    }
+    return;
+  }
 
   // Left mouse button
   if (e.button !== 0) return;
@@ -1391,24 +1533,19 @@ function onDblClick(e) {
 }
 
 function onContextMenu(e) {
-  e.preventDefault();
-  const hits = getIntersects(e);
-  if (hits.length > 0) {
-    let obj = hits[0].object;
-    while (obj.parent && !obj.userData.beamId) obj = obj.parent;
-    if (obj.userData.beamId) {
-      selectBeam(obj.userData.beamId);
-      updateUI();
-      const menu = document.getElementById('ctx-menu');
-      menu.style.display = 'block';
-      menu.style.left = e.clientX + 'px';
-      menu.style.top = e.clientY + 'px';
-      // keep menu on screen
-      const rect = menu.getBoundingClientRect();
-      if (rect.right > window.innerWidth) menu.style.left = (e.clientX - rect.width) + 'px';
-      if (rect.bottom > window.innerHeight) menu.style.top = (e.clientY - rect.height) + 'px';
-    }
-  }
+  e.preventDefault(); // prevent browser menu — actual logic is in pointerdown button===2
+}
+
+function showContextMenu(cx, cy) {
+  const menu = document.getElementById('ctx-menu');
+  menu.style.display = 'block';
+  menu.style.left = cx + 'px';
+  menu.style.top  = cy + 'px';
+  requestAnimationFrame(() => {
+    const r = menu.getBoundingClientRect();
+    if (r.right  > window.innerWidth)  menu.style.left = (cx - r.width)  + 'px';
+    if (r.bottom > window.innerHeight) menu.style.top  = (cy - r.height) + 'px';
+  });
 }
 
 function closeCtxMenu() {
@@ -1453,41 +1590,74 @@ function getBeamHalfD(b) { return (b.axis === 'z' ? b.L : b.B) / 2; }
 // KEYBOARD
 // ══════════════════════════════════════════════
 
+// WASD camera movement state
+const wasd = { w:false, a:false, s:false, d:false, q:false, e:false };
+
 document.addEventListener('keydown', e => {
   const tag = document.activeElement.tagName;
   if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
 
   if (e.key === 'Delete' || e.key === 'Backspace') { deleteSelected(); return; }
-  if (e.key === 'Escape') { selectBeam(null); setMode('select'); updateUI(); return; }
+  if (e.key === 'Escape') { closeCtxMenu(); selectBeam(null); setMode('select'); updateUI(); return; }
   if (e.key === 'f' || e.key === 'F') { resetCamera(); return; }
   if ((e.ctrlKey || e.metaKey) && e.key === 'z') { undo(); return; }
   if ((e.ctrlKey || e.metaKey) && e.key === 'd') { e.preventDefault(); duplicateSelected(); return; }
 
-  // Arrow key movement
+  // WASD camera navigation
+  if (['w','a','s','d','q','e'].includes(e.key.toLowerCase())) {
+    wasd[e.key.toLowerCase()] = true;
+    e.preventDefault();
+    return;
+  }
+
+  // Arrow key: move selected beam
   if (!selectedId) return;
   const b = beams.find(x => x.id === selectedId);
   if (!b) return;
   const step = snapEnabled ? (parseFloat(document.getElementById('snap-size').value) || 100) : 10;
-
   let moved = false;
   if (e.key === 'ArrowLeft')  { b.x -= step; moved = true; }
   if (e.key === 'ArrowRight') { b.x += step; moved = true; }
-  if (e.key === 'ArrowUp' && !e.shiftKey)   { b.z -= step; moved = true; }
-  if (e.key === 'ArrowDown' && !e.shiftKey) { b.z += step; moved = true; }
-  if (e.key === 'PageUp')   { b.y += step; moved = true; }
-  if (e.key === 'PageDown') { b.y -= step; moved = true; }
-
+  if (e.key === 'ArrowUp')    { b.z -= step; moved = true; }
+  if (e.key === 'ArrowDown')  { b.z += step; moved = true; }
+  if (e.key === 'PageUp')     { b.y += step; moved = true; }
+  if (e.key === 'PageDown')   { b.y -= step; moved = true; }
   if (moved) {
     e.preventDefault();
     b.mesh.position.set(b.x + getBeamHalfW(b), b.y + getBeamHalfH(b), b.z + getBeamHalfD(b));
     updateSelPanel();
     updatePartsTable();
-    // sync edit inputs
     document.getElementById('edit-px').value = Math.round(b.x);
     document.getElementById('edit-py').value = Math.round(b.y);
     document.getElementById('edit-pz').value = Math.round(b.z);
   }
 });
+
+document.addEventListener('keyup', e => {
+  if (['w','a','s','d','q','e'].includes(e.key.toLowerCase()))
+    wasd[e.key.toLowerCase()] = false;
+});
+
+// WASD movement applied each frame in animate()
+function applyWASD() {
+  const any = Object.values(wasd).some(Boolean);
+  if (!any) return;
+  const speed = 80;
+  // Camera forward direction (horizontal)
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  dir.y = 0; dir.normalize();
+  const right = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0,1,0)).normalize();
+  const move = new THREE.Vector3();
+  if (wasd.w) move.addScaledVector(dir,   speed);
+  if (wasd.s) move.addScaledVector(dir,  -speed);
+  if (wasd.a) move.addScaledVector(right, -speed);
+  if (wasd.d) move.addScaledVector(right,  speed);
+  if (wasd.q) move.y -= speed;
+  if (wasd.e) move.y += speed;
+  camera.position.add(move);
+  controls.target.add(move);
+}
 
 // ══════════════════════════════════════════════
 // UNDO
@@ -1625,6 +1795,7 @@ resize();
 
 function animate() {
   requestAnimationFrame(animate);
+  applyWASD();
   controls.update();
   renderer.render(scene, camera);
 }
@@ -1663,6 +1834,8 @@ function loadSample() {
 
 // Load sample on first visit
 loadSample();
+drawTrapPreview();
+updateRoofOutline();
 
 // Expose functions to global scope (needed because this is a module script)
 Object.assign(window, {
@@ -1670,8 +1843,9 @@ Object.assign(window, {
   setMode, toggleSnap, setView, resetCamera,
   newProject, saveProject, loadProject, loadFromModal, closeModal,
   exportStückliste, applyEdit, deleteBeam,
-  toggleShapeMode, calcMissingSide,
-  rotateSelected, switchAxis, closeCtxMenu,
+  calcMissingSide, updateRoofOutline, drawTrapPreview,
+  rotateSelected, switchAxis, closeCtxMenu, showContextMenu,
+  showTab, setDims, setAngle,
 });
 </script>
 </body>
