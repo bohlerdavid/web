@@ -497,8 +497,8 @@
 
       <!-- Inputs: the 4 sides of the floor plan -->
       <div style="font-size:10px;color:#aaa;margin-bottom:6px;line-height:1.4">
-        S2 und S4 stehen im rechten Winkel zu S1.<br>
-        S3 (Diagonale hinten) wird automatisch berechnet.
+        S2 (links) und S3 (rechts) stehen im rechten Winkel zu S1.<br>
+        S4 (Diagonale hinten) wird automatisch berechnet.
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:6px">
         <div class="dim-cell" style="grid-column:1/-1">
@@ -510,14 +510,14 @@
           <input type="number" id="fp-s2" value="6000" min="0" step="100" oninput="calcFloorPlan()">
         </div>
         <div class="dim-cell">
-          <label>S4 — Rechts (Tiefe) [mm]</label>
-          <input type="number" id="fp-s4" value="" min="0" step="100" placeholder="= S2" oninput="calcFloorPlan()">
+          <label>S3 — Rechts (Tiefe) [mm]</label>
+          <input type="number" id="fp-s3" value="6000" min="0" step="100" oninput="calcFloorPlan()">
         </div>
         <div class="dim-cell" style="grid-column:1/-1">
-          <label style="color:#888">S3 — Diagonale hinten [mm] <em style="font-size:9px">(berechnet)</em></label>
-          <input type="number" id="fp-s3" value="" min="0" step="100" placeholder="—" readonly
+          <label style="color:#888">S4 — Diagonale hinten [mm] <em style="font-size:9px">(berechnet)</em></label>
+          <input type="number" id="fp-s4" value="" min="0" step="100" placeholder="—" readonly
                  style="color:#888;background:#111827;cursor:not-allowed" tabindex="-1"
-                 title="Wird automatisch aus S1/S2/S4 berechnet: sqrt(S1²+(S2-S4)²)">
+                 title="S4 = sqrt(S1²+(S2-S3)²)">
         </div>
       </div>
       <div id="fp-info" style="font-size:10px;color:#4caf50;text-align:center;min-height:16px;margin:2px 0"></div>
@@ -976,28 +976,28 @@ function setV(id, val) {
 */
 function calcFloorPlan() {
   // Geometry: A=(0,0) front-left, B=(s1,0) front-right,
-  //           C=(s1,s4) back-right, D=(0,s2) back-left
-  // S3 = sqrt(s1²+(s2-s4)²) is always derived — it is readonly.
-  let s1 = getV('fp-s1'), s2 = getV('fp-s2'), s4 = getV('fp-s4');
+  //           C=(s1,s3) back-right (S3=right wall, perpendicular),
+  //           D=(0,s2)  back-left  (S2=left wall, perpendicular)
+  // S4 = diagonal back wall = sqrt(s1²+(s2-s3)²) — always derived.
+  let s1 = getV('fp-s1'), s2 = getV('fp-s2'), s3 = getV('fp-s3');
   const info = document.getElementById('fp-info');
 
-  // Default s4 = s2 (rectangle) when not provided
-  const s4eff = (s4 !== null) ? s4 : (s2 ?? 0);
+  // Default s3 = s2 (rectangle) when not provided
+  const s3eff = (s3 !== null) ? s3 : (s2 ?? 0);
 
   if (s1 && s2) {
-    // Always compute S3 from the three primary inputs
-    const s3 = Math.sqrt(s1**2 + (s2 - s4eff)**2);
-    document.getElementById('fp-s3').value = Math.round(s3);
-    if (s4 === null) {
-      info.textContent = `Rechteck: S4=S2=${Math.round(s2)} mm, S3=${Math.round(s3)} mm`;
+    const s4 = Math.sqrt(s1**2 + (s2 - s3eff)**2);
+    document.getElementById('fp-s4').value = Math.round(s4);
+    if (s3 === null) {
+      info.textContent = `Rechteck: S3=S2=${Math.round(s2)} mm, S4=${Math.round(s4)} mm`;
     } else {
-      info.textContent = `S3 = ${Math.round(s3)} mm`;
+      info.textContent = `S4 = ${Math.round(s4)} mm`;
     }
-    drawFloorPreview(s1, s2, s3, s4eff);
-    updateFloorOutline(s1, s2, s3, s4eff);
+    drawFloorPreview(s1, s2, s3eff, s4);
+    updateFloorOutline(s1, s2, s3eff, s4);
   } else {
     info.textContent = 'S1 und S2 eingeben…';
-    document.getElementById('fp-s3').value = '';
+    document.getElementById('fp-s4').value = '';
     drawFloorPreview(null, null, null, null);
   }
 }
@@ -1005,11 +1005,11 @@ function calcFloorPlan() {
 function getFloorPoints(s1, s2, s3, s4) {
   s1 = s1 ?? getV('fp-s1');
   s2 = s2 ?? getV('fp-s2');
-  s4 = s4 ?? getV('fp-s4') ?? s2;
+  s3 = s3 ?? getV('fp-s3') ?? s2;
   if (!s1 || !s2) return null;
-  // A=(0,0), B=(s1,0), C=(s1,s4), D=(0,s2) — S3 always derived
-  s3 = Math.sqrt(s1**2 + (s2 - s4)**2);
-  return { s1, s2, s3, s4, pts: [[0,0],[s1,0],[s1,s4],[0,s2]] };
+  // A=(0,0), B=(s1,0), C=(s1,s3), D=(0,s2) — S4 always derived
+  s4 = Math.sqrt(s1**2 + (s2 - s3)**2);
+  return { s1, s2, s3, s4, pts: [[0,0],[s1,0],[s1,s3],[0,s2]] };
 }
 
 function drawFloorPreview(s1, s2, s3, s4) {
@@ -1057,8 +1057,8 @@ function drawFloorPreview(s1, s2, s3, s4) {
   const labels = [
     `<text x="${midAB[0]}" y="${midAB[1]}" fill="#aaa" font-size="10" text-anchor="middle">S1=${Math.round(g.s1)}</text>`,
     `<text x="${midAD[0]}" y="${midAD[1]}" fill="#4caf50" font-size="10" text-anchor="end" dominant-baseline="middle">S2=${Math.round(g.s2)}</text>`,
-    `<text x="${midBC[0]}" y="${midBC[1]}" fill="#ff9800" font-size="10" dominant-baseline="middle">S4=${Math.round(g.s4)}</text>`,
-    `<text x="${midDC[0]}" y="${midDC[1]}" fill="#aaa" font-size="10" text-anchor="middle">S3=${Math.round(g.s3)}</text>`,
+    `<text x="${midBC[0]}" y="${midBC[1]}" fill="#ff9800" font-size="10" dominant-baseline="middle">S3=${Math.round(g.s3)}</text>`,
+    `<text x="${midDC[0]}" y="${midDC[1]}" fill="#e94560" font-size="10" text-anchor="middle">S4=${Math.round(g.s4)} ✱</text>`,
     `<text x="${svgW-4}" y="${padT+2}" fill="#555" font-size="9" text-anchor="end">▲N</text>`,
   ];
 
@@ -1081,8 +1081,8 @@ function updateFloorOutline(s1, s2, s3, s4) {
   const visible = document.getElementById('floor-visible')?.checked ?? true;
   if (!visible) return;
 
-  const s4eff = (s4 !== undefined && s4 !== null) ? s4 : (getV('fp-s4') ?? s2 ?? getV('fp-s2'));
-  const g = getFloorPoints(s1, s2, null, s4eff);
+  const s3eff = (s3 !== undefined && s3 !== null) ? s3 : (getV('fp-s3') ?? s2 ?? getV('fp-s2'));
+  const g = getFloorPoints(s1, s2, s3eff, null);
   if (!g) return;
 
   // Build flat shape on XZ plane (Y=0), pts are [x, z]
