@@ -625,8 +625,8 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 viewport.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x1a1a2e);
-scene.fog = new THREE.FogExp2(0x1a1a2e, 0.00008);
+scene.background = new THREE.Color(0xffffff);
+scene.fog = new THREE.FogExp2(0xffffff, 0.00006);
 
 const camera = new THREE.PerspectiveCamera(45, 1, 1, 100000);
 camera.position.set(3000, 3000, 4000);
@@ -661,17 +661,17 @@ fillLight.position.set(-2000, 1000, -2000);
 scene.add(fillLight);
 
 // ── GROUND GRID ──
-const gridHelper = new THREE.GridHelper(20000, 200, 0x1a4a7a, 0x0f3460);
+const gridHelper = new THREE.GridHelper(20000, 200, 0x999999, 0xbbbbbb);
 gridHelper.position.y = 0;
 scene.add(gridHelper);
 
 // Ground plane (for raycasting)
 const groundGeo = new THREE.PlaneGeometry(50000, 50000);
-const groundMat = new THREE.MeshStandardMaterial({ color: 0x0d1b2a, roughness: 1 });
+const groundMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 1 });
 const groundPlane = new THREE.Mesh(groundGeo, groundMat);
 groundPlane.rotation.x = -Math.PI / 2;
 groundPlane.receiveShadow = true;
-groundPlane.visible = false; // invisible but raycastable
+groundPlane.visible = true;
 scene.add(groundPlane);
 
 // Axes helper
