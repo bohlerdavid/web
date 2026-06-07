@@ -599,12 +599,19 @@
   </div>
 </div>
 
-<!-- Three.js + OrbitControls -->
-<script src="https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.161.0/examples/js/controls/OrbitControls.js"></script>
+<!-- Three.js + OrbitControls via ES modules -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+  }
+}
+</script>
 
-<script>
-'use strict';
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 // ══════════════════════════════════════════════
 // SCENE SETUP
@@ -625,7 +632,7 @@ const camera = new THREE.PerspectiveCamera(45, 1, 1, 100000);
 camera.position.set(3000, 3000, 4000);
 camera.lookAt(0, 0, 0);
 
-const controls = new THREE.OrbitControls(camera, renderer.domElement);
+const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.screenSpacePanning = false;
@@ -1357,6 +1364,14 @@ function loadSample() {
 
 // Load sample on first visit
 loadSample();
+
+// Expose functions to global scope (needed because this is a module script)
+Object.assign(window, {
+  addBeam, deleteSelected, duplicateSelected,
+  setMode, toggleSnap, setView, resetCamera,
+  newProject, saveProject, loadProject, loadFromModal, closeModal,
+  exportStückliste, applyEdit, deleteBeam,
+});
 </script>
 </body>
 </html>
