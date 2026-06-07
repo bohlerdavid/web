@@ -1102,12 +1102,10 @@ function setAngle(x, y, z) {
 }
 
 function deleteBeam(id) {
-  pushHistory();
   const idx = beams.findIndex(b => b.id === id);
   if (idx < 0) return;
-  scene.remove(beams[idx].mesh);
-  beams[idx].mesh.geometry.dispose();
-  beams[idx].mesh.material.dispose();
+  pushHistory();
+  removeMesh(beams[idx].mesh);
   beams.splice(idx, 1);
   if (selectedId === id) { selectedId = null; }
   updateUI();
@@ -1197,9 +1195,7 @@ function applyEdit() {
 }
 
 function rebuildMesh(beam) {
-  scene.remove(beam.mesh);
-  beam.mesh.geometry.dispose();
-  beam.mesh.material.dispose();
+  removeMesh(beam.mesh);
   beam.mesh = createBeamMesh(beam);
   scene.add(beam.mesh);
   if (selectedId === beam.id) makeSelectionHighlight(beam.mesh, true);
@@ -1673,12 +1669,8 @@ function undo() {
   if (history.length === 0) return;
   const snap = JSON.parse(history.pop());
 
-  // Remove all current meshes
-  beams.forEach(b => { scene.remove(b.mesh); b.mesh.geometry.dispose(); b.mesh.material.dispose(); });
-  beams = [];
-  selectedId = null;
+  clearAllBeams();
 
-  // Restore
   snap.forEach(s => {
     const beam = { ...s, mesh: null };
     beam.mesh = createBeamMesh(beam);
@@ -1695,14 +1687,25 @@ function undo() {
 // ══════════════════════════════════════════════
 
 function newProject() {
-  if (beams.length > 0 && !confirm('Aktuelles Projekt verwerfen?')) return;
-  pushHistory();
-  beams.forEach(b => { scene.remove(b.mesh); b.mesh.geometry.dispose(); b.mesh.material.dispose(); });
-  beams = [];
-  selectedId = null;
+  clearAllBeams();
   idCounter = 1;
   history = [];
   updateUI();
+}
+
+function clearAllBeams() {
+  beams.forEach(b => removeMesh(b.mesh));
+  beams = [];
+  selectedId = null;
+}
+
+function removeMesh(mesh) {
+  if (!mesh) return;
+  scene.remove(mesh);
+  mesh.traverse(obj => {
+    if (obj.geometry) obj.geometry.dispose();
+    if (obj.material) obj.material.dispose();
+  });
 }
 
 function saveProject() {
@@ -1731,9 +1734,7 @@ function loadFromModal() {
   try {
     const data = JSON.parse(json);
     pushHistory();
-    beams.forEach(b => { scene.remove(b.mesh); b.mesh.geometry.dispose(); b.mesh.material.dispose(); });
-    beams = [];
-    selectedId = null;
+    clearAllBeams();
     data.beams.forEach(s => {
       const beam = { ...s, mesh: null };
       beam.mesh = createBeamMesh(beam);
@@ -1818,9 +1819,7 @@ function loadSample() {
     { id:8, name:'Schwelle', woodType:'Eiche', L:3200, B:120, H:120, axis:'x', x:-100, y:0, z:0 },
     { id:9, name:'Schwelle', woodType:'Eiche', L:3200, B:120, H:120, axis:'x', x:-100, y:0, z:4000 },
   ];
-  beams.forEach(b => { scene.remove(b.mesh); b.mesh.geometry.dispose(); b.mesh.material.dispose(); });
-  beams = [];
-  selectedId = null;
+  clearAllBeams();
   sample.forEach(s => {
     const beam = { ...s, mesh: null };
     beam.mesh = createBeamMesh(beam);
@@ -1832,18 +1831,19 @@ function loadSample() {
   updateUI();
 }
 
-// Load sample on first visit
-loadSample();
+// Start empty
 drawTrapPreview();
 updateRoofOutline();
+updateUI();
 
 // Expose functions to global scope (needed because this is a module script)
 Object.assign(window, {
   addBeam, deleteSelected, duplicateSelected,
   setMode, toggleSnap, setView, resetCamera,
-  newProject, saveProject, loadProject, loadFromModal, closeModal,
+  saveProject, loadProject, loadFromModal, closeModal,
   exportStückliste, applyEdit, deleteBeam,
   calcMissingSide, updateRoofOutline, drawTrapPreview,
+  newProject, clearAllBeams,
   rotateSelected, switchAxis, closeCtxMenu, showContextMenu,
   showTab, setDims, setAngle,
 });
