@@ -651,6 +651,23 @@
           <label>Position Z</label>
           <input type="number" id="edit-pz" step="10" onchange="applyEdit()">
         </div>
+        <div style="border-top:1px solid #0f3460;margin-top:8px;padding-top:8px">
+          <div style="font-size:10px;color:#888;margin-bottom:4px">Winkel (°)</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px">
+            <div class="dim-cell">
+              <label>Rot X</label>
+              <input type="number" id="edit-rx" step="1" onchange="applyEdit()">
+            </div>
+            <div class="dim-cell">
+              <label>Rot Y</label>
+              <input type="number" id="edit-ry" step="1" onchange="applyEdit()">
+            </div>
+            <div class="dim-cell">
+              <label>Rot Z</label>
+              <input type="number" id="edit-rz" step="1" onchange="applyEdit()">
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1224,6 +1241,9 @@ function updateSelPanel() {
   document.getElementById('edit-px').value = Math.round(b.x);
   document.getElementById('edit-py').value = Math.round(b.y);
   document.getElementById('edit-pz').value = Math.round(b.z);
+  document.getElementById('edit-rx').value = b.rx || 0;
+  document.getElementById('edit-ry').value = b.ry || 0;
+  document.getElementById('edit-rz').value = b.rz || 0;
 }
 
 function applyEdit() {
@@ -1236,6 +1256,9 @@ function applyEdit() {
   b.x = parseFloat(document.getElementById('edit-px').value) || 0;
   b.y = parseFloat(document.getElementById('edit-py').value) || 0;
   b.z = parseFloat(document.getElementById('edit-pz').value) || 0;
+  b.rx = parseFloat(document.getElementById('edit-rx').value) || 0;
+  b.ry = parseFloat(document.getElementById('edit-ry').value) || 0;
+  b.rz = parseFloat(document.getElementById('edit-rz').value) || 0;
   rebuildMesh(b);
   updateUI();
 }
@@ -1677,6 +1700,9 @@ document.addEventListener('keydown', e => {
     document.getElementById('edit-px').value = Math.round(b.x);
     document.getElementById('edit-py').value = Math.round(b.y);
     document.getElementById('edit-pz').value = Math.round(b.z);
+    document.getElementById('edit-rx').value = b.rx || 0;
+    document.getElementById('edit-ry').value = b.ry || 0;
+    document.getElementById('edit-rz').value = b.rz || 0;
   }
 });
 
