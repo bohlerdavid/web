@@ -84,6 +84,12 @@
                     <span>Wiki</span>
                 </a>
             </li>
+            <li class="sidebar-item {% if request.endpoint == 'holzbau' %}active{% endif %}">
+                <a href="{{ url_for('holzbau') }}" class="sidebar-link">
+                    <i class="bi bi-box"></i>
+                    <span>Holzbau 3D</span>
+                </a>
+            </li>
         </ul>
 
         <div class="sidebar-footer">
