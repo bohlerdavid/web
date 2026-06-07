@@ -1,0 +1,1362 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Holzkonstruktion 3D</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── TOP BAR ── */
+  #topbar {
+    background: linear-gradient(135deg, #16213e 0%, #0f3460 100%);
+    border-bottom: 2px solid #e94560;
+    padding: 6px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    z-index: 100;
+  }
+  #topbar .logo {
+    font-size: 18px;
+    font-weight: 700;
+    color: #e94560;
+    letter-spacing: 1px;
+    white-space: nowrap;
+  }
+  #topbar .logo span { color: #a8d8a8; }
+
+  .tb-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 6px;
+    padding: 4px 8px;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .tb-label {
+    font-size: 10px;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  button.tb-btn {
+    background: #0f3460;
+    border: 1px solid #e94560;
+    color: #e0e0e0;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  button.tb-btn:hover { background: #e94560; color: #fff; }
+  button.tb-btn.active { background: #e94560; color: #fff; }
+  button.tb-btn.green { border-color: #4caf50; }
+  button.tb-btn.green:hover, button.tb-btn.green.active { background: #4caf50; }
+  button.tb-btn.orange { border-color: #ff9800; }
+  button.tb-btn.orange:hover, button.tb-btn.orange.active { background: #ff9800; }
+
+  select.tb-select, input.tb-input {
+    background: #1a1a2e;
+    border: 1px solid #444;
+    color: #e0e0e0;
+    padding: 4px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+  input.tb-input { width: 64px; text-align: center; }
+
+  /* ── MAIN AREA ── */
+  #main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── LEFT PANEL ── */
+  #left-panel {
+    width: 240px;
+    background: #16213e;
+    border-right: 1px solid #0f3460;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .panel-section {
+    border-bottom: 1px solid #0f3460;
+    padding: 10px;
+  }
+  .panel-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: #e94560;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 8px;
+  }
+
+  .form-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+  .form-row label {
+    font-size: 11px;
+    color: #aaa;
+    width: 80px;
+    flex-shrink: 0;
+  }
+  .form-row input, .form-row select {
+    flex: 1;
+    background: #0f3460;
+    border: 1px solid #1a4a7a;
+    color: #e0e0e0;
+    padding: 4px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+  .form-row input:focus, .form-row select:focus {
+    outline: none;
+    border-color: #e94560;
+  }
+
+  .dim-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 4px;
+    margin-bottom: 6px;
+  }
+  .dim-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .dim-cell label { font-size: 10px; color: #888; }
+  .dim-cell input {
+    width: 100%;
+    background: #0f3460;
+    border: 1px solid #1a4a7a;
+    color: #e0e0e0;
+    padding: 4px;
+    border-radius: 4px;
+    font-size: 12px;
+    text-align: center;
+  }
+
+  .add-btn {
+    width: 100%;
+    padding: 8px;
+    background: linear-gradient(135deg, #e94560, #c0392b);
+    border: none;
+    color: #fff;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    margin-top: 4px;
+    transition: opacity 0.2s;
+  }
+  .add-btn:hover { opacity: 0.85; }
+
+  /* Selected info */
+  #sel-info {
+    font-size: 11px;
+    color: #aaa;
+    line-height: 1.6;
+  }
+  #sel-info strong { color: #e0e0e0; }
+
+  /* Parts list */
+  #parts-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0;
+  }
+  #parts-scroll::-webkit-scrollbar { width: 4px; }
+  #parts-scroll::-webkit-scrollbar-track { background: #0f3460; }
+  #parts-scroll::-webkit-scrollbar-thumb { background: #e94560; border-radius: 2px; }
+
+  #parts-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+  #parts-table th {
+    background: #0f3460;
+    color: #e94560;
+    padding: 5px 6px;
+    text-align: left;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    position: sticky;
+    top: 0;
+  }
+  #parts-table td {
+    padding: 4px 6px;
+    border-bottom: 1px solid #1a2a4a;
+    color: #ccc;
+  }
+  #parts-table tr:hover td { background: rgba(233,69,96,0.08); cursor: pointer; }
+  #parts-table tr.selected-row td { background: rgba(233,69,96,0.2); color: #fff; }
+
+  .parts-total {
+    padding: 8px 10px;
+    border-top: 2px solid #e94560;
+    font-size: 11px;
+    color: #aaa;
+    background: #16213e;
+  }
+  .parts-total strong { color: #e94560; }
+
+  /* ── 3D VIEWPORT ── */
+  #viewport {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+  #viewport canvas { display: block; }
+
+  /* ── STATUS BAR ── */
+  #statusbar {
+    background: #0f3460;
+    border-top: 1px solid #1a4a7a;
+    padding: 3px 12px;
+    font-size: 11px;
+    color: #888;
+    display: flex;
+    gap: 20px;
+    flex-shrink: 0;
+  }
+  #statusbar span { color: #aaa; }
+  #statusbar strong { color: #e94560; }
+
+  /* ── OVERLAY CONTROLS ── */
+  #view-controls {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    z-index: 10;
+  }
+  .view-btn {
+    background: rgba(15,52,96,0.9);
+    border: 1px solid #1a4a7a;
+    color: #ccc;
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+  }
+  .view-btn:hover { background: #e94560; border-color: #e94560; color: #fff; }
+
+  /* ── MODAL ── */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal-box {
+    background: #16213e;
+    border: 1px solid #e94560;
+    border-radius: 8px;
+    padding: 20px;
+    min-width: 320px;
+    max-width: 90vw;
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+  .modal-box h3 { color: #e94560; margin-bottom: 12px; font-size: 16px; }
+  .modal-box textarea {
+    width: 100%;
+    background: #0f3460;
+    border: 1px solid #1a4a7a;
+    color: #e0e0e0;
+    padding: 8px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 11px;
+    height: 200px;
+    resize: vertical;
+  }
+  .modal-actions { display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; }
+
+  /* ── TOOLTIP ── */
+  #tooltip {
+    position: absolute;
+    background: rgba(15,52,96,0.95);
+    border: 1px solid #e94560;
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 11px;
+    color: #e0e0e0;
+    pointer-events: none;
+    display: none;
+    z-index: 50;
+    white-space: pre;
+    line-height: 1.6;
+  }
+
+  /* ── MOVE HANDLE HINT ── */
+  #move-hint {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(233,69,96,0.9);
+    color: #fff;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 11px;
+    pointer-events: none;
+    display: none;
+  }
+
+  /* Color dots for wood types */
+  .color-dot {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+
+  /* Right panel: object list */
+  #right-panel {
+    width: 200px;
+    background: #16213e;
+    border-left: 1px solid #0f3460;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  #obj-list {
+    flex: 1;
+    overflow-y: auto;
+    font-size: 11px;
+  }
+  #obj-list::-webkit-scrollbar { width: 4px; }
+  #obj-list::-webkit-scrollbar-track { background: #0f3460; }
+  #obj-list::-webkit-scrollbar-thumb { background: #e94560; border-radius: 2px; }
+
+  .obj-item {
+    padding: 5px 8px;
+    border-bottom: 1px solid #1a2a4a;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: background 0.15s;
+  }
+  .obj-item:hover { background: rgba(233,69,96,0.1); }
+  .obj-item.selected { background: rgba(233,69,96,0.25); color: #fff; }
+  .obj-item .obj-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .obj-item .obj-del {
+    color: #666;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 2px;
+  }
+  .obj-item .obj-del:hover { color: #e94560; }
+
+  .snap-indicator {
+    position: absolute;
+    bottom: 30px;
+    right: 10px;
+    background: rgba(15,52,96,0.9);
+    border: 1px solid #1a4a7a;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 10px;
+    color: #888;
+  }
+  .snap-indicator.on { border-color: #4caf50; color: #4caf50; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════ TOP BAR ═══════════════════════════ -->
+<div id="topbar">
+  <div class="logo">Holz<span>BAU</span> 3D</div>
+
+  <div class="tb-group">
+    <span class="tb-label">Datei</span>
+    <button class="tb-btn" onclick="newProject()">Neu</button>
+    <button class="tb-btn" onclick="saveProject()">Speichern</button>
+    <button class="tb-btn" onclick="loadProject()">Laden</button>
+    <button class="tb-btn" onclick="exportStückliste()">Stückliste ↓</button>
+  </div>
+
+  <div class="tb-group">
+    <span class="tb-label">Modus</span>
+    <button class="tb-btn active" id="btn-mode-select" onclick="setMode('select')">Auswählen</button>
+    <button class="tb-btn" id="btn-mode-move" onclick="setMode('move')">Verschieben</button>
+    <button class="tb-btn" id="btn-mode-rotate" onclick="setMode('rotate')">Drehen</button>
+  </div>
+
+  <div class="tb-group">
+    <span class="tb-label">Einrasten</span>
+    <button class="tb-btn green" id="btn-snap" onclick="toggleSnap()">✓ Ein</button>
+    <span class="tb-label" style="margin-left:4px">Raster</span>
+    <input class="tb-input" id="snap-size" type="number" value="100" min="10" max="500" step="10"> mm
+  </div>
+
+  <div class="tb-group">
+    <span class="tb-label">Ansicht</span>
+    <button class="tb-btn" onclick="setView('top')">Oben</button>
+    <button class="tb-btn" onclick="setView('front')">Vorne</button>
+    <button class="tb-btn" onclick="setView('side')">Seite</button>
+    <button class="tb-btn" onclick="setView('iso')">3D</button>
+  </div>
+
+  <div class="tb-group">
+    <span class="tb-label">Aktionen</span>
+    <button class="tb-btn orange" onclick="deleteSelected()">⌫ Löschen</button>
+    <button class="tb-btn" onclick="duplicateSelected()">⧉ Kopieren</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ MAIN ═══════════════════════════ -->
+<div id="main">
+
+  <!-- ── LEFT PANEL ── -->
+  <div id="left-panel">
+
+    <!-- Add Beam -->
+    <div class="panel-section">
+      <div class="panel-title">⊕ Balken hinzufügen</div>
+
+      <div class="form-row">
+        <label>Holzart</label>
+        <select id="wood-type">
+          <option value="Fichte">Fichte</option>
+          <option value="Kiefer">Kiefer</option>
+          <option value="Lärche">Lärche</option>
+          <option value="Eiche">Eiche</option>
+          <option value="Buche">Buche</option>
+          <option value="Douglasie">Douglasie</option>
+          <option value="Brettschichtholz (BSH)">BSH</option>
+          <option value="Sperrholz">Sperrholz</option>
+          <option value="OSB">OSB</option>
+          <option value="Benutzerdefiniert">Benutzerdefiniert</option>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <label>Bezeichnung</label>
+        <input type="text" id="beam-name" placeholder="z.B. Pfette" value="">
+      </div>
+
+      <div style="font-size:10px;color:#888;margin-bottom:4px;text-align:center">Abmessungen (mm)</div>
+      <div class="dim-row">
+        <div class="dim-cell">
+          <label>Länge (L)</label>
+          <input type="number" id="dim-l" value="2000" min="1" step="10">
+        </div>
+        <div class="dim-cell">
+          <label>Breite (B)</label>
+          <input type="number" id="dim-b" value="80" min="1" step="5">
+        </div>
+        <div class="dim-cell">
+          <label>Höhe (H)</label>
+          <input type="number" id="dim-h" value="120" min="1" step="5">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <label>Ausrichtung</label>
+        <select id="beam-axis">
+          <option value="x">X-Achse (→)</option>
+          <option value="y">Y-Achse (↑)</option>
+          <option value="z">Z-Achse (↗)</option>
+        </select>
+      </div>
+
+      <button class="add-btn" onclick="addBeam()">+ Balken hinzufügen</button>
+    </div>
+
+    <!-- Selected Object -->
+    <div class="panel-section">
+      <div class="panel-title">✎ Auswahl bearbeiten</div>
+      <div id="sel-info" style="color:#666;font-size:11px">Kein Objekt ausgewählt</div>
+      <div id="sel-edit" style="display:none; margin-top:8px">
+        <div class="dim-row">
+          <div class="dim-cell">
+            <label>Länge</label>
+            <input type="number" id="edit-l" min="1" step="10" onchange="applyEdit()">
+          </div>
+          <div class="dim-cell">
+            <label>Breite</label>
+            <input type="number" id="edit-b" min="1" step="5" onchange="applyEdit()">
+          </div>
+          <div class="dim-cell">
+            <label>Höhe</label>
+            <input type="number" id="edit-h" min="1" step="5" onchange="applyEdit()">
+          </div>
+        </div>
+        <div class="form-row">
+          <label>Position X</label>
+          <input type="number" id="edit-px" step="10" onchange="applyEdit()">
+        </div>
+        <div class="form-row">
+          <label>Position Y</label>
+          <input type="number" id="edit-py" step="10" onchange="applyEdit()">
+        </div>
+        <div class="form-row">
+          <label>Position Z</label>
+          <input type="number" id="edit-pz" step="10" onchange="applyEdit()">
+        </div>
+      </div>
+    </div>
+
+    <!-- Parts list -->
+    <div class="panel-title" style="padding:8px 10px 4px; flex-shrink:0">📋 Stückliste</div>
+    <div id="parts-scroll" style="flex:1;overflow-y:auto">
+      <table id="parts-table">
+        <thead>
+          <tr>
+            <th>Anz.</th>
+            <th>Bezeichnung</th>
+            <th>L×B×H (mm)</th>
+          </tr>
+        </thead>
+        <tbody id="parts-body"></tbody>
+      </table>
+    </div>
+    <div class="parts-total" id="parts-total">Gesamt: <strong>0</strong> Teile</div>
+  </div>
+
+  <!-- ── 3D VIEWPORT ── -->
+  <div id="viewport">
+    <div id="view-controls">
+      <button class="view-btn" title="Oben" onclick="setView('top')">⊤</button>
+      <button class="view-btn" title="Vorne" onclick="setView('front')">▣</button>
+      <button class="view-btn" title="Seite" onclick="setView('side')">◧</button>
+      <button class="view-btn" title="Isometrisch" onclick="setView('iso')">⬡</button>
+      <button class="view-btn" title="Zoom Reset" onclick="resetCamera()">⊡</button>
+    </div>
+    <div id="tooltip"></div>
+    <div id="move-hint">Pfeiltasten: Verschieben | PgUp/PgDn: Hoch/Tief | Esc: Abbrechen</div>
+    <div id="snap-indicator" class="snap-indicator on">Raster: EIN</div>
+  </div>
+
+  <!-- ── RIGHT PANEL ── -->
+  <div id="right-panel">
+    <div class="panel-title" style="padding:8px 10px 4px;flex-shrink:0;border-bottom:1px solid #0f3460">🗂 Objekte</div>
+    <div id="obj-list"></div>
+  </div>
+
+</div>
+
+<!-- ═══════════════════════════ STATUS BAR ═══════════════════════════ -->
+<div id="statusbar">
+  <span>Objekte: <strong id="st-count">0</strong></span>
+  <span>Ausgewählt: <strong id="st-sel">–</strong></span>
+  <span>Kamera: <strong id="st-cam">Isometrisch</strong></span>
+  <span>Modus: <strong id="st-mode">Auswählen</strong></span>
+  <span style="margin-left:auto;color:#555">Holzbau 3D · Strg+Z = Rückgängig · Entf = Löschen · F = Fokus</span>
+</div>
+
+<!-- ═══════════════════════════ MODALS ═══════════════════════════ -->
+<div id="modal-save" class="modal-overlay">
+  <div class="modal-box">
+    <h3>Projekt speichern / laden</h3>
+    <p style="font-size:12px;color:#888;margin-bottom:8px">JSON-Projektdaten kopieren oder einfügen:</p>
+    <textarea id="modal-json"></textarea>
+    <div class="modal-actions">
+      <button class="tb-btn" onclick="loadFromModal()">Laden</button>
+      <button class="tb-btn" onclick="closeModal()">Schließen</button>
+    </div>
+  </div>
+</div>
+
+<!-- Three.js + OrbitControls -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.161.0/examples/js/controls/OrbitControls.js"></script>
+
+<script>
+'use strict';
+
+// ══════════════════════════════════════════════
+// SCENE SETUP
+// ══════════════════════════════════════════════
+
+const viewport = document.getElementById('viewport');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+viewport.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a2e);
+scene.fog = new THREE.FogExp2(0x1a1a2e, 0.00008);
+
+const camera = new THREE.PerspectiveCamera(45, 1, 1, 100000);
+camera.position.set(3000, 3000, 4000);
+camera.lookAt(0, 0, 0);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.screenSpacePanning = false;
+controls.minDistance = 100;
+controls.maxDistance = 50000;
+
+// ── LIGHTING ──
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+scene.add(ambientLight);
+
+const sunLight = new THREE.DirectionalLight(0xfff5e0, 1.2);
+sunLight.position.set(3000, 5000, 2000);
+sunLight.castShadow = true;
+sunLight.shadow.camera.near = 10;
+sunLight.shadow.camera.far = 30000;
+sunLight.shadow.camera.left = -8000;
+sunLight.shadow.camera.right = 8000;
+sunLight.shadow.camera.top = 8000;
+sunLight.shadow.camera.bottom = -8000;
+sunLight.shadow.mapSize.width = 2048;
+sunLight.shadow.mapSize.height = 2048;
+scene.add(sunLight);
+
+const fillLight = new THREE.DirectionalLight(0xc9e8ff, 0.4);
+fillLight.position.set(-2000, 1000, -2000);
+scene.add(fillLight);
+
+// ── GROUND GRID ──
+const gridHelper = new THREE.GridHelper(20000, 200, 0x1a4a7a, 0x0f3460);
+gridHelper.position.y = 0;
+scene.add(gridHelper);
+
+// Ground plane (for raycasting)
+const groundGeo = new THREE.PlaneGeometry(50000, 50000);
+const groundMat = new THREE.MeshStandardMaterial({ color: 0x0d1b2a, roughness: 1 });
+const groundPlane = new THREE.Mesh(groundGeo, groundMat);
+groundPlane.rotation.x = -Math.PI / 2;
+groundPlane.receiveShadow = true;
+groundPlane.visible = false; // invisible but raycastable
+scene.add(groundPlane);
+
+// Axes helper
+const axesHelper = new THREE.AxesHelper(500);
+scene.add(axesHelper);
+
+// ══════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════
+
+const SCALE = 0.001; // mm → THREE units (1 unit = 1mm)
+
+const WOOD_COLORS = {
+  'Fichte':               0xd4a96a,
+  'Kiefer':               0xc8864c,
+  'Lärche':               0xb87333,
+  'Eiche':                0x8b6914,
+  'Buche':                0xd49b63,
+  'Douglasie':            0xa0522d,
+  'Brettschichtholz (BSH)': 0xe8c090,
+  'Sperrholz':            0xf5deb3,
+  'OSB':                  0xc4a882,
+  'Benutzerdefiniert':    0x888888,
+};
+
+const WOOD_COLORS_HEX = {};
+Object.entries(WOOD_COLORS).forEach(([k, v]) => {
+  WOOD_COLORS_HEX[k] = '#' + v.toString(16).padStart(6, '0');
+});
+
+let beams = [];       // [{id, name, woodType, L, B, H, axis, x, y, z, mesh}]
+let selectedId = null;
+let snapEnabled = true;
+let currentMode = 'select'; // 'select' | 'move' | 'rotate'
+let history = [];     // undo stack
+let idCounter = 1;
+
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+// ══════════════════════════════════════════════
+// BEAM CREATION
+// ══════════════════════════════════════════════
+
+function createBeamMesh(beam) {
+  let W, H, D; // Three.js box dimensions (x, y, z)
+  if (beam.axis === 'x') { W = beam.L; H = beam.H; D = beam.B; }
+  else if (beam.axis === 'y') { W = beam.B; H = beam.L; D = beam.H; }
+  else { W = beam.B; H = beam.H; D = beam.L; } // z-axis
+
+  const geo = new THREE.BoxGeometry(W, H, D);
+  const color = WOOD_COLORS[beam.woodType] || 0xc8864c;
+
+  // Wood grain texture via vertex colors — simplified with material
+  const mat = new THREE.MeshStandardMaterial({
+    color: color,
+    roughness: 0.85,
+    metalness: 0.0,
+  });
+
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(beam.x + W/2, beam.y + H/2, beam.z + D/2);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.userData.beamId = beam.id;
+
+  // Edge lines
+  const edges = new THREE.EdgesGeometry(geo);
+  const lineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 });
+  const lineSegs = new THREE.LineSegments(edges, lineMat);
+  mesh.add(lineSegs);
+
+  return mesh;
+}
+
+function makeSelectionHighlight(mesh, on) {
+  if (!mesh) return;
+  const mat = mesh.material;
+  if (on) {
+    mat.emissive = new THREE.Color(0xe94560);
+    mat.emissiveIntensity = 0.25;
+  } else {
+    mat.emissive = new THREE.Color(0x000000);
+    mat.emissiveIntensity = 0;
+  }
+}
+
+function addBeam() {
+  const L = parseFloat(document.getElementById('dim-l').value) || 2000;
+  const B = parseFloat(document.getElementById('dim-b').value) || 80;
+  const H = parseFloat(document.getElementById('dim-h').value) || 120;
+  const woodType = document.getElementById('wood-type').value;
+  const axis = document.getElementById('beam-axis').value;
+  let name = document.getElementById('beam-name').value.trim();
+  if (!name) name = `${woodType} ${L}×${B}×${H}`;
+
+  const snapSize = parseFloat(document.getElementById('snap-size').value) || 100;
+
+  // Place at origin or snapped position
+  let x = 0, y = 0, z = 0;
+  if (snapEnabled) {
+    x = Math.round(x / snapSize) * snapSize;
+    y = Math.round(y / snapSize) * snapSize;
+    z = Math.round(z / snapSize) * snapSize;
+  }
+
+  pushHistory();
+
+  const beam = { id: idCounter++, name, woodType, L, B, H, axis, x, y, z, mesh: null };
+  beam.mesh = createBeamMesh(beam);
+  scene.add(beam.mesh);
+  beams.push(beam);
+
+  selectBeam(beam.id);
+  updateUI();
+}
+
+function deleteBeam(id) {
+  pushHistory();
+  const idx = beams.findIndex(b => b.id === id);
+  if (idx < 0) return;
+  scene.remove(beams[idx].mesh);
+  beams[idx].mesh.geometry.dispose();
+  beams[idx].mesh.material.dispose();
+  beams.splice(idx, 1);
+  if (selectedId === id) { selectedId = null; }
+  updateUI();
+}
+
+function duplicateSelected() {
+  if (!selectedId) return;
+  const src = beams.find(b => b.id === selectedId);
+  if (!src) return;
+  pushHistory();
+  const snapSize = parseFloat(document.getElementById('snap-size').value) || 100;
+  const offset = snapEnabled ? snapSize : 200;
+  const beam = { ...src, id: idCounter++, name: src.name + ' (Kopie)', x: src.x + offset, z: src.z + offset, mesh: null };
+  beam.mesh = createBeamMesh(beam);
+  scene.add(beam.mesh);
+  beams.push(beam);
+  selectBeam(beam.id);
+  updateUI();
+}
+
+// ══════════════════════════════════════════════
+// SELECTION
+// ══════════════════════════════════════════════
+
+function selectBeam(id) {
+  // deselect old
+  if (selectedId !== null) {
+    const old = beams.find(b => b.id === selectedId);
+    if (old) makeSelectionHighlight(old.mesh, false);
+  }
+  selectedId = id;
+  if (id !== null) {
+    const b = beams.find(b => b.id === id);
+    if (b) makeSelectionHighlight(b.mesh, true);
+  }
+  updateSelPanel();
+  updateObjList();
+}
+
+function deleteSelected() {
+  if (selectedId !== null) deleteBeam(selectedId);
+}
+
+// ══════════════════════════════════════════════
+// EDITING (PROPERTIES PANEL)
+// ══════════════════════════════════════════════
+
+function updateSelPanel() {
+  const info = document.getElementById('sel-info');
+  const editDiv = document.getElementById('sel-edit');
+  if (!selectedId) {
+    info.innerHTML = '<span style="color:#555">Kein Objekt ausgewählt</span>';
+    editDiv.style.display = 'none';
+    document.getElementById('st-sel').textContent = '–';
+    return;
+  }
+  const b = beams.find(x => x.id === selectedId);
+  if (!b) return;
+  const dotColor = WOOD_COLORS_HEX[b.woodType] || '#888';
+  info.innerHTML = `<span class="color-dot" style="background:${dotColor}"></span><strong>${b.name}</strong><br>
+    ${b.woodType} · ${b.axis.toUpperCase()}-Achse<br>
+    L=${b.L} · B=${b.B} · H=${b.H} mm<br>
+    Pos: X=${Math.round(b.x)} Y=${Math.round(b.y)} Z=${Math.round(b.z)}`;
+  document.getElementById('st-sel').textContent = b.name;
+
+  editDiv.style.display = 'block';
+  document.getElementById('edit-l').value = b.L;
+  document.getElementById('edit-b').value = b.B;
+  document.getElementById('edit-h').value = b.H;
+  document.getElementById('edit-px').value = Math.round(b.x);
+  document.getElementById('edit-py').value = Math.round(b.y);
+  document.getElementById('edit-pz').value = Math.round(b.z);
+}
+
+function applyEdit() {
+  if (!selectedId) return;
+  const b = beams.find(x => x.id === selectedId);
+  if (!b) return;
+  b.L = parseFloat(document.getElementById('edit-l').value) || b.L;
+  b.B = parseFloat(document.getElementById('edit-b').value) || b.B;
+  b.H = parseFloat(document.getElementById('edit-h').value) || b.H;
+  b.x = parseFloat(document.getElementById('edit-px').value) || 0;
+  b.y = parseFloat(document.getElementById('edit-py').value) || 0;
+  b.z = parseFloat(document.getElementById('edit-pz').value) || 0;
+  rebuildMesh(b);
+  updateUI();
+}
+
+function rebuildMesh(beam) {
+  scene.remove(beam.mesh);
+  beam.mesh.geometry.dispose();
+  beam.mesh.material.dispose();
+  beam.mesh = createBeamMesh(beam);
+  scene.add(beam.mesh);
+  if (selectedId === beam.id) makeSelectionHighlight(beam.mesh, true);
+}
+
+// ══════════════════════════════════════════════
+// PARTS LIST (STÜCKLISTE)
+// ══════════════════════════════════════════════
+
+function updatePartsTable() {
+  // Group by name + dimensions + woodType
+  const groups = {};
+  beams.forEach(b => {
+    const key = `${b.woodType}||${b.name}||${b.L}×${b.B}×${b.H}`;
+    if (!groups[key]) groups[key] = { name: b.name, woodType: b.woodType, L: b.L, B: b.B, H: b.H, ids: [] };
+    groups[key].ids.push(b.id);
+  });
+
+  const tbody = document.getElementById('parts-body');
+  tbody.innerHTML = '';
+  let total = 0;
+  Object.values(groups).sort((a, b) => a.name.localeCompare(b.name)).forEach(g => {
+    const tr = document.createElement('tr');
+    const dotColor = WOOD_COLORS_HEX[g.woodType] || '#888';
+    const isSelected = g.ids.includes(selectedId);
+    if (isSelected) tr.className = 'selected-row';
+    tr.innerHTML = `
+      <td><strong>${g.ids.length}×</strong></td>
+      <td><span class="color-dot" style="background:${dotColor}"></span>${g.name}</td>
+      <td style="font-family:monospace">${g.L}×${g.B}×${g.H}</td>`;
+    tr.title = `${g.woodType} · ${g.L}×${g.B}×${g.H} mm`;
+    tr.onclick = () => { selectBeam(g.ids[0]); updateUI(); };
+    tbody.appendChild(tr);
+    total += g.ids.length;
+  });
+  document.getElementById('parts-total').innerHTML = `Gesamt: <strong>${total}</strong> Teile | ${Object.keys(groups).length} Positionen`;
+  document.getElementById('st-count').textContent = beams.length;
+}
+
+function updateObjList() {
+  const list = document.getElementById('obj-list');
+  list.innerHTML = '';
+  beams.forEach(b => {
+    const div = document.createElement('div');
+    div.className = 'obj-item' + (b.id === selectedId ? ' selected' : '');
+    const dotColor = WOOD_COLORS_HEX[b.woodType] || '#888';
+    div.innerHTML = `<span class="color-dot" style="background:${dotColor}"></span>
+      <span class="obj-name" title="${b.name}">${b.name}</span>
+      <span class="obj-del" title="Löschen" onclick="event.stopPropagation();deleteBeam(${b.id})">✕</span>`;
+    div.onclick = () => { selectBeam(b.id); updateUI(); };
+    list.appendChild(div);
+  });
+}
+
+function updateUI() {
+  updatePartsTable();
+  updateObjList();
+  updateSelPanel();
+}
+
+// ══════════════════════════════════════════════
+// SNAP
+// ══════════════════════════════════════════════
+
+function toggleSnap() {
+  snapEnabled = !snapEnabled;
+  const btn = document.getElementById('btn-snap');
+  const ind = document.getElementById('snap-indicator');
+  if (snapEnabled) {
+    btn.textContent = '✓ Ein';
+    btn.classList.add('active');
+    ind.textContent = 'Raster: EIN';
+    ind.className = 'snap-indicator on';
+  } else {
+    btn.textContent = '✗ Aus';
+    btn.classList.remove('active');
+    ind.textContent = 'Raster: AUS';
+    ind.className = 'snap-indicator';
+  }
+}
+
+function snapValue(v) {
+  if (!snapEnabled) return v;
+  const sz = parseFloat(document.getElementById('snap-size').value) || 100;
+  return Math.round(v / sz) * sz;
+}
+
+// ══════════════════════════════════════════════
+// MODE
+// ══════════════════════════════════════════════
+
+function setMode(mode) {
+  currentMode = mode;
+  ['select','move','rotate'].forEach(m => {
+    document.getElementById('btn-mode-' + m).classList.toggle('active', m === mode);
+  });
+  document.getElementById('st-mode').textContent = { select:'Auswählen', move:'Verschieben', rotate:'Drehen' }[mode];
+  const hint = document.getElementById('move-hint');
+  hint.style.display = (mode === 'move') ? 'block' : 'none';
+  controls.enabled = (mode === 'select');
+}
+
+// ══════════════════════════════════════════════
+// CAMERA VIEWS
+// ══════════════════════════════════════════════
+
+const CAM_VIEWS = {
+  iso:   { pos: [3000, 3000, 4000], look: [0, 500, 0] },
+  top:   { pos: [0, 8000, 0],       look: [0, 0, 0] },
+  front: { pos: [0, 1000, 8000],    look: [0, 500, 0] },
+  side:  { pos: [8000, 1000, 0],    look: [0, 500, 0] },
+};
+
+function setView(v) {
+  const cv = CAM_VIEWS[v];
+  camera.position.set(...cv.pos);
+  controls.target.set(...cv.look);
+  controls.update();
+  document.getElementById('st-cam').textContent = { iso:'Isometrisch', top:'Oben', front:'Vorne', side:'Seite' }[v];
+}
+
+function resetCamera() {
+  // Fit all objects
+  if (beams.length === 0) { setView('iso'); return; }
+  const box = new THREE.Box3();
+  beams.forEach(b => box.expandByObject(b.mesh));
+  const center = new THREE.Vector3();
+  const size = new THREE.Vector3();
+  box.getCenter(center);
+  box.getSize(size);
+  const maxDim = Math.max(size.x, size.y, size.z);
+  camera.position.set(center.x + maxDim * 1.5, center.y + maxDim * 1.2, center.z + maxDim * 1.5);
+  controls.target.copy(center);
+  controls.update();
+}
+
+// ══════════════════════════════════════════════
+// MOUSE INTERACTION
+// ══════════════════════════════════════════════
+
+let isDragging = false;
+let dragBeam = null;
+let dragOffset = new THREE.Vector3();
+let dragPlane = new THREE.Plane();
+let mouseDown = false;
+let mouseDownPos = { x: 0, y: 0 };
+
+renderer.domElement.addEventListener('mousedown', onMouseDown);
+renderer.domElement.addEventListener('mousemove', onMouseMove);
+renderer.domElement.addEventListener('mouseup', onMouseUp);
+renderer.domElement.addEventListener('dblclick', onDblClick);
+
+function getIntersects(event) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const meshes = beams.map(b => b.mesh);
+  return raycaster.intersectObjects(meshes, true);
+}
+
+function getGroundIntersect(event) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const target = new THREE.Vector3();
+  raycaster.ray.intersectPlane(dragPlane, target);
+  return target;
+}
+
+function onMouseDown(e) {
+  if (e.button !== 0) return;
+  mouseDown = true;
+  mouseDownPos = { x: e.clientX, y: e.clientY };
+
+  const hits = getIntersects(e);
+  if (hits.length > 0) {
+    let obj = hits[0].object;
+    while (obj.parent && !obj.userData.beamId) obj = obj.parent;
+    const beamId = obj.userData.beamId;
+    if (!beamId) return;
+
+    selectBeam(beamId);
+    updateUI();
+
+    if (currentMode === 'move') {
+      const beam = beams.find(b => b.id === beamId);
+      if (!beam) return;
+      isDragging = true;
+      dragBeam = beam;
+      controls.enabled = false;
+
+      // Drag on horizontal plane at beam's y position
+      dragPlane.setFromNormalAndCoplanarPoint(
+        new THREE.Vector3(0, 1, 0),
+        beam.mesh.position
+      );
+      dragOffset.copy(beam.mesh.position).sub(hits[0].point);
+    }
+  } else {
+    if (currentMode === 'select') selectBeam(null);
+    updateUI();
+  }
+}
+
+function onMouseMove(e) {
+  // Hover tooltip
+  const hits = getIntersects(e);
+  const tooltip = document.getElementById('tooltip');
+  if (hits.length > 0 && currentMode === 'select') {
+    let obj = hits[0].object;
+    while (obj.parent && !obj.userData.beamId) obj = obj.parent;
+    const b = beams.find(x => x.id === obj.userData.beamId);
+    if (b) {
+      tooltip.style.display = 'block';
+      tooltip.style.left = (e.clientX - viewport.getBoundingClientRect().left + 12) + 'px';
+      tooltip.style.top = (e.clientY - viewport.getBoundingClientRect().top + 12) + 'px';
+      tooltip.textContent = `${b.name}\n${b.woodType}\n${b.L}×${b.B}×${b.H} mm\nPos: ${Math.round(b.x)},${Math.round(b.y)},${Math.round(b.z)}`;
+    }
+  } else {
+    tooltip.style.display = 'none';
+  }
+
+  if (!isDragging || !dragBeam) return;
+
+  const pt = getGroundIntersect(e);
+  if (!pt) return;
+
+  let nx = snapValue(pt.x + dragOffset.x - getBeamHalfW(dragBeam));
+  let nz = snapValue(pt.z + dragOffset.z - getBeamHalfD(dragBeam));
+  dragBeam.x = nx;
+  dragBeam.z = nz;
+
+  const hw = getBeamHalfW(dragBeam);
+  const hh = getBeamHalfH(dragBeam);
+  const hd = getBeamHalfD(dragBeam);
+  dragBeam.mesh.position.set(dragBeam.x + hw, dragBeam.y + hh, dragBeam.z + hd);
+  updateSelPanel();
+}
+
+function onMouseUp(e) {
+  if (isDragging) {
+    isDragging = false;
+    dragBeam = null;
+    controls.enabled = (currentMode === 'select');
+    updateUI();
+  }
+  mouseDown = false;
+}
+
+function onDblClick(e) {
+  if (currentMode === 'select') {
+    // Focus selected
+    if (selectedId) resetCamera();
+  }
+}
+
+function getBeamHalfW(b) { return (b.axis === 'x' ? b.L : b.B) / 2; }
+function getBeamHalfH(b) { return (b.axis === 'y' ? b.L : b.H) / 2; }
+function getBeamHalfD(b) { return (b.axis === 'z' ? b.L : b.B) / 2; }
+
+// ══════════════════════════════════════════════
+// KEYBOARD
+// ══════════════════════════════════════════════
+
+document.addEventListener('keydown', e => {
+  const tag = document.activeElement.tagName;
+  if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+
+  if (e.key === 'Delete' || e.key === 'Backspace') { deleteSelected(); return; }
+  if (e.key === 'Escape') { selectBeam(null); setMode('select'); updateUI(); return; }
+  if (e.key === 'f' || e.key === 'F') { resetCamera(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') { undo(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'd') { e.preventDefault(); duplicateSelected(); return; }
+
+  // Arrow key movement
+  if (!selectedId) return;
+  const b = beams.find(x => x.id === selectedId);
+  if (!b) return;
+  const step = snapEnabled ? (parseFloat(document.getElementById('snap-size').value) || 100) : 10;
+
+  let moved = false;
+  if (e.key === 'ArrowLeft')  { b.x -= step; moved = true; }
+  if (e.key === 'ArrowRight') { b.x += step; moved = true; }
+  if (e.key === 'ArrowUp' && !e.shiftKey)   { b.z -= step; moved = true; }
+  if (e.key === 'ArrowDown' && !e.shiftKey) { b.z += step; moved = true; }
+  if (e.key === 'PageUp')   { b.y += step; moved = true; }
+  if (e.key === 'PageDown') { b.y -= step; moved = true; }
+
+  if (moved) {
+    e.preventDefault();
+    b.mesh.position.set(b.x + getBeamHalfW(b), b.y + getBeamHalfH(b), b.z + getBeamHalfD(b));
+    updateSelPanel();
+    updatePartsTable();
+    // sync edit inputs
+    document.getElementById('edit-px').value = Math.round(b.x);
+    document.getElementById('edit-py').value = Math.round(b.y);
+    document.getElementById('edit-pz').value = Math.round(b.z);
+  }
+});
+
+// ══════════════════════════════════════════════
+// UNDO
+// ══════════════════════════════════════════════
+
+function pushHistory() {
+  const snap = beams.map(b => ({ ...b, mesh: null }));
+  history.push(JSON.stringify(snap));
+  if (history.length > 50) history.shift();
+}
+
+function undo() {
+  if (history.length === 0) return;
+  const snap = JSON.parse(history.pop());
+
+  // Remove all current meshes
+  beams.forEach(b => { scene.remove(b.mesh); b.mesh.geometry.dispose(); b.mesh.material.dispose(); });
+  beams = [];
+  selectedId = null;
+
+  // Restore
+  snap.forEach(s => {
+    const beam = { ...s, mesh: null };
+    beam.mesh = createBeamMesh(beam);
+    scene.add(beam.mesh);
+    beams.push(beam);
+  });
+  // Restore idCounter
+  idCounter = beams.length > 0 ? Math.max(...beams.map(b => b.id)) + 1 : 1;
+  updateUI();
+}
+
+// ══════════════════════════════════════════════
+// PROJECT SAVE / LOAD
+// ══════════════════════════════════════════════
+
+function newProject() {
+  if (beams.length > 0 && !confirm('Aktuelles Projekt verwerfen?')) return;
+  pushHistory();
+  beams.forEach(b => { scene.remove(b.mesh); b.mesh.geometry.dispose(); b.mesh.material.dispose(); });
+  beams = [];
+  selectedId = null;
+  idCounter = 1;
+  history = [];
+  updateUI();
+}
+
+function saveProject() {
+  const data = {
+    version: 1,
+    beams: beams.map(b => ({ id: b.id, name: b.name, woodType: b.woodType, L: b.L, B: b.B, H: b.H, axis: b.axis, x: b.x, y: b.y, z: b.z })),
+  };
+  const json = JSON.stringify(data, null, 2);
+  document.getElementById('modal-json').value = json;
+  document.getElementById('modal-save').classList.add('open');
+
+  // Also try localStorage
+  try { localStorage.setItem('holzbau_project', json); } catch(e) {}
+}
+
+function loadProject() {
+  let stored = '';
+  try { stored = localStorage.getItem('holzbau_project') || ''; } catch(e) {}
+  document.getElementById('modal-json').value = stored;
+  document.getElementById('modal-save').classList.add('open');
+}
+
+function loadFromModal() {
+  const json = document.getElementById('modal-json').value.trim();
+  if (!json) { closeModal(); return; }
+  try {
+    const data = JSON.parse(json);
+    pushHistory();
+    beams.forEach(b => { scene.remove(b.mesh); b.mesh.geometry.dispose(); b.mesh.material.dispose(); });
+    beams = [];
+    selectedId = null;
+    data.beams.forEach(s => {
+      const beam = { ...s, mesh: null };
+      beam.mesh = createBeamMesh(beam);
+      scene.add(beam.mesh);
+      beams.push(beam);
+    });
+    idCounter = beams.length > 0 ? Math.max(...beams.map(b => b.id)) + 1 : 1;
+    updateUI();
+    closeModal();
+  } catch (err) {
+    alert('Fehler beim Laden: ' + err.message);
+  }
+}
+
+function closeModal() {
+  document.getElementById('modal-save').classList.remove('open');
+}
+
+// ══════════════════════════════════════════════
+// EXPORT STÜCKLISTE
+// ══════════════════════════════════════════════
+
+function exportStückliste() {
+  const groups = {};
+  beams.forEach(b => {
+    const key = `${b.woodType}||${b.name}||${b.L}×${b.B}×${b.H}`;
+    if (!groups[key]) groups[key] = { name: b.name, woodType: b.woodType, L: b.L, B: b.B, H: b.H, count: 0 };
+    groups[key].count++;
+  });
+
+  let csv = 'Pos;Anzahl;Bezeichnung;Holzart;Länge (mm);Breite (mm);Höhe (mm);Volumen (dm³)\n';
+  let pos = 1;
+  Object.values(groups).sort((a, b) => a.name.localeCompare(b.name)).forEach(g => {
+    const vol = ((g.L * g.B * g.H) / 1e6).toFixed(3);
+    csv += `${pos++};${g.count};${g.name};${g.woodType};${g.L};${g.B};${g.H};${vol}\n`;
+  });
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'stueckliste.csv';
+  a.click();
+}
+
+// ══════════════════════════════════════════════
+// RESIZE & RENDER LOOP
+// ══════════════════════════════════════════════
+
+function resize() {
+  const w = viewport.clientWidth;
+  const h = viewport.clientHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+
+window.addEventListener('resize', resize);
+resize();
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+
+// ══════════════════════════════════════════════
+// SAMPLE PROJECT
+// ══════════════════════════════════════════════
+
+function loadSample() {
+  // Simple wooden frame: 4 posts + 2 beams
+  const sample = [
+    { id:1, name:'Stiel', woodType:'Fichte', L:100, B:100, H:3000, axis:'y', x:0,    y:0, z:0 },
+    { id:2, name:'Stiel', woodType:'Fichte', L:100, B:100, H:3000, axis:'y', x:3000, y:0, z:0 },
+    { id:3, name:'Stiel', woodType:'Fichte', L:100, B:100, H:3000, axis:'y', x:0,    y:0, z:4000 },
+    { id:4, name:'Stiel', woodType:'Fichte', L:100, B:100, H:3000, axis:'y', x:3000, y:0, z:4000 },
+    { id:5, name:'Rähm',  woodType:'Fichte', L:3000, B:100, H:120, axis:'x', x:0,   y:2880, z:0 },
+    { id:6, name:'Rähm',  woodType:'Fichte', L:3000, B:100, H:120, axis:'x', x:0,   y:2880, z:4000 },
+    { id:7, name:'Pfette', woodType:'Lärche', L:4200, B:120, H:200, axis:'z', x:1400, y:2880, z:0 },
+    { id:8, name:'Schwelle', woodType:'Eiche', L:3200, B:120, H:120, axis:'x', x:-100, y:0, z:0 },
+    { id:9, name:'Schwelle', woodType:'Eiche', L:3200, B:120, H:120, axis:'x', x:-100, y:0, z:4000 },
+  ];
+  beams.forEach(b => { scene.remove(b.mesh); b.mesh.geometry.dispose(); b.mesh.material.dispose(); });
+  beams = [];
+  selectedId = null;
+  sample.forEach(s => {
+    const beam = { ...s, mesh: null };
+    beam.mesh = createBeamMesh(beam);
+    scene.add(beam.mesh);
+    beams.push(beam);
+  });
+  idCounter = 10;
+  resetCamera();
+  updateUI();
+}
+
+// Load sample on first visit
+loadSample();
+</script>
+</body>
+</html>
