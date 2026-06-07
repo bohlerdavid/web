@@ -1631,7 +1631,19 @@ function getBeamHalfD(b) { return (b.axis === 'z' ? b.L : b.B) / 2; }
 // WASD camera movement state
 const wasd = { w:false, a:false, s:false, d:false, q:false, e:false };
 
+const WASD_KEYS = new Set(['w','a','s','d','q','e']);
+
 document.addEventListener('keydown', e => {
+  const key = e.key.toLowerCase();
+
+  // WASD always works — before input-field check
+  if (WASD_KEYS.has(key) && !e.ctrlKey && !e.metaKey) {
+    wasd[key] = true;
+    e.preventDefault();
+    return;
+  }
+
+  // Block other shortcuts when an input is focused
   const tag = document.activeElement.tagName;
   if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
 
@@ -1640,13 +1652,6 @@ document.addEventListener('keydown', e => {
   if (e.key === 'f' || e.key === 'F') { resetCamera(); return; }
   if ((e.ctrlKey || e.metaKey) && e.key === 'z') { undo(); return; }
   if ((e.ctrlKey || e.metaKey) && e.key === 'd') { e.preventDefault(); duplicateSelected(); return; }
-
-  // WASD camera navigation
-  if (['w','a','s','d','q','e'].includes(e.key.toLowerCase())) {
-    wasd[e.key.toLowerCase()] = true;
-    e.preventDefault();
-    return;
-  }
 
   // Arrow key: move selected beam
   if (!selectedId) return;
@@ -1672,15 +1677,17 @@ document.addEventListener('keydown', e => {
 });
 
 document.addEventListener('keyup', e => {
-  if (['w','a','s','d','q','e'].includes(e.key.toLowerCase()))
-    wasd[e.key.toLowerCase()] = false;
+  const key = e.key.toLowerCase();
+  if (WASD_KEYS.has(key)) wasd[key] = false;
 });
 
 // WASD movement applied each frame in animate()
 function applyWASD() {
   const any = Object.values(wasd).some(Boolean);
   if (!any) return;
-  const speed = 80;
+  // Speed scales with camera distance to target
+  const dist = camera.position.distanceTo(controls.target);
+  const speed = Math.max(50, dist * 0.04);
   // Camera forward direction (horizontal)
   const dir = new THREE.Vector3();
   camera.getWorldDirection(dir);
