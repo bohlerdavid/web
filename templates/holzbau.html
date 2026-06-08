@@ -2428,6 +2428,17 @@ function clearAllDecos() {
   [...decos].forEach(d => deleteDeco(d.id));
 }
 
+// Global error handler — shows JS errors visibly in the status bar
+window.addEventListener('error', ev => {
+  const bar = document.getElementById('statusbar');
+  if (bar) bar.innerHTML = `<span style="color:#e94560;font-weight:bold">⚠ JS-Fehler: ${ev.message} (${ev.filename?.split('/').pop()}:${ev.lineno})</span>`;
+  console.error('Global error:', ev);
+});
+window.addEventListener('unhandledrejection', ev => {
+  const bar = document.getElementById('statusbar');
+  if (bar) bar.innerHTML = `<span style="color:#e94560;font-weight:bold">⚠ Fehler: ${ev.reason}</span>`;
+});
+
 // Start empty
 calcFloorPlan();
 updateUI();
