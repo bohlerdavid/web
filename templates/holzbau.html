@@ -425,6 +425,43 @@
     color: #888;
   }
   .snap-indicator.on { border-color: #4caf50; color: #4caf50; }
+
+  /* ── GROUP MANAGER (right panel) ── */
+  .group-section { border-bottom: 1px solid #0f3460; }
+  .group-header {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 8px;
+    cursor: pointer;
+    background: rgba(15,52,96,0.4);
+    font-size: 11px;
+    font-weight: 600;
+    color: #ccc;
+    user-select: none;
+    transition: background 0.15s;
+  }
+  .group-header:hover { background: rgba(233,69,96,0.15); }
+  .group-header .group-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .group-header .group-count { color: #888; font-size: 10px; font-weight: normal; }
+  .group-header .group-del { color: #555; font-size: 13px; cursor: pointer; padding: 2px 4px; border-radius: 2px; }
+  .group-header .group-del:hover { color: #e94560; }
+  .group-items { display: none; }
+  .group-items.open { display: block; }
+  .group-beam-item {
+    padding: 4px 8px 4px 20px;
+    font-size: 10px;
+    color: #aaa;
+    border-bottom: 1px solid #0f2040;
+    cursor: grab;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: background 0.1s;
+  }
+  .group-beam-item:hover { background: rgba(233,69,96,0.08); }
+  .group-beam-item.dragging { opacity: 0.5; }
+  .group-header.drag-over { background: rgba(76,175,80,0.2); }
 </style>
 </head>
 <body>
@@ -554,6 +591,11 @@
       <div class="form-row">
         <label>Bezeichnung</label>
         <input type="text" id="beam-name" placeholder="z.B. Sparren">
+      </div>
+
+      <div class="form-row">
+        <label>Gruppe</label>
+        <select id="beam-group-sel"></select>
       </div>
 
       <div style="font-size:10px;color:#888;margin-bottom:4px;text-align:center">Balken-Querschnitt & Länge (mm)</div>
@@ -706,8 +748,11 @@
 
   <!-- ── RIGHT PANEL ── -->
   <div id="right-panel">
-    <div class="panel-title" style="padding:8px 10px 4px;flex-shrink:0;border-bottom:1px solid #0f3460">🗂 Objekte</div>
-    <div id="obj-list"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-bottom:1px solid #0f3460;flex-shrink:0">
+      <span class="panel-title" style="margin:0">Gruppen</span>
+      <button class="tb-btn" style="font-size:10px;padding:3px 7px" onclick="addGroup()">+ Gruppe</button>
+    </div>
+    <div id="group-list" style="flex:1;overflow-y:auto"></div>
   </div>
 
 </div>
@@ -846,8 +891,9 @@ Object.entries(WOOD_COLORS).forEach(([k, v]) => {
   WOOD_COLORS_HEX[k] = '#' + v.toString(16).padStart(6, '0');
 });
 
-let beams = [];       // [{id, name, woodType, L, B, H, axis, x, y, z, mesh}]
-let selectedId = null;
+let beams = [];       // [{id, name, woodType, L, B, H, axis, x, y, z, rx, ry, rz, group, mesh}]
+let selectedIds = new Set(); // multi-selection
+let groups = ['Standard']; // group names
 let snapEnabled = true;
 let currentMode = 'select'; // 'select' | 'move' | 'rotate'
 let history = [];     // undo stack
@@ -1136,7 +1182,8 @@ function addBeam() {
   const ry = parseFloat(document.getElementById('rot-y').value) || 0;
   const rz = parseFloat(document.getElementById('rot-z').value) || 0;
   if (!name) name = `${woodType} ${L}×${B}×${H}`;
-  const beam = { id: idCounter++, name, woodType, shape: 'rect', L, B, H, axis, rx, ry, rz, x: 0, y: 0, z: 0, mesh: null };
+  const group = document.getElementById('beam-group-sel')?.value || 'Standard';
+  const beam = { id: idCounter++, name, woodType, shape: 'rect', L, B, H, axis, rx, ry, rz, group, x: 0, y: 0, z: 0, mesh: null };
   pushHistory();
   beam.mesh = createBeamMesh(beam);
   scene.add(beam.mesh);
@@ -1158,13 +1205,14 @@ function deleteBeam(id) {
   pushHistory();
   removeMesh(beams[idx].mesh);
   beams.splice(idx, 1);
-  if (selectedId === id) { selectedId = null; }
+  selectedIds.delete(id);
   updateUI();
 }
 
 function duplicateSelected() {
-  if (!selectedId) return;
-  const src = beams.find(b => b.id === selectedId);
+  const primaryId = [...selectedIds][0];
+  if (!primaryId) return;
+  const src = beams.find(b => b.id === primaryId);
   if (!src) return;
   pushHistory();
   const snapSize = parseFloat(document.getElementById('snap-size').value) || 100;
@@ -1181,14 +1229,16 @@ function duplicateSelected() {
 // SELECTION
 // ══════════════════════════════════════════════
 
+function isSelected(id) {
+  return selectedIds.has(id);
+}
+
 function selectBeam(id) {
-  // deselect old
-  if (selectedId !== null) {
-    const old = beams.find(b => b.id === selectedId);
-    if (old) makeSelectionHighlight(old.mesh, false);
-  }
-  selectedId = id;
+  // deselect all old
+  beams.forEach(b => makeSelectionHighlight(b.mesh, false));
+  selectedIds = new Set();
   if (id !== null) {
+    selectedIds.add(id);
     const b = beams.find(b => b.id === id);
     if (b) makeSelectionHighlight(b.mesh, true);
   }
@@ -1196,8 +1246,45 @@ function selectBeam(id) {
   updateObjList();
 }
 
+function addToSelection(id) {
+  if (selectedIds.has(id)) {
+    selectedIds.delete(id);
+    const b = beams.find(b => b.id === id);
+    if (b) makeSelectionHighlight(b.mesh, false);
+  } else {
+    selectedIds.add(id);
+    const b = beams.find(b => b.id === id);
+    if (b) makeSelectionHighlight(b.mesh, true);
+  }
+  updateSelPanel();
+  updateObjList();
+}
+
+function selectGroup(groupName) {
+  beams.forEach(b => makeSelectionHighlight(b.mesh, false));
+  selectedIds = new Set(beams.filter(b => b.group === groupName).map(b => b.id));
+  selectedIds.forEach(id => {
+    const b = beams.find(b => b.id === id);
+    if (b) makeSelectionHighlight(b.mesh, true);
+  });
+  updateSelPanel();
+  updateObjList();
+}
+
 function deleteSelected() {
-  if (selectedId !== null) deleteBeam(selectedId);
+  const ids = [...selectedIds];
+  if (ids.length > 0) {
+    pushHistory();
+    ids.forEach(id => {
+      const idx = beams.findIndex(b => b.id === id);
+      if (idx >= 0) {
+        removeMesh(beams[idx].mesh);
+        beams.splice(idx, 1);
+      }
+    });
+    selectedIds = new Set();
+    updateUI();
+  }
 }
 
 // ══════════════════════════════════════════════
@@ -1207,6 +1294,7 @@ function deleteSelected() {
 function updateSelPanel() {
   const info = document.getElementById('sel-info');
   const editDiv = document.getElementById('sel-edit');
+  const selectedId = [...selectedIds][0] ?? null;
   if (!selectedId) {
     info.innerHTML = '<span style="color:#555">Kein Objekt ausgewählt</span>';
     editDiv.style.display = 'none';
@@ -1235,6 +1323,7 @@ function updateSelPanel() {
 }
 
 function applyEdit() {
+  const selectedId = [...selectedIds][0] ?? null;
   if (!selectedId) return;
   const b = beams.find(x => x.id === selectedId);
   if (!b) return;
@@ -1255,7 +1344,7 @@ function rebuildMesh(beam) {
   removeMesh(beam.mesh);
   beam.mesh = createBeamMesh(beam);
   scene.add(beam.mesh);
-  if (selectedId === beam.id) makeSelectionHighlight(beam.mesh, true);
+  if (selectedIds.has(beam.id)) makeSelectionHighlight(beam.mesh, true);
 }
 
 // ══════════════════════════════════════════════
@@ -1277,7 +1366,7 @@ function updatePartsTable() {
   Object.values(groups).sort((a, b) => a.name.localeCompare(b.name)).forEach(g => {
     const tr = document.createElement('tr');
     const dotColor = WOOD_COLORS_HEX[g.woodType] || '#888';
-    const isSelected = g.ids.includes(selectedId);
+    const isSelected = g.ids.some(id => selectedIds.has(id));
     if (isSelected) tr.className = 'selected-row';
     tr.innerHTML = `
       <td><strong>${g.ids.length}×</strong></td>
@@ -1297,7 +1386,7 @@ function updateObjList() {
   list.innerHTML = '';
   beams.forEach(b => {
     const div = document.createElement('div');
-    div.className = 'obj-item' + (b.id === selectedId ? ' selected' : '');
+    div.className = 'obj-item' + (selectedIds.has(b.id) ? ' selected' : '');
     const dotColor = WOOD_COLORS_HEX[b.woodType] || '#888';
     div.innerHTML = `<span class="color-dot" style="background:${dotColor}"></span>
       <span class="obj-name" title="${b.name}">${b.name}</span>
@@ -1311,6 +1400,7 @@ function updateUI() {
   updatePartsTable();
   updateObjList();
   updateSelPanel();
+  renderGroupList();
 }
 
 // ══════════════════════════════════════════════
@@ -1397,6 +1487,7 @@ function resetCamera() {
 let isDragging = false;       // dragging a beam
 let isOrbiting = false;       // camera orbit with middle mouse
 let dragBeam = null;
+let dragSelectionSnapshot = {}; // {id: {x,y,z}} snapshot at drag start
 let dragOffset = new THREE.Vector3();
 let dragPlane = new THREE.Plane();
 let dragAltMode = false;
@@ -1475,8 +1566,15 @@ function onPointerDown(e) {
     while (obj.parent && !obj.userData.beamId) obj = obj.parent;
     const beamId = obj.userData.beamId;
     if (beamId) {
-      selectBeam(beamId);
-      updateUI();
+      if (e.shiftKey) {
+        addToSelection(beamId);
+        updateUI();
+      } else {
+        if (!selectedIds.has(beamId)) {
+          selectBeam(beamId);
+          updateUI();
+        }
+      }
 
       // Start drag in move mode
       const beam = beams.find(b => b.id === beamId);
@@ -1486,6 +1584,12 @@ function onPointerDown(e) {
         dragAltMode = e.altKey;
         dragStartY = e.clientY;
         dragStartBeamY = beam.y;
+        // Snapshot positions of all selected beams for multi-drag
+        dragSelectionSnapshot = {};
+        selectedIds.forEach(id => {
+          const sb = beams.find(b => b.id === id);
+          if (sb) dragSelectionSnapshot[id] = { x: sb.x, y: sb.y, z: sb.z };
+        });
         renderer.domElement.setPointerCapture(e.pointerId);
 
         if (!dragAltMode) {
@@ -1523,23 +1627,34 @@ function onPointerMove(e) {
     return;
   }
 
-  // Drag beam
+  // Drag beam(s)
   if (isDragging && dragBeam) {
+    const snap0 = dragSelectionSnapshot[dragBeam.id] || { x: dragBeam.x, y: dragBeam.y, z: dragBeam.z };
+    let deltaX = 0, deltaY = 0, deltaZ = 0;
     if (dragAltMode || e.altKey) {
-      // Vertical mouse movement → Y axis
       const dy = dragStartY - e.clientY;
-      dragBeam.y = snapValue(dragStartBeamY + dy * 2);
+      const newY = snapValue(dragStartBeamY + dy * 2);
+      deltaY = newY - snap0.y;
     } else {
       const pt = getGroundPoint(e.clientX, e.clientY);
       if (pt) {
-        dragBeam.x = snapValue(pt.x + dragOffset.x - getBeamHalfW(dragBeam));
-        dragBeam.z = snapValue(pt.z + dragOffset.z - getBeamHalfD(dragBeam));
+        const newX = snapValue(pt.x + dragOffset.x - getBeamHalfW(dragBeam));
+        const newZ = snapValue(pt.z + dragOffset.z - getBeamHalfD(dragBeam));
+        deltaX = newX - snap0.x;
+        deltaZ = newZ - snap0.z;
       }
     }
-    const hw = getBeamHalfW(dragBeam);
-    const hh = getBeamHalfH(dragBeam);
-    const hd = getBeamHalfD(dragBeam);
-    dragBeam.mesh.position.set(dragBeam.x + hw, dragBeam.y + hh, dragBeam.z + hd);
+    // Apply delta to all selected beams
+    selectedIds.forEach(id => {
+      const sb = beams.find(b => b.id === id);
+      const s0 = dragSelectionSnapshot[id];
+      if (sb && s0) {
+        sb.x = s0.x + deltaX;
+        sb.y = s0.y + deltaY;
+        sb.z = s0.z + deltaZ;
+        sb.mesh.position.set(sb.x + getBeamHalfW(sb), sb.y + getBeamHalfH(sb), sb.z + getBeamHalfD(sb));
+      }
+    });
     updateSelPanel();
     return;
   }
@@ -1582,7 +1697,7 @@ function onWheel(e) {
 }
 
 function onDblClick(e) {
-  if (selectedId) resetCamera();
+  if (selectedIds.size > 0) resetCamera();
 }
 
 function onContextMenu(e) {
@@ -1607,6 +1722,7 @@ function closeCtxMenu() {
 
 function rotateSelected(axis, deg) {
   closeCtxMenu();
+  const selectedId = [...selectedIds][0] ?? null;
   if (!selectedId) return;
   const b = beams.find(x => x.id === selectedId);
   if (!b) return;
@@ -1626,6 +1742,7 @@ function rotateSelected(axis, deg) {
 
 function switchAxis(newAxis) {
   closeCtxMenu();
+  const selectedId = [...selectedIds][0] ?? null;
   if (!selectedId) return;
   const b = beams.find(x => x.id === selectedId);
   if (!b) return;
@@ -1669,6 +1786,7 @@ document.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'd') { e.preventDefault(); duplicateSelected(); return; }
 
   // Arrow key: move selected beam
+  const selectedId = [...selectedIds][0] ?? null;
   if (!selectedId) return;
   const b = beams.find(x => x.id === selectedId);
   if (!b) return;
@@ -1763,7 +1881,7 @@ function newProject() {
 function clearAllBeams() {
   beams.forEach(b => removeMesh(b.mesh));
   beams = [];
-  selectedId = null;
+  selectedIds = new Set();
 }
 
 function removeMesh(mesh) {
