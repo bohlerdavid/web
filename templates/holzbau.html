@@ -1948,13 +1948,12 @@ let orbitSpherical = new THREE.Spherical();
 let panStart = { x: 0, y: 0 };
 let isPanning = false;
 
-// Pointer events for beam drag / selection (on canvas directly — OrbitControls disposed)
-renderer.domElement.addEventListener('pointerdown', onPointerDown, { passive: false });
-renderer.domElement.addEventListener('pointermove', onPointerMove, { passive: false });
-renderer.domElement.addEventListener('pointerup',   onPointerUp);
-renderer.domElement.addEventListener('pointercancel', onPointerUp);
+// ── INPUT EVENTS — use mousedown/mousemove/mouseup (more reliable than pointer events)
+renderer.domElement.addEventListener('mousedown', onPointerDown, { passive: false });
+document.addEventListener('mousemove', onPointerMove, { passive: false });
+document.addEventListener('mouseup',   onPointerUp);
 
-// ── MIDDLE MOUSE ORBIT (dedicated mouse events) ──
+// ── MIDDLE MOUSE ORBIT ──
 let _orbitActive = false, _orbitLX = 0, _orbitLY = 0;
 renderer.domElement.addEventListener('mousedown', e => {
   if (e.button !== 1) return;
@@ -2015,9 +2014,7 @@ function onPointerDown(e) {
     measurePts = [pt];
     measureDragging = true;
     measureCursorPt = pt.clone();
-    renderer.domElement.setPointerCapture(e.pointerId);
-    const hint = document.getElementById('measure-hint');
-    hint.textContent = '📏 Maßband — Maustaste halten und ziehen zum 2. Punkt';
+    document.getElementById('measure-hint').textContent = '📏 Maßband — Maustaste halten und ziehen zum 2. Punkt';
     drawMeasureCanvas();
     return;
   }
@@ -2073,7 +2070,7 @@ function onPointerDown(e) {
           const sb = beams.find(b => b.id === id);
           if (sb) dragSelectionSnapshot[id] = { x: sb.x, y: sb.y, z: sb.z };
         });
-        renderer.domElement.setPointerCapture(e.pointerId);
+        // (mouse events on document — no pointer capture needed)
         if (!dragAltMode) {
           dragPlane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), beam.mesh.position);
           const groundPt = getGroundPoint(e.clientX, e.clientY);
@@ -2095,7 +2092,7 @@ function onPointerDown(e) {
         dragDecoStartY_world = deco.y;
         dragDecoStartX = deco.x;
         dragDecoStartZ = deco.z;
-        renderer.domElement.setPointerCapture(e.pointerId);
+        // (mouse events on document — no pointer capture needed)
         if (!e.altKey) {
           dragPlane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), deco.mesh.position);
           const groundPt = getGroundPoint(e.clientX, e.clientY);
@@ -2186,9 +2183,12 @@ function onPointerMove(e) {
     return;
   }
 
-  // Hover tooltip
-  const hits = getIntersects(e.clientX, e.clientY);
+  // Hover tooltip — only when mouse is inside viewport
+  const vpRect = viewport.getBoundingClientRect();
+  const inVP = e.clientX >= vpRect.left && e.clientX <= vpRect.right && e.clientY >= vpRect.top && e.clientY <= vpRect.bottom;
   const tooltip = document.getElementById('tooltip');
+  if (!inVP) { tooltip.style.display = 'none'; return; }
+  const hits = getIntersects(e.clientX, e.clientY);
   if (hits.length > 0) {
     let obj = hits[0].object;
     while (obj.parent && !obj.userData.beamId && obj.userData.isDecoId === undefined) obj = obj.parent;
