@@ -91,7 +91,7 @@
 
   /* ── LEFT PANEL ── */
   #left-panel {
-    width: 240px;
+    width: 300px;
     background: #16213e;
     border-right: 1px solid #0f3460;
     display: flex;
@@ -388,20 +388,29 @@
   }
   .obj-item .obj-del:hover { color: #e94560; }
 
+  .tab-nav {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-rows: auto auto;
+    border-bottom: 2px solid #0f3460;
+    flex-shrink: 0;
+  }
   .tab-btn {
-    flex: 1;
     background: transparent;
     border: none;
     border-bottom: 2px solid transparent;
     color: #666;
-    padding: 7px 4px;
-    font-size: 10px;
+    padding: 6px 4px;
+    font-size: 11px;
     cursor: pointer;
     transition: all 0.2s;
     white-space: nowrap;
+    text-align: center;
   }
-  .tab-btn:hover { color: #ccc; }
+  .tab-btn:hover { color: #ccc; background: rgba(255,255,255,0.04); }
   .tab-btn.active { color: #e94560; border-bottom-color: #e94560; background: rgba(233,69,96,0.08); }
+  /* Row 2: only 2 tabs — center them with col-span trick */
+  .tab-btn.row2 { grid-row: 2; border-top: 1px solid #0f3460; }
   .tab-pane { display: flex; flex-direction: column; }
 
   .ctx-item {
@@ -514,12 +523,12 @@
   <div id="left-panel">
 
     <!-- TAB NAVIGATION -->
-    <div style="display:flex;border-bottom:2px solid #0f3460;flex-shrink:0">
+    <div class="tab-nav">
       <button class="tab-btn active" id="tab-dach" onclick="showTab('dach')">📐 Grundriss</button>
-      <button class="tab-btn" id="tab-balken" onclick="showTab('balken')">📐 Balken</button>
+      <button class="tab-btn" id="tab-balken" onclick="showTab('balken')">🪵 Balken</button>
       <button class="tab-btn" id="tab-sel" onclick="showTab('sel')">✎ Auswahl</button>
-      <button class="tab-btn" id="tab-deko" onclick="showTab('deko')">🌿 Deko</button>
-      <button class="tab-btn" id="tab-list" onclick="showTab('list')">📋 Liste</button>
+      <button class="tab-btn row2" id="tab-deko" onclick="showTab('deko')" style="grid-column:1/span 1">🌿 Deko</button>
+      <button class="tab-btn row2" id="tab-list" onclick="showTab('list')" style="grid-column:2/span 2">📋 Stückliste</button>
     </div>
 
     <!-- ══ TAB: GRUNDRISS ══ -->
@@ -1478,6 +1487,8 @@ function renderGroupList() {
   list.innerHTML = '';
   groups.forEach(groupName => {
     const groupBeams = beams.filter(b => b.group === groupName);
+    const groupDecos = decos.filter(d => d.group === groupName);
+    const totalCount = groupBeams.length + groupDecos.length;
     const section = document.createElement('div');
     section.className = 'group-section';
 
@@ -1485,7 +1496,7 @@ function renderGroupList() {
     header.className = 'group-header';
     header.innerHTML = `
       <span class="group-name" title="${groupName}">${groupName}</span>
-      <span class="group-count">${groupBeams.length}</span>
+      <span class="group-count">${totalCount}</span>
       ${groupName !== 'Standard' ? `<span class="group-del" title="Gruppe löschen" onclick="event.stopPropagation();deleteGroup('${groupName}')">✕</span>` : ''}
     `;
     header.ondblclick = (e) => {
@@ -1504,6 +1515,7 @@ function renderGroupList() {
           const idx = groups.indexOf(groupName);
           if (idx >= 0) groups[idx] = newName;
           beams.forEach(b => { if (b.group === groupName) b.group = newName; });
+          decos.forEach(d => { if (d.group === groupName) d.group = newName; });
         }
         renderGroupList();
       };
@@ -1514,11 +1526,9 @@ function renderGroupList() {
       if (e.target.classList.contains('group-del')) return;
       selectGroup(groupName);
       updateUI();
-      // toggle open/close
       const items = section.querySelector('.group-items');
       items.classList.toggle('open');
     };
-    // Drag-over target
     header.ondragover = (e) => { e.preventDefault(); header.classList.add('drag-over'); };
     header.ondragleave = () => { header.classList.remove('drag-over'); };
     header.ondrop = (e) => {
@@ -1526,6 +1536,8 @@ function renderGroupList() {
       header.classList.remove('drag-over');
       const beamId = parseInt(e.dataTransfer.getData('beamId'));
       if (beamId) moveBeamToGroup(beamId, groupName);
+      const decoId = parseInt(e.dataTransfer.getData('decoId'));
+      if (decoId) moveDecoToGroup(decoId, groupName);
     };
 
     const items = document.createElement('div');
@@ -1544,6 +1556,19 @@ function renderGroupList() {
       item.onclick = (e) => { e.stopPropagation(); selectBeam(b.id); updateUI(); };
       items.appendChild(item);
     });
+    groupDecos.forEach(d => {
+      const item = document.createElement('div');
+      item.className = 'group-beam-item';
+      item.style.cssText += 'opacity:0.85';
+      item.innerHTML = `<span class="color-dot" style="background:#4caf50"></span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.label}</span><span style="cursor:pointer;color:#e94560;padding:0 2px;font-size:10px" onclick="event.stopPropagation();deleteDeco(${d.id})" title="Löschen">✕</span>`;
+      item.draggable = true;
+      item.ondragstart = (e) => {
+        e.dataTransfer.setData('decoId', d.id);
+        item.classList.add('dragging');
+      };
+      item.ondragend = () => item.classList.remove('dragging');
+      items.appendChild(item);
+    });
 
     section.appendChild(header);
     section.appendChild(items);
@@ -1554,6 +1579,7 @@ function renderGroupList() {
 function deleteGroup(groupName) {
   if (groupName === 'Standard') return;
   beams.forEach(b => { if (b.group === groupName) b.group = 'Standard'; });
+  decos.forEach(d => { if (d.group === groupName) d.group = 'Standard'; });
   const idx = groups.indexOf(groupName);
   if (idx >= 0) groups.splice(idx, 1);
   renderGroupList();
@@ -2384,13 +2410,16 @@ const DEKO_DEFS = {
 function addDeco(type) {
   const def = DEKO_DEFS[type];
   if (!def) return;
-  const deco = { id: decoIdCounter++, type, label: def.label, x:0, y:0, z:0, mesh: null };
+  const groupSel = document.getElementById('beam-group-sel');
+  const grp = groupSel ? groupSel.value : 'Standard';
+  const deco = { id: decoIdCounter++, type, label: def.label, group: grp, x:0, y:0, z:0, mesh: null };
   deco.mesh = def.build();
   deco.mesh.position.set(0, 0, 0);
   deco.mesh.userData.isDecoId = deco.id;
   scene.add(deco.mesh);
   decos.push(deco);
   renderDekoList();
+  renderGroupList();
 }
 
 function renderDekoList() {
@@ -2412,6 +2441,14 @@ function deleteDeco(id) {
   if (d.mesh) { scene.remove(d.mesh); d.mesh.traverse(o => { if(o.geometry) o.geometry.dispose(); if(o.material) o.material.dispose(); }); }
   decos.splice(idx, 1);
   renderDekoList();
+  renderGroupList();
+}
+
+function moveDecoToGroup(decoId, groupName) {
+  const d = decos.find(x => x.id === decoId);
+  if (!d) return;
+  d.group = groupName;
+  renderGroupList();
 }
 
 function clearAllDecos() {
@@ -2440,7 +2477,7 @@ Object.assign(window, {
   rotateSelected, switchAxis, closeCtxMenu, showContextMenu,
   showTab, setDims, setAngle,
   addGroup, renderGroupList, selectGroup, moveBeamToGroup, deleteGroup,
-  addDeco, deleteDeco, clearAllDecos,
+  addDeco, deleteDeco, clearAllDecos, moveDecoToGroup,
 });
 
 // Start empty
