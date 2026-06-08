@@ -727,6 +727,28 @@
           </div>
         </div>
       </div>
+      <!-- Deco edit panel -->
+      <div id="deco-edit" style="display:none;margin-top:8px">
+        <div style="font-size:10px;color:#4caf50;font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">🌿 Dekoration</div>
+        <div class="form-row">
+          <label>Position X</label>
+          <input type="number" id="deco-px" step="10" onchange="applyDecoEdit()">
+        </div>
+        <div class="form-row">
+          <label>Position Y</label>
+          <input type="number" id="deco-py" step="10" onchange="applyDecoEdit()">
+        </div>
+        <div class="form-row">
+          <label>Position Z</label>
+          <input type="number" id="deco-pz" step="10" onchange="applyDecoEdit()">
+        </div>
+        <div class="form-row">
+          <label>Rotation Y°</label>
+          <input type="number" id="deco-ry" step="15" min="-180" max="360" onchange="applyDecoEdit()">
+        </div>
+        <div id="deco-params"></div>
+        <button class="tb-btn" style="width:100%;margin-top:6px;color:#e94560;border-color:#e94560" onclick="deleteDecoSelected()">✕ Löschen</button>
+      </div>
     </div>
 
     <!-- ══ TAB: DEKO ══ -->
@@ -1487,6 +1509,10 @@ function rebuildDecoMesh(deco) {
   scene.remove(deco.mesh);
   deco.mesh.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
   deco.mesh = def.build(deco.params || {});
+  if (def.defaultParams && def.defaultParams.scale !== undefined && deco.params) {
+    const s = (deco.params.scale || 100) / 100;
+    deco.mesh.scale.setScalar(s);
+  }
   deco.mesh.userData.isDecoId = deco.id;
   deco.mesh.position.set(deco.x, deco.y, deco.z);
   deco.mesh.rotation.y = (deco.ry || 0) * Math.PI / 180;
@@ -2421,6 +2447,7 @@ const DEKO_DEFS = {
   // Scale references
   person: {
     label: 'Person', color: 0xf5c5a3,
+    defaultParams: { scale: 100 },
     build(g) {
       const grp = new THREE.Group();
       // body
@@ -2441,6 +2468,7 @@ const DEKO_DEFS = {
   },
   car: {
     label: 'Auto',
+    defaultParams: { scale: 100 },
     build(g) {
       const grp = new THREE.Group();
       const body = new THREE.Mesh(new THREE.BoxGeometry(4500,800,1800), new THREE.MeshStandardMaterial({color:0x3355aa}));
@@ -2459,6 +2487,7 @@ const DEKO_DEFS = {
   // Plants
   bush: {
     label: 'Busch',
+    defaultParams: { scale: 100 },
     build() {
       const grp = new THREE.Group();
       [[0,300,0],[150,200,100],[-120,250,50],[50,350,-80]].forEach(([x,y,z]) => {
@@ -2471,6 +2500,7 @@ const DEKO_DEFS = {
   },
   tree: {
     label: 'Baum',
+    defaultParams: { scale: 100 },
     build() {
       const grp = new THREE.Group();
       const trunk = new THREE.Mesh(new THREE.CylinderGeometry(80,100,1200,8), new THREE.MeshStandardMaterial({color:0x7a4f2e}));
@@ -2485,6 +2515,7 @@ const DEKO_DEFS = {
   },
   pot_small: {
     label: 'Topf klein',
+    defaultParams: { scale: 100 },
     build() {
       const grp = new THREE.Group();
       const pot = new THREE.Mesh(new THREE.CylinderGeometry(200,150,350,12), new THREE.MeshStandardMaterial({color:0xc87941}));
@@ -2497,6 +2528,7 @@ const DEKO_DEFS = {
   },
   pot_large: {
     label: 'Topf gross',
+    defaultParams: { scale: 100 },
     build() {
       const grp = new THREE.Group();
       const pot = new THREE.Mesh(new THREE.CylinderGeometry(350,250,600,12), new THREE.MeshStandardMaterial({color:0x9b6b3a}));
@@ -2513,14 +2545,16 @@ const DEKO_DEFS = {
   // Walls
   wall_brick: {
     label: 'Mauer Backstein',
-    build() {
+    defaultParams: { W: 1000, H: 1000, T: 200 },
+    build(p = {}) {
+      const W = p.W || 1000, H = p.H || 1000, T = p.T || 200;
       const grp = new THREE.Group();
-      const wall = new THREE.Mesh(new THREE.BoxGeometry(1000,1000,200), new THREE.MeshStandardMaterial({color:0xb5573a}));
-      wall.position.y = 500;
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(W,H,T), new THREE.MeshStandardMaterial({color:0xb5573a}));
+      wall.position.y = H/2;
       grp.add(wall);
       // horizontal mortar lines
-      for (let y=100; y<1000; y+=120) {
-        const line = new THREE.Mesh(new THREE.BoxGeometry(1010,12,210), new THREE.MeshStandardMaterial({color:0xccaa88}));
+      for (let y=100; y<H; y+=120) {
+        const line = new THREE.Mesh(new THREE.BoxGeometry(W+10,12,T+10), new THREE.MeshStandardMaterial({color:0xccaa88}));
         line.position.y = y; grp.add(line);
       }
       return grp;
@@ -2528,41 +2562,50 @@ const DEKO_DEFS = {
   },
   wall_concrete: {
     label: 'Mauer Beton',
-    build() {
+    defaultParams: { W: 1000, H: 1000, T: 200 },
+    build(p = {}) {
+      const W = p.W || 1000, H = p.H || 1000, T = p.T || 200;
       const grp = new THREE.Group();
-      const wall = new THREE.Mesh(new THREE.BoxGeometry(1000,1000,200), new THREE.MeshStandardMaterial({color:0x999999}));
-      wall.position.y = 500; grp.add(wall);
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(W,H,T), new THREE.MeshStandardMaterial({color:0x999999}));
+      wall.position.y = H/2; grp.add(wall);
       return grp;
     }
   },
   wall_stone: {
     label: 'Mauer Naturstein',
-    build() {
+    defaultParams: { W: 1000, H: 800, T: 400 },
+    build(p = {}) {
+      const W = p.W || 1000, H = p.H || 800, T = p.T || 400;
       const grp = new THREE.Group();
-      const wall = new THREE.Mesh(new THREE.BoxGeometry(1000,800,400), new THREE.MeshStandardMaterial({color:0x887766}));
-      wall.position.y = 400; grp.add(wall);
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(W,H,T), new THREE.MeshStandardMaterial({color:0x887766}));
+      wall.position.y = H/2; grp.add(wall);
       return grp;
     }
   },
   fence_wood: {
     label: 'Holzzaun',
-    build() {
+    defaultParams: { W: 1000, H: 1800, T: 80 },
+    build(p = {}) {
+      const W = p.W || 1000, H = p.H || 1800, T = p.T || 80;
       const grp = new THREE.Group();
       // posts
-      [-450,0,450].forEach(x => {
-        const p = new THREE.Mesh(new THREE.BoxGeometry(80,1800,80), new THREE.MeshStandardMaterial({color:0xc8a060}));
-        p.position.set(x,900,0); grp.add(p);
-      });
+      const nPosts = Math.max(2, Math.round(W / 500) + 1);
+      for (let i = 0; i < nPosts; i++) {
+        const px = -W/2 + i * (W/(nPosts-1));
+        const post = new THREE.Mesh(new THREE.BoxGeometry(T,H,T), new THREE.MeshStandardMaterial({color:0xc8a060}));
+        post.position.set(px, H/2, 0); grp.add(post);
+      }
       // rails
-      [400,900,1400].forEach(y => {
-        const r = new THREE.Mesh(new THREE.BoxGeometry(1000,60,60), new THREE.MeshStandardMaterial({color:0xb89050}));
-        r.position.set(0,y,0); grp.add(r);
+      [H*0.22, H*0.5, H*0.78].forEach(y => {
+        const r = new THREE.Mesh(new THREE.BoxGeometry(W, T*0.75, T*0.75), new THREE.MeshStandardMaterial({color:0xb89050}));
+        r.position.set(0, y, 0); grp.add(r);
       });
       return grp;
     }
   },
   tile_1x1: {
     label: 'Fliese 1×1m',
+    defaultParams: { scale: 100 },
     build() {
       const grp = new THREE.Group();
       const tile = new THREE.Mesh(new THREE.BoxGeometry(1000,20,1000), new THREE.MeshStandardMaterial({color:0xddddcc}));
@@ -2574,6 +2617,7 @@ const DEKO_DEFS = {
   },
   tile_terrace: {
     label: 'Terrassenboden 3×3m',
+    defaultParams: { scale: 100 },
     build() {
       const grp = new THREE.Group();
       // 3×3 grid of tiles
@@ -2592,8 +2636,13 @@ function addDeco(type) {
   if (!def) return;
   const groupSel = document.getElementById('beam-group-sel');
   const grp = groupSel ? groupSel.value : 'Standard';
-  const deco = { id: decoIdCounter++, type, label: def.label, group: grp, x:0, y:0, z:0, mesh: null };
-  deco.mesh = def.build();
+  const initParams = def.defaultParams ? { ...def.defaultParams } : {};
+  const deco = { id: decoIdCounter++, type, label: def.label, group: grp, x:0, y:0, z:0, ry:0, params: initParams, mesh: null };
+  deco.mesh = def.build(initParams);
+  if (def.defaultParams && def.defaultParams.scale !== undefined) {
+    const s = (initParams.scale || 100) / 100;
+    deco.mesh.scale.setScalar(s);
+  }
   deco.mesh.position.set(0, 0, 0);
   deco.mesh.userData.isDecoId = deco.id;
   scene.add(deco.mesh);
@@ -2658,6 +2707,7 @@ Object.assign(window, {
   showTab, setDims, setAngle,
   addGroup, renderGroupList, selectGroup, moveBeamToGroup, deleteGroup,
   addDeco, deleteDeco, clearAllDecos, moveDecoToGroup,
+  deleteDecoSelected, applyDecoEdit, updateDecoSelPanel,
 });
 
 // Start empty
