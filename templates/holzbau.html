@@ -710,6 +710,12 @@
             </div>
           </div>
         </div>
+        <div style="border-top:1px solid #0f3460;margin-top:8px;padding-top:8px">
+          <div class="form-row">
+            <label>Gruppe</label>
+            <select id="edit-group" onchange="moveBeamToGroup([...selectedIds][0], this.value)"></select>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1900,7 +1906,8 @@ function saveProject() {
       id: b.id, name: b.name, woodType: b.woodType,
       L: b.L, B: b.B, H: b.H, axis: b.axis,
       x: b.x, y: b.y, z: b.z,
-      rx: b.rx||0, ry: b.ry||0, rz: b.rz||0
+      rx: b.rx||0, ry: b.ry||0, rz: b.rz||0,
+      group: b.group || 'Standard'
     })),
   };
   const json = JSON.stringify(data, null, 2);
