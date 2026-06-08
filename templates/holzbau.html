@@ -2016,7 +2016,7 @@ function getGroundPoint(clientX, clientY) {
 
 function onPointerDown(e) {
   // DEBUG TOP
-  { const d=document.getElementById('_dbg'); if(d) d.textContent='onPD called btn='+e.button+' beams='+beams.length; }
+  { const d=document.getElementById('_dbg'); if(d) d.textContent='onPD btn='+e.button+' beams='+beams.length+' measureActive='+measureActive; }
 
   if (e.button === 2) e.preventDefault(); // prevent browser context menu for right click only
 
