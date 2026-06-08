@@ -1991,7 +1991,10 @@ function getIntersects(clientX, clientY) {
   mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
   raycaster.setFromCamera(mouse, camera);
   const allMeshes = [...beams.map(b => b.mesh), ...decos.map(d => d.mesh)].filter(Boolean);
-  return raycaster.intersectObjects(allMeshes, true);
+  const hits = raycaster.intersectObjects(allMeshes, true);
+  // DEBUG — remove later
+  { const sb=document.getElementById('st-cam'); if(sb) sb.textContent=`Meshes:${allMeshes.length} Hits:${hits.length} rect:${Math.round(rect.left)},${Math.round(rect.top)},${Math.round(rect.width)}x${Math.round(rect.height)}`; }
+  return hits;
 }
 
 function getGroundPoint(clientX, clientY) {
@@ -2006,6 +2009,9 @@ function getGroundPoint(clientX, clientY) {
 
 function onPointerDown(e) {
   if (e.button === 2) e.preventDefault(); // prevent browser context menu for right click only
+
+  // DEBUG — remove later
+  { const sb=document.getElementById('st-mode'); if(sb) sb.textContent=`Click btn=${e.button} tgt=${e.target?.tagName} mA=${measureActive}`; }
 
   // Measure tool: drag to measure (mousedown = first point, mouseup = second point)
   if (measureActive && e.button === 0) {
