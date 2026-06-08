@@ -914,15 +914,16 @@ camera.position.set(3000, 3000, 4000);
 camera.lookAt(0, 0, 0);
 
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
-controls.dampingFactor = 0.08;
+controls.enableDamping = false; // we move camera ourselves
 controls.screenSpacePanning = true;
 controls.minDistance = 100;
 controls.maxDistance = 50000;
-// OrbitControls nur für Zoom (Mausrad scrollen)
-// Orbit/Pan managen wir selbst über pointer-Events
 controls.mouseButtons = { LEFT: null, MIDDLE: null, RIGHT: null };
 controls.touches = { ONE: null, TWO: null };
+// Remove OrbitControls' own event listeners — we handle all input ourselves.
+// Without this, OrbitControls' pointerdown handler calls stopPropagation()
+// which prevents our listeners from receiving click events.
+controls.dispose();
 
 // ── LIGHTING ──
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
@@ -1947,15 +1948,15 @@ let orbitSpherical = new THREE.Spherical();
 let panStart = { x: 0, y: 0 };
 let isPanning = false;
 
-// Pointer events — registered on #viewport div (more reliable than canvas directly)
-viewport.addEventListener('pointerdown', onPointerDown, { passive: false });
-viewport.addEventListener('pointermove', onPointerMove, { passive: false });
-viewport.addEventListener('pointerup',   onPointerUp);
-viewport.addEventListener('pointercancel', onPointerUp);
+// Pointer events for beam drag / selection (on canvas directly — OrbitControls disposed)
+renderer.domElement.addEventListener('pointerdown', onPointerDown, { passive: false });
+renderer.domElement.addEventListener('pointermove', onPointerMove, { passive: false });
+renderer.domElement.addEventListener('pointerup',   onPointerUp);
+renderer.domElement.addEventListener('pointercancel', onPointerUp);
 
-// ── MIDDLE MOUSE ORBIT (dedicated mouse events — more reliable than pointer capture) ──
+// ── MIDDLE MOUSE ORBIT (dedicated mouse events) ──
 let _orbitActive = false, _orbitLX = 0, _orbitLY = 0;
-viewport.addEventListener('mousedown', e => {
+renderer.domElement.addEventListener('mousedown', e => {
   if (e.button !== 1) return;
   e.preventDefault();
   _orbitActive = true;
@@ -1975,9 +1976,9 @@ document.addEventListener('mousemove', e => {
   camera.lookAt(controls.target);
 });
 document.addEventListener('mouseup', e => { if (e.button === 1) _orbitActive = false; });
-viewport.addEventListener('dblclick', onDblClick);
-viewport.addEventListener('contextmenu', onContextMenu, true);
-viewport.addEventListener('wheel', onWheel, { passive: false });
+renderer.domElement.addEventListener('dblclick', onDblClick);
+renderer.domElement.addEventListener('contextmenu', onContextMenu, true);
+renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
 document.addEventListener('click', e => { if (!document.getElementById('ctx-menu').contains(e.target)) closeCtxMenu(); });
 
 // File load input — wired via JS (not inline onchange) for reliability
@@ -2014,7 +2015,7 @@ function onPointerDown(e) {
     measurePts = [pt];
     measureDragging = true;
     measureCursorPt = pt.clone();
-    viewport.setPointerCapture(e.pointerId);
+    renderer.domElement.setPointerCapture(e.pointerId);
     const hint = document.getElementById('measure-hint');
     hint.textContent = '📏 Maßband — Maustaste halten und ziehen zum 2. Punkt';
     drawMeasureCanvas();
@@ -2072,7 +2073,7 @@ function onPointerDown(e) {
           const sb = beams.find(b => b.id === id);
           if (sb) dragSelectionSnapshot[id] = { x: sb.x, y: sb.y, z: sb.z };
         });
-        viewport.setPointerCapture(e.pointerId);
+        renderer.domElement.setPointerCapture(e.pointerId);
         if (!dragAltMode) {
           dragPlane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), beam.mesh.position);
           const groundPt = getGroundPoint(e.clientX, e.clientY);
@@ -2094,7 +2095,7 @@ function onPointerDown(e) {
         dragDecoStartY_world = deco.y;
         dragDecoStartX = deco.x;
         dragDecoStartZ = deco.z;
-        viewport.setPointerCapture(e.pointerId);
+        renderer.domElement.setPointerCapture(e.pointerId);
         if (!e.altKey) {
           dragPlane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), deco.mesh.position);
           const groundPt = getGroundPoint(e.clientX, e.clientY);
