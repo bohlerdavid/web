@@ -518,6 +518,7 @@
       <button class="tab-btn active" id="tab-dach" onclick="showTab('dach')">📐 Grundriss</button>
       <button class="tab-btn" id="tab-balken" onclick="showTab('balken')">📐 Balken</button>
       <button class="tab-btn" id="tab-sel" onclick="showTab('sel')">✎ Auswahl</button>
+      <button class="tab-btn" id="tab-deko" onclick="showTab('deko')">🌿 Deko</button>
       <button class="tab-btn" id="tab-list" onclick="showTab('list')">📋 Liste</button>
     </div>
 
@@ -716,6 +717,48 @@
             <select id="edit-group" onchange="moveBeamToGroup([...selectedIds][0], this.value)"></select>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- ══ TAB: DEKO ══ -->
+    <div id="pane-deko" class="tab-pane" style="display:none;overflow-y:auto;padding:10px">
+      <div class="panel-title">🌿 Dekoration &amp; Massstab</div>
+      <div style="font-size:10px;color:#888;margin-bottom:8px">Klick = Objekt bei Ursprung platzieren, dann verschieben.</div>
+
+      <div class="panel-section" style="padding:6px 0">
+        <div style="font-size:10px;color:#e94560;font-weight:600;margin-bottom:5px">👤 Massstab</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+          <button class="tb-btn" style="flex-direction:column;height:52px;font-size:10px" onclick="addDeco('person')">👤<br>Person<br><span style="color:#888;font-size:9px">1.75 m</span></button>
+          <button class="tb-btn" style="flex-direction:column;height:52px;font-size:10px" onclick="addDeco('car')">🚗<br>Auto<br><span style="color:#888;font-size:9px">4.5 × 1.8 m</span></button>
+        </div>
+      </div>
+
+      <div class="panel-section" style="padding:6px 0">
+        <div style="font-size:10px;color:#e94560;font-weight:600;margin-bottom:5px">🌿 Pflanzen</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+          <button class="tb-btn" style="flex-direction:column;height:52px;font-size:10px" onclick="addDeco('bush')">🌿<br>Busch<br><span style="color:#888;font-size:9px">Ø 0.6 m</span></button>
+          <button class="tb-btn" style="flex-direction:column;height:52px;font-size:10px" onclick="addDeco('tree')">🌲<br>Baum<br><span style="color:#888;font-size:9px">H 3 m</span></button>
+          <button class="tb-btn" style="flex-direction:column;height:52px;font-size:10px" onclick="addDeco('pot_small')">🪴<br>Topf klein<br><span style="color:#888;font-size:9px">H 0.6 m</span></button>
+          <button class="tb-btn" style="flex-direction:column;height:52px;font-size:10px" onclick="addDeco('pot_large')">🪴<br>Topf gross<br><span style="color:#888;font-size:9px">H 1.2 m</span></button>
+        </div>
+      </div>
+
+      <div class="panel-section" style="padding:6px 0">
+        <div style="font-size:10px;color:#e94560;font-weight:600;margin-bottom:5px">🧱 Mauern &amp; Boden</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+          <button class="tb-btn" style="flex-direction:column;height:52px;font-size:10px" onclick="addDeco('wall_brick')">🧱<br>Mauer Backstein<br><span style="color:#888;font-size:9px">1×0.2×1 m</span></button>
+          <button class="tb-btn" style="flex-direction:column;height:52px;font-size:10px" onclick="addDeco('wall_concrete')">▪<br>Mauer Beton<br><span style="color:#888;font-size:9px">1×0.2×1 m</span></button>
+          <button class="tb-btn" style="flex-direction:column;height:52px;font-size:10px" onclick="addDeco('wall_stone')">🪨<br>Mauer Stein<br><span style="color:#888;font-size:9px">1×0.4×0.8 m</span></button>
+          <button class="tb-btn" style="flex-direction:column;height:52px;font-size:10px" onclick="addDeco('fence_wood')">🪵<br>Holzzaun<br><span style="color:#888;font-size:9px">1×0.08×1.8 m</span></button>
+          <button class="tb-btn" style="flex-direction:column;height:52px;font-size:10px" onclick="addDeco('tile_1x1')">⬜<br>Fliese 1×1m<br><span style="color:#888;font-size:9px">hellgrau</span></button>
+          <button class="tb-btn" style="flex-direction:column;height:52px;font-size:10px" onclick="addDeco('tile_terrace')">🟫<br>Terrassenboden<br><span style="color:#888;font-size:9px">3×3 m</span></button>
+        </div>
+      </div>
+
+      <div style="border-top:1px solid #0f3460;margin-top:8px;padding-top:8px">
+        <div style="font-size:10px;color:#888;margin-bottom:4px">Platzierte Dekoration</div>
+        <div id="deko-list" style="max-height:120px;overflow-y:auto"></div>
+        <button class="tb-btn" style="width:100%;margin-top:4px;color:#e94560;border-color:#e94560" onclick="clearAllDecos()">✕ Alle Deko löschen</button>
       </div>
     </div>
 
@@ -995,7 +1038,7 @@ function createBeamMesh(beam) {
 // ══════════════════════════════════════════════
 
 function showTab(name) {
-  ['dach','balken','sel','list'].forEach(t => {
+  ['dach','balken','sel','deko','list'].forEach(t => {
     document.getElementById('tab-' + t).classList.toggle('active', t === name);
     const pane = document.getElementById('pane-' + t);
     // list pane uses flex column, others use block scroll
@@ -2166,6 +2209,220 @@ function loadSample() {
   updateUI();
 }
 
+// ══════════════════════════════════════════════
+// DEKORATION
+// ══════════════════════════════════════════════
+
+let decos = [];
+let decoIdCounter = 1;
+
+const DEKO_DEFS = {
+  // Scale references
+  person: {
+    label: 'Person', color: 0xf5c5a3,
+    build(g) {
+      const grp = new THREE.Group();
+      // body
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(120,120,900,8), new THREE.MeshStandardMaterial({color:0x4488cc}));
+      body.position.y = 900/2 + 750;
+      // head
+      const head = new THREE.Mesh(new THREE.SphereGeometry(150,8,8), new THREE.MeshStandardMaterial({color:0xf5c5a3}));
+      head.position.y = 900 + 750 + 160;
+      // legs
+      [-100,100].forEach(ox => {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(60,60,750,8), new THREE.MeshStandardMaterial({color:0x333355}));
+        leg.position.set(ox, 375, 0);
+        grp.add(leg);
+      });
+      grp.add(body, head);
+      return grp;
+    }
+  },
+  car: {
+    label: 'Auto',
+    build(g) {
+      const grp = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.BoxGeometry(4500,800,1800), new THREE.MeshStandardMaterial({color:0x3355aa}));
+      body.position.y = 400 + 350;
+      const roof = new THREE.Mesh(new THREE.BoxGeometry(2400,600,1700), new THREE.MeshStandardMaterial({color:0x2244aa}));
+      roof.position.y = 400 + 800 + 300;
+      // wheels
+      [[-1600,-850],[-1600,850],[1300,-850],[1300,850]].forEach(([x,z]) => {
+        const w = new THREE.Mesh(new THREE.CylinderGeometry(350,350,200,16), new THREE.MeshStandardMaterial({color:0x222222}));
+        w.rotation.z = Math.PI/2; w.position.set(x,350,z); grp.add(w);
+      });
+      grp.add(body, roof);
+      return grp;
+    }
+  },
+  // Plants
+  bush: {
+    label: 'Busch',
+    build() {
+      const grp = new THREE.Group();
+      [[0,300,0],[150,200,100],[-120,250,50],[50,350,-80]].forEach(([x,y,z]) => {
+        const r = 200 + Math.random()*100;
+        const m = new THREE.Mesh(new THREE.SphereGeometry(r,8,6), new THREE.MeshStandardMaterial({color:0x2d7a2d}));
+        m.position.set(x,y,z); grp.add(m);
+      });
+      return grp;
+    }
+  },
+  tree: {
+    label: 'Baum',
+    build() {
+      const grp = new THREE.Group();
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(80,100,1200,8), new THREE.MeshStandardMaterial({color:0x7a4f2e}));
+      trunk.position.y = 600;
+      const c1 = new THREE.Mesh(new THREE.ConeGeometry(700,1400,8), new THREE.MeshStandardMaterial({color:0x1e6b1e}));
+      c1.position.y = 1200+700;
+      const c2 = new THREE.Mesh(new THREE.ConeGeometry(550,1100,8), new THREE.MeshStandardMaterial({color:0x256b25}));
+      c2.position.y = 1200+1100+300;
+      grp.add(trunk, c1, c2);
+      return grp;
+    }
+  },
+  pot_small: {
+    label: 'Topf klein',
+    build() {
+      const grp = new THREE.Group();
+      const pot = new THREE.Mesh(new THREE.CylinderGeometry(200,150,350,12), new THREE.MeshStandardMaterial({color:0xc87941}));
+      pot.position.y = 175;
+      const plant = new THREE.Mesh(new THREE.SphereGeometry(220,8,6), new THREE.MeshStandardMaterial({color:0x2d8a2d}));
+      plant.position.y = 350+180;
+      grp.add(pot, plant);
+      return grp;
+    }
+  },
+  pot_large: {
+    label: 'Topf gross',
+    build() {
+      const grp = new THREE.Group();
+      const pot = new THREE.Mesh(new THREE.CylinderGeometry(350,250,600,12), new THREE.MeshStandardMaterial({color:0x9b6b3a}));
+      pot.position.y = 300;
+      // small tree in pot
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(40,50,500,8), new THREE.MeshStandardMaterial({color:0x7a4f2e}));
+      trunk.position.y = 600+250;
+      const leaves = new THREE.Mesh(new THREE.SphereGeometry(280,8,6), new THREE.MeshStandardMaterial({color:0x2a7a2a}));
+      leaves.position.y = 600+500+200;
+      grp.add(pot, trunk, leaves);
+      return grp;
+    }
+  },
+  // Walls
+  wall_brick: {
+    label: 'Mauer Backstein',
+    build() {
+      const grp = new THREE.Group();
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(1000,1000,200), new THREE.MeshStandardMaterial({color:0xb5573a}));
+      wall.position.y = 500;
+      grp.add(wall);
+      // horizontal mortar lines
+      for (let y=100; y<1000; y+=120) {
+        const line = new THREE.Mesh(new THREE.BoxGeometry(1010,12,210), new THREE.MeshStandardMaterial({color:0xccaa88}));
+        line.position.y = y; grp.add(line);
+      }
+      return grp;
+    }
+  },
+  wall_concrete: {
+    label: 'Mauer Beton',
+    build() {
+      const grp = new THREE.Group();
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(1000,1000,200), new THREE.MeshStandardMaterial({color:0x999999}));
+      wall.position.y = 500; grp.add(wall);
+      return grp;
+    }
+  },
+  wall_stone: {
+    label: 'Mauer Naturstein',
+    build() {
+      const grp = new THREE.Group();
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(1000,800,400), new THREE.MeshStandardMaterial({color:0x887766}));
+      wall.position.y = 400; grp.add(wall);
+      return grp;
+    }
+  },
+  fence_wood: {
+    label: 'Holzzaun',
+    build() {
+      const grp = new THREE.Group();
+      // posts
+      [-450,0,450].forEach(x => {
+        const p = new THREE.Mesh(new THREE.BoxGeometry(80,1800,80), new THREE.MeshStandardMaterial({color:0xc8a060}));
+        p.position.set(x,900,0); grp.add(p);
+      });
+      // rails
+      [400,900,1400].forEach(y => {
+        const r = new THREE.Mesh(new THREE.BoxGeometry(1000,60,60), new THREE.MeshStandardMaterial({color:0xb89050}));
+        r.position.set(0,y,0); grp.add(r);
+      });
+      return grp;
+    }
+  },
+  tile_1x1: {
+    label: 'Fliese 1×1m',
+    build() {
+      const grp = new THREE.Group();
+      const tile = new THREE.Mesh(new THREE.BoxGeometry(1000,20,1000), new THREE.MeshStandardMaterial({color:0xddddcc}));
+      tile.position.y = 10;
+      const edge = new THREE.LineSegments(new THREE.EdgesGeometry(tile.geometry), new THREE.LineBasicMaterial({color:0xaaaaaa}));
+      grp.add(tile, edge);
+      return grp;
+    }
+  },
+  tile_terrace: {
+    label: 'Terrassenboden 3×3m',
+    build() {
+      const grp = new THREE.Group();
+      // 3×3 grid of tiles
+      for (let i=0; i<3; i++) for (let j=0; j<3; j++) {
+        const tile = new THREE.Mesh(new THREE.BoxGeometry(980,20,980), new THREE.MeshStandardMaterial({color: (i+j)%2===0 ? 0xddccaa : 0xccbb99}));
+        tile.position.set(-1000+i*1000, 10, -1000+j*1000);
+        grp.add(tile);
+      }
+      return grp;
+    }
+  },
+};
+
+function addDeco(type) {
+  const def = DEKO_DEFS[type];
+  if (!def) return;
+  const deco = { id: decoIdCounter++, type, label: def.label, x:0, y:0, z:0, mesh: null };
+  deco.mesh = def.build();
+  deco.mesh.position.set(0, 0, 0);
+  deco.mesh.userData.isDecoId = deco.id;
+  scene.add(deco.mesh);
+  decos.push(deco);
+  renderDekoList();
+}
+
+function renderDekoList() {
+  const list = document.getElementById('deko-list');
+  if (!list) return;
+  list.innerHTML = '';
+  decos.forEach(d => {
+    const div = document.createElement('div');
+    div.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:3px 4px;font-size:11px;border-bottom:1px solid #0f3460';
+    div.innerHTML = `<span>${d.label}</span><span style="cursor:pointer;color:#e94560" onclick="deleteDeco(${d.id})">✕</span>`;
+    list.appendChild(div);
+  });
+}
+
+function deleteDeco(id) {
+  const idx = decos.findIndex(d => d.id === id);
+  if (idx < 0) return;
+  const d = decos[idx];
+  if (d.mesh) { scene.remove(d.mesh); d.mesh.traverse(o => { if(o.geometry) o.geometry.dispose(); if(o.material) o.material.dispose(); }); }
+  decos.splice(idx, 1);
+  renderDekoList();
+}
+
+function clearAllDecos() {
+  [...decos].forEach(d => deleteDeco(d.id));
+}
+
 // Start empty
 calcFloorPlan();
 updateUI();
@@ -2181,6 +2438,7 @@ Object.assign(window, {
   rotateSelected, switchAxis, closeCtxMenu, showContextMenu,
   showTab, setDims, setAngle,
   addGroup, renderGroupList, selectGroup, moveBeamToGroup, deleteGroup,
+  addDeco, deleteDeco, clearAllDecos,
 });
 </script>
 </body>
