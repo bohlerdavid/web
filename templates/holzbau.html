@@ -1410,6 +1410,131 @@ function updateUI() {
 }
 
 // ══════════════════════════════════════════════
+// GROUP MANAGER
+// ══════════════════════════════════════════════
+
+function addGroup() {
+  const name = prompt('Gruppenname:');
+  if (!name || !name.trim()) return;
+  const trimmed = name.trim();
+  if (!groups.includes(trimmed)) {
+    groups.push(trimmed);
+    renderGroupList();
+  }
+}
+
+function renderGroupList() {
+  // Update beam-group-sel dropdown in Balken tab
+  const groupSel = document.getElementById('beam-group-sel');
+  if (groupSel) {
+    const prev = groupSel.value;
+    groupSel.innerHTML = groups.map(g => `<option value="${g}"${g===prev?' selected':''}>${g}</option>`).join('');
+  }
+
+  // Update edit-group dropdown in Auswahl tab
+  const editGroupSel = document.getElementById('edit-group');
+  if (editGroupSel) {
+    const selectedId = [...selectedIds][0] ?? null;
+    const currentGroup = selectedId ? (beams.find(b => b.id === selectedId)?.group || 'Standard') : 'Standard';
+    editGroupSel.innerHTML = groups.map(g => `<option value="${g}"${g===currentGroup?' selected':''}>${g}</option>`).join('');
+  }
+
+  // Rebuild group list panel
+  const list = document.getElementById('group-list');
+  if (!list) return;
+
+  list.innerHTML = '';
+  groups.forEach(groupName => {
+    const groupBeams = beams.filter(b => b.group === groupName);
+    const section = document.createElement('div');
+    section.className = 'group-section';
+
+    const header = document.createElement('div');
+    header.className = 'group-header';
+    header.innerHTML = `
+      <span class="group-name" title="${groupName}">${groupName}</span>
+      <span class="group-count">${groupBeams.length}</span>
+      ${groupName !== 'Standard' ? `<span class="group-del" title="Gruppe löschen" onclick="event.stopPropagation();deleteGroup('${groupName}')">✕</span>` : ''}
+    `;
+    header.ondblclick = (e) => {
+      if (groupName === 'Standard') return;
+      const nameSpan = header.querySelector('.group-name');
+      const input = document.createElement('input');
+      input.value = groupName;
+      input.style.cssText = 'flex:1;background:#0f3460;border:1px solid #e94560;color:#e0e0e0;padding:2px 4px;border-radius:3px;font-size:11px;';
+      input.onclick = e2 => e2.stopPropagation();
+      nameSpan.replaceWith(input);
+      input.focus();
+      input.select();
+      const commit = () => {
+        const newName = input.value.trim();
+        if (newName && newName !== groupName && !groups.includes(newName)) {
+          const idx = groups.indexOf(groupName);
+          if (idx >= 0) groups[idx] = newName;
+          beams.forEach(b => { if (b.group === groupName) b.group = newName; });
+        }
+        renderGroupList();
+      };
+      input.onblur = commit;
+      input.onkeydown = e2 => { if (e2.key === 'Enter') commit(); if (e2.key === 'Escape') renderGroupList(); };
+    };
+    header.onclick = (e) => {
+      if (e.target.classList.contains('group-del')) return;
+      selectGroup(groupName);
+      updateUI();
+      // toggle open/close
+      const items = section.querySelector('.group-items');
+      items.classList.toggle('open');
+    };
+    // Drag-over target
+    header.ondragover = (e) => { e.preventDefault(); header.classList.add('drag-over'); };
+    header.ondragleave = () => { header.classList.remove('drag-over'); };
+    header.ondrop = (e) => {
+      e.preventDefault();
+      header.classList.remove('drag-over');
+      const beamId = parseInt(e.dataTransfer.getData('beamId'));
+      if (beamId) moveBeamToGroup(beamId, groupName);
+    };
+
+    const items = document.createElement('div');
+    items.className = 'group-items open';
+    groupBeams.forEach(b => {
+      const item = document.createElement('div');
+      item.className = 'group-beam-item' + (selectedIds.has(b.id) ? ' selected' : '');
+      const dotColor = WOOD_COLORS_HEX[b.woodType] || '#888';
+      item.innerHTML = `<span class="color-dot" style="background:${dotColor}"></span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${b.name}</span>`;
+      item.draggable = true;
+      item.ondragstart = (e) => {
+        e.dataTransfer.setData('beamId', b.id);
+        item.classList.add('dragging');
+      };
+      item.ondragend = () => item.classList.remove('dragging');
+      item.onclick = (e) => { e.stopPropagation(); selectBeam(b.id); updateUI(); };
+      items.appendChild(item);
+    });
+
+    section.appendChild(header);
+    section.appendChild(items);
+    list.appendChild(section);
+  });
+}
+
+function deleteGroup(groupName) {
+  if (groupName === 'Standard') return;
+  beams.forEach(b => { if (b.group === groupName) b.group = 'Standard'; });
+  const idx = groups.indexOf(groupName);
+  if (idx >= 0) groups.splice(idx, 1);
+  renderGroupList();
+}
+
+function moveBeamToGroup(beamId, groupName) {
+  const b = beams.find(x => x.id === beamId);
+  if (!b) return;
+  b.group = groupName;
+  renderGroupList();
+}
+
+// ══════════════════════════════════════════════
 // SNAP
 // ══════════════════════════════════════════════
 
@@ -2043,6 +2168,7 @@ Object.assign(window, {
   newProject, clearAllBeams,
   rotateSelected, switchAxis, closeCtxMenu, showContextMenu,
   showTab, setDims, setAngle,
+  addGroup, renderGroupList, selectGroup, moveBeamToGroup, deleteGroup,
 });
 </script>
 </body>
