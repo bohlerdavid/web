@@ -2005,7 +2005,7 @@ function getGroundPoint(clientX, clientY) {
 }
 
 function onPointerDown(e) {
-  if (e.button !== 1) e.preventDefault(); // don't suppress mousedown for middle mouse (orbit)
+  if (e.button === 2) e.preventDefault(); // prevent browser context menu for right click only
 
   // Measure tool: drag to measure (mousedown = first point, mouseup = second point)
   if (measureActive && e.button === 0) {
