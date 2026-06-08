@@ -1431,18 +1431,7 @@ function updatePartsTable() {
 }
 
 function updateObjList() {
-  const list = document.getElementById('obj-list');
-  list.innerHTML = '';
-  beams.forEach(b => {
-    const div = document.createElement('div');
-    div.className = 'obj-item' + (selectedIds.has(b.id) ? ' selected' : '');
-    const dotColor = WOOD_COLORS_HEX[b.woodType] || '#888';
-    div.innerHTML = `<span class="color-dot" style="background:${dotColor}"></span>
-      <span class="obj-name" title="${b.name}">${b.name}</span>
-      <span class="obj-del" title="Löschen" onclick="event.stopPropagation();deleteBeam(${b.id})">✕</span>`;
-    div.onclick = () => { selectBeam(b.id); updateUI(); };
-    list.appendChild(div);
-  });
+  renderGroupList();
 }
 
 function updateUI() {
@@ -2461,14 +2450,6 @@ try {
 } catch(e) {
   console.error('Init error:', e);
 }
-  exportStückliste, applyEdit, deleteBeam,
-  calcFloorPlan, updateFloorOutline, updateRoofOutline, drawFloorPreview,
-  newProject, clearAllBeams,
-  rotateSelected, switchAxis, closeCtxMenu, showContextMenu,
-  showTab, setDims, setAngle,
-  addGroup, renderGroupList, selectGroup, moveBeamToGroup, deleteGroup,
-  addDeco, deleteDeco, clearAllDecos,
-});
 </script>
 </body>
 </html>
