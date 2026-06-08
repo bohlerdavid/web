@@ -991,6 +991,8 @@ let beams = [];       // [{id, name, woodType, L, B, H, axis, x, y, z, rx, ry, r
 let selectedIds = new Set(); // multi-selection
 let selectedDecoId = null;
 let groups = ['Standard']; // group names
+let decos = [];
+let decoIdCounter = 1;
 let snapEnabled = true;
 let currentMode = 'select'; // 'select' | 'move' | 'rotate'
 let history = [];     // undo stack
@@ -2596,9 +2598,6 @@ function loadSample() {
 // ══════════════════════════════════════════════
 // DEKORATION
 // ══════════════════════════════════════════════
-
-let decos = [];
-let decoIdCounter = 1;
 
 const DEKO_DEFS = {
   // Scale references
