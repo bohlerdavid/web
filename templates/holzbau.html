@@ -2047,6 +2047,16 @@ function onPointerDown(e) {
   // Left mouse button
   if (e.button !== 0) return;
 
+  // DEBUG
+  { const rect=renderer.domElement.getBoundingClientRect();
+    const nx=((e.clientX-rect.left)/rect.width)*2-1;
+    const ny=-((e.clientY-rect.top)/rect.height)*2+1;
+    const allM=[...beams.map(b=>b.mesh),...decos.map(d=>d.mesh)].filter(Boolean);
+    const d=document.getElementById('_dbg');
+    const hits2=getIntersects(e.clientX,e.clientY);
+    if(d) d.textContent=`rect:${Math.round(rect.left)},${Math.round(rect.top)} ${Math.round(rect.width)}x${Math.round(rect.height)} | norm:${nx.toFixed(2)},${ny.toFixed(2)} | meshes:${allM.length} | hits:${hits2.length}`;
+  }
+
   const hits = getIntersects(e.clientX, e.clientY);
   if (hits.length > 0) {
     let obj = hits[0].object;
