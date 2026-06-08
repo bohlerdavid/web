@@ -1947,11 +1947,34 @@ let orbitSpherical = new THREE.Spherical();
 let panStart = { x: 0, y: 0 };
 let isPanning = false;
 
-// Use pointer events (works better cross-browser than mouse events)
+// Pointer events for beam drag / selection
 renderer.domElement.addEventListener('pointerdown', onPointerDown, { passive: false });
 renderer.domElement.addEventListener('pointermove', onPointerMove, { passive: false });
 renderer.domElement.addEventListener('pointerup',   onPointerUp);
 renderer.domElement.addEventListener('pointercancel', onPointerUp);
+
+// ── MIDDLE MOUSE ORBIT (dedicated mouse events — more reliable than pointer capture) ──
+let _orbitActive = false, _orbitLX = 0, _orbitLY = 0;
+renderer.domElement.addEventListener('mousedown', e => {
+  if (e.button !== 1) return;
+  e.preventDefault();
+  _orbitActive = true;
+  _orbitLX = e.clientX; _orbitLY = e.clientY;
+}, { passive: false });
+document.addEventListener('mousemove', e => {
+  if (!_orbitActive) return;
+  const dx = (e.clientX - _orbitLX) * 0.005;
+  const dy = (e.clientY - _orbitLY) * 0.005;
+  _orbitLX = e.clientX; _orbitLY = e.clientY;
+  const offset = camera.position.clone().sub(controls.target);
+  const sp = new THREE.Spherical().setFromVector3(offset);
+  sp.theta -= dx;
+  sp.phi = Math.max(0.05, Math.min(Math.PI - 0.05, sp.phi - dy));
+  offset.setFromSpherical(sp);
+  camera.position.copy(controls.target).add(offset);
+  camera.lookAt(controls.target);
+});
+document.addEventListener('mouseup', e => { if (e.button === 1) _orbitActive = false; });
 renderer.domElement.addEventListener('dblclick', onDblClick);
 renderer.domElement.addEventListener('contextmenu', onContextMenu, true);
 renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
@@ -1998,18 +2021,6 @@ function onPointerDown(e) {
       document.getElementById('btn-measure-clear').style.display = '';
     }
     drawMeasureCanvas();
-    return;
-  }
-
-  // Middle mouse button → start orbit
-  if (e.button === 1) {
-    isOrbiting = true;
-    orbitStart.x = e.clientX;
-    orbitStart.y = e.clientY;
-    // snapshot current spherical coords
-    const offset = camera.position.clone().sub(controls.target);
-    orbitSpherical.setFromVector3(offset);
-    renderer.domElement.setPointerCapture(e.pointerId);
     return;
   }
 
@@ -2104,23 +2115,6 @@ function onPointerDown(e) {
 }
 
 function onPointerMove(e) {
-  // Orbit camera with middle mouse
-  if (isOrbiting) {
-    const dx = (e.clientX - orbitStart.x) * 0.005;
-    const dy = (e.clientY - orbitStart.y) * 0.005;
-    orbitStart.x = e.clientX;
-    orbitStart.y = e.clientY;
-    const offset = camera.position.clone().sub(controls.target);
-    const sp = new THREE.Spherical().setFromVector3(offset);
-    sp.theta -= dx;
-    sp.phi   -= dy;
-    sp.phi = Math.max(0.05, Math.min(Math.PI - 0.05, sp.phi));
-    offset.setFromSpherical(sp);
-    camera.position.copy(controls.target).add(offset);
-    camera.lookAt(controls.target);
-    return;
-  }
-
   // Drag beam(s)
   if (isDragging && dragBeam) {
     const snap0 = dragSelectionSnapshot[dragBeam.id] || { x: dragBeam.x, y: dragBeam.y, z: dragBeam.z };
@@ -2216,7 +2210,6 @@ function onPointerMove(e) {
 }
 
 function onPointerUp(e) {
-  if (isOrbiting && (e.button === 1 || e.type === 'pointercancel')) { isOrbiting = false; return; }
   if (isDragging) {
     isDragging = false;
     dragBeam = null;
@@ -3139,8 +3132,8 @@ function printProject() {
   renderer.render(scene,camera);
 
   // --- SVG plan generator ---
-  function makePlanSVG(projectFn, W, H, label) {
-    const PAD = 60, DIM = 30;
+  function makePlanSVG(projectFn, W, H, label, forceScale) {
+    const PAD = 55, DIM = 28;
     const svgW = W + PAD*2 + DIM*2;
     const svgH = H + PAD*2 + DIM*2;
 
@@ -3164,8 +3157,8 @@ function printProject() {
     const allU = rects.flatMap(r=>[r.u0,r.u1]), allV = rects.flatMap(r=>[r.v0,r.v1]);
     const wU0=Math.min(...allU), wU1=Math.max(...allU), wV0=Math.min(...allV), wV1=Math.max(...allV);
     const wW=wU1-wU0||1, wH=wV1-wV0||1;
-    const scaleU = W/wW, scaleV = H/wH;
-    const scale = Math.min(scaleU,scaleV)*0.92;
+    // Use shared scale if provided (so all views use same mm-per-px ratio)
+    const scale = forceScale || Math.min(W/wW, H/wH) * 0.88;
     const offU = PAD+DIM + (W - wW*scale)/2;
     const offV = PAD+DIM + (H - wH*scale)/2;
 
@@ -3235,12 +3228,17 @@ function printProject() {
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}">${defs}${parts.join('')}</svg>`;
   }
 
+  // Compute a shared mm-per-px scale so all plans are comparable
+  const worldSpan = Math.max(maxX-minX, maxY-minY, maxZ-minZ, 1);
+  const PLAN_W = 420, PLAN_H = 320, PAD_SHARED = 55;
+  const sharedScale = (Math.min(PLAN_W, PLAN_H) - PAD_SHARED * 2) / worldSpan * 0.88;
+
   // Top view: X=horizontal, Z=vertical (flip Z so north is up)
-  const svgTop   = makePlanSVG((x,y,z) => [x, -z],     480, 380, 'Draufsicht (von oben)');
+  const svgTop   = makePlanSVG((x,y,z) => [x, -z], PLAN_W, PLAN_H, 'Draufsicht (von oben)',   sharedScale);
   // Front view: X=horizontal, Y=vertical (flip Y so top is up)
-  const svgFront = makePlanSVG((x,y,z) => [x, -y],     480, 300, 'Ansicht Vorne');
+  const svgFront = makePlanSVG((x,y,z) => [x, -y], PLAN_W, PLAN_H, 'Ansicht Vorne',            sharedScale);
   // Side view: Z=horizontal, Y=vertical (flip Y)
-  const svgSide  = makePlanSVG((x,y,z) => [z, -y],     480, 300, 'Ansicht Seite');
+  const svgSide  = makePlanSVG((x,y,z) => [z, -y], PLAN_W, PLAN_H, 'Ansicht Seite (Rechts)',   sharedScale);
 
   // --- Stückliste ---
   const grouped = {};
