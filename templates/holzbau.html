@@ -881,11 +881,13 @@
 
 
 <!-- Three.js + OrbitControls via ES modules -->
+<div id="_dbg" style="position:fixed;bottom:0;left:0;right:0;background:#e94560;color:#fff;font-size:14px;font-weight:bold;padding:6px 12px;z-index:99999;display:none;pointer-events:none"></div>
 <script>
-// Raw diagnostic: show mousedown target in page title
 document.addEventListener('mousedown', function(e) {
   var el = e.target;
-  document.title = 'MD:' + el.tagName + '#' + (el.id||'') + ' btn=' + e.button;
+  var info = 'KLICK: ' + el.tagName + (el.id?'#'+el.id:'') + ' btn=' + e.button + ' x=' + e.clientX + ' y=' + e.clientY;
+  var d = document.getElementById('_dbg');
+  if(d){ d.textContent = info; d.style.display='block'; }
 }, true);
 </script>
 <script type="importmap">
