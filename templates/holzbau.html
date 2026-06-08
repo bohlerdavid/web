@@ -498,7 +498,7 @@
     <span class="tb-label">Einrasten</span>
     <button class="tb-btn green" id="btn-snap" onclick="toggleSnap()">✓ Ein</button>
     <span class="tb-label" style="margin-left:4px">Raster</span>
-    <input class="tb-input" id="snap-size" type="number" value="100" min="10" max="500" step="10"> mm
+    <input class="tb-input" id="snap-size" type="number" value="10" min="1" max="500" step="5"> mm
   </div>
 
   <div class="tb-group">
@@ -1330,8 +1330,8 @@ function duplicateSelected() {
   const src = beams.find(b => b.id === primaryId);
   if (!src) return;
   pushHistory();
-  const snapSize = parseFloat(document.getElementById('snap-size').value) || 100;
-  const offset = snapEnabled ? snapSize : 200;
+  const snapSize = parseFloat(document.getElementById('snap-size').value) || 10;
+  const offset = snapEnabled ? Math.max(snapSize, 50) : 200;
   const beam = { ...src, id: idCounter++, name: src.name + ' (Kopie)', x: src.x + offset, z: src.z + offset, mesh: null };
   beam.mesh = createBeamMesh(beam);
   scene.add(beam.mesh);
@@ -1763,8 +1763,67 @@ function toggleSnap() {
 
 function snapValue(v) {
   if (!snapEnabled) return v;
-  const sz = parseFloat(document.getElementById('snap-size').value) || 100;
+  const sz = parseFloat(document.getElementById('snap-size').value) || 10;
   return Math.round(v / sz) * sz;
+}
+
+// Beam-face snap: snaps dragged beam's corner to faces of other beams.
+// Returns { x, z } snapped to nearest beam face within tolerance, else grid-snapped.
+function smartSnap(rawX, rawZ, dragged) {
+  const gridSz = snapEnabled ? (parseFloat(document.getElementById('snap-size').value) || 10) : 1;
+  // beam-face snap tolerance = 5x grid or 150mm minimum
+  const tol = Math.max(150, gridSz * 5);
+
+  const dW = dragged.axis === 'x' ? dragged.L : dragged.B; // width in X
+  const dD = dragged.axis === 'z' ? dragged.L : dragged.B; // depth in Z
+
+  let bestX = null, bestXD = tol + 1;
+  let bestZ = null, bestZD = tol + 1;
+
+  beams.forEach(b => {
+    if (selectedIds.has(b.id)) return; // skip beams being dragged
+    const bx0 = b.x;
+    const bx1 = b.x + (b.axis === 'x' ? b.L : b.B);
+    const bz0 = b.z;
+    const bz1 = b.z + (b.axis === 'z' ? b.L : b.B);
+
+    // Candidate X snap positions for dragged beam's left face
+    [bx0, bx1, bx0 - dW, bx1 - dW].forEach(cx => {
+      const d = Math.abs(cx - rawX);
+      if (d < bestXD) { bestX = cx; bestXD = d; }
+    });
+    // Candidate Z snap positions for dragged beam's front face
+    [bz0, bz1, bz0 - dD, bz1 - dD].forEach(cz => {
+      const d = Math.abs(cz - rawZ);
+      if (d < bestZD) { bestZ = cz; bestZD = d; }
+    });
+  });
+
+  return {
+    x: bestXD <= tol ? bestX : (snapEnabled ? Math.round(rawX / gridSz) * gridSz : rawX),
+    z: bestZD <= tol ? bestZ : (snapEnabled ? Math.round(rawZ / gridSz) * gridSz : rawZ),
+    snappedX: bestXD <= tol,
+    snappedZ: bestZD <= tol,
+  };
+}
+
+// Y-axis beam-face snap (for Alt+drag vertical placement)
+function smartSnapY(rawY, dragged) {
+  const gridSz = snapEnabled ? (parseFloat(document.getElementById('snap-size').value) || 10) : 1;
+  const tol = Math.max(150, gridSz * 5);
+  const dH = dragged.axis === 'y' ? dragged.L : dragged.H;
+
+  let bestY = null, bestYD = tol + 1;
+  beams.forEach(b => {
+    if (selectedIds.has(b.id)) return;
+    const by0 = b.y;
+    const by1 = b.y + (b.axis === 'y' ? b.L : b.H);
+    [by0, by1, by0 - dH, by1 - dH].forEach(cy => {
+      const d = Math.abs(cy - rawY);
+      if (d < bestYD) { bestY = cy; bestYD = d; }
+    });
+  });
+  return bestYD <= tol ? bestY : (snapEnabled ? Math.round(rawY / gridSz) * gridSz : rawY);
 }
 
 // ══════════════════════════════════════════════
@@ -1996,15 +2055,30 @@ function onPointerMove(e) {
     let deltaX = 0, deltaY = 0, deltaZ = 0;
     if (dragAltMode || e.altKey) {
       const dy = dragStartY - e.clientY;
-      const newY = snapValue(dragStartBeamY + dy * 2);
+      const rawY = dragStartBeamY + dy * 2;
+      const newY = smartSnapY(rawY, dragBeam);
       deltaY = newY - snap0.y;
     } else {
       const pt = getGroundPoint(e.clientX, e.clientY);
       if (pt) {
-        const newX = snapValue(pt.x + dragOffset.x - getBeamHalfW(dragBeam));
-        const newZ = snapValue(pt.z + dragOffset.z - getBeamHalfD(dragBeam));
-        deltaX = newX - snap0.x;
-        deltaZ = newZ - snap0.z;
+        const rawX = pt.x + dragOffset.x - getBeamHalfW(dragBeam);
+        const rawZ = pt.z + dragOffset.z - getBeamHalfD(dragBeam);
+        const snapped = smartSnap(rawX, rawZ, dragBeam);
+        deltaX = snapped.x - snap0.x;
+        deltaZ = snapped.z - snap0.z;
+        // Visual feedback: highlight snap indicator
+        const ind = document.getElementById('snap-indicator');
+        if (ind) {
+          if (snapped.snappedX || snapped.snappedZ) {
+            ind.textContent = '🔗 Balken-Snap aktiv';
+            ind.style.color = '#4caf50';
+            ind.style.borderColor = '#4caf50';
+          } else if (snapEnabled) {
+            ind.textContent = 'Raster: EIN';
+            ind.style.color = '';
+            ind.style.borderColor = '';
+          }
+        }
       }
     }
     // Apply delta to all selected beams
@@ -2074,6 +2148,13 @@ function onPointerUp(e) {
   if (isDragging) {
     isDragging = false;
     dragBeam = null;
+    // Reset snap indicator
+    const ind = document.getElementById('snap-indicator');
+    if (ind) {
+      ind.textContent = snapEnabled ? 'Raster: EIN' : 'Raster: AUS';
+      ind.style.color = '';
+      ind.style.borderColor = '';
+    }
     updateUI();
   }
   if (isDraggingDeco) {
@@ -2197,7 +2278,7 @@ document.addEventListener('keydown', e => {
   if (!selectedId) return;
   const b = beams.find(x => x.id === selectedId);
   if (!b) return;
-  const step = snapEnabled ? (parseFloat(document.getElementById('snap-size').value) || 100) : 10;
+  const step = snapEnabled ? (parseFloat(document.getElementById('snap-size').value) || 10) : 10;
   let moved = false;
   if (e.key === 'ArrowLeft')  { b.x -= step; moved = true; }
   if (e.key === 'ArrowRight') { b.x += step; moved = true; }
