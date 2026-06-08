@@ -1727,20 +1727,18 @@ function renderGroupList() {
     section.ondrop = (e) => {
       e.preventDefault();
       header.classList.remove('drag-over');
-      const rawBeamId = e.dataTransfer.getData('beamId');
-      const rawDecoId = e.dataTransfer.getData('decoId');
-      if (rawBeamId !== '') moveBeamToGroup(parseInt(rawBeamId), groupName);
-      if (rawDecoId !== '') moveDecoToGroup(parseInt(rawDecoId), groupName);
+      const raw = e.dataTransfer.getData('text/plain');
+      if (raw.startsWith('beam:')) moveBeamToGroup(parseInt(raw.slice(5)), groupName);
+      else if (raw.startsWith('deco:')) moveDecoToGroup(parseInt(raw.slice(5)), groupName);
     };
     header.ondragover = (e) => { e.preventDefault(); header.classList.add('drag-over'); };
     header.ondragleave = () => { header.classList.remove('drag-over'); };
     header.ondrop = (e) => {
       e.preventDefault();
       header.classList.remove('drag-over');
-      const rawBeamId = e.dataTransfer.getData('beamId');
-      const rawDecoId = e.dataTransfer.getData('decoId');
-      if (rawBeamId !== '') moveBeamToGroup(parseInt(rawBeamId), groupName);
-      if (rawDecoId !== '') moveDecoToGroup(parseInt(rawDecoId), groupName);
+      const raw = e.dataTransfer.getData('text/plain');
+      if (raw.startsWith('beam:')) moveBeamToGroup(parseInt(raw.slice(5)), groupName);
+      else if (raw.startsWith('deco:')) moveDecoToGroup(parseInt(raw.slice(5)), groupName);
     };
 
     const items = document.createElement('div');
@@ -1752,7 +1750,7 @@ function renderGroupList() {
       item.innerHTML = `<span class="color-dot" style="background:${dotColor}"></span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${b.name}</span>`;
       item.draggable = true;
       item.ondragstart = (e) => {
-        e.dataTransfer.setData('beamId', b.id);
+        e.dataTransfer.setData('text/plain', 'beam:' + b.id);
         item.classList.add('dragging');
       };
       item.ondragend = () => item.classList.remove('dragging');
@@ -1766,7 +1764,7 @@ function renderGroupList() {
       item.innerHTML = `<span class="color-dot" style="background:#4caf50"></span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.label}</span><span style="cursor:pointer;color:#e94560;padding:0 2px;font-size:10px" onclick="event.stopPropagation();deleteDeco(${d.id})" title="Löschen">✕</span>`;
       item.draggable = true;
       item.ondragstart = (e) => {
-        e.dataTransfer.setData('decoId', d.id);
+        e.dataTransfer.setData('text/plain', 'deco:' + d.id);
         item.classList.add('dragging');
       };
       item.ondragend = () => item.classList.remove('dragging');
