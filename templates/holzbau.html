@@ -723,8 +723,10 @@
         <div style="border-top:1px solid #0f3460;margin-top:8px;padding-top:8px">
           <div class="form-row">
             <label>Gruppe</label>
-            <select id="edit-group" onchange="moveBeamToGroup([...selectedIds][0], this.value)"></select>
+            <select id="edit-group" onchange="moveBeamToGroup([...selectedIds][0], this.value)" style="flex:1"></select>
           </div>
+          <button class="add-btn" style="background:linear-gradient(135deg,#0f7460,#0a5a4a);margin-top:6px" onclick="duplicateSelected()">⧉ Balken kopieren</button>
+          <button class="add-btn" style="background:linear-gradient(135deg,#3a3460,#2a2448);margin-top:4px" onclick="deleteSelected();updateUI()">✕ Balken löschen</button>
         </div>
       </div>
       <!-- Deco edit panel -->
