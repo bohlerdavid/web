@@ -2005,7 +2005,7 @@ function getGroundPoint(clientX, clientY) {
 }
 
 function onPointerDown(e) {
-  e.preventDefault();
+  if (e.button !== 1) e.preventDefault(); // don't suppress mousedown for middle mouse (orbit)
 
   // Measure tool: left click picks a point
   if (measureActive && e.button === 0) {
