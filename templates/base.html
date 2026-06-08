@@ -90,6 +90,12 @@
                     <span>Holzbau 3D</span>
                 </a>
             </li>
+            <li class="sidebar-item {% if request.endpoint == 'subscribe' %}active{% endif %}">
+                <a href="{{ url_for('subscribe') }}" class="sidebar-link">
+                    <i class="bi bi-star"></i>
+                    <span>{% if user_plan == 'premium' %}✨ Premium{% else %}Upgrade{% endif %}</span>
+                </a>
+            </li>
         </ul>
 
         <div class="sidebar-footer">

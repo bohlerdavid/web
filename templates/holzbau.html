@@ -475,6 +475,14 @@
 </head>
 <body>
 
+{% if show_ads %}
+<div id="ad-banner-top" style="background:#0f3460;border-bottom:1px solid #1a1a3e;padding:6px 16px;display:flex;align-items:center;justify-content:space-between;font-size:12px;color:#888;">
+  <span>Werbung — <a href="/subscribe" style="color:#4f9cf9">Upgrade auf Premium</a> für werbefreies Erlebnis</span>
+  <!-- Google AdSense placeholder: replace with real ad code -->
+  <ins class="adsbygoogle" style="display:inline-block;width:728px;height:60px;background:#1a1a3e;border:1px dashed #333;" data-ad-client="ca-pub-XXXXXXXX" data-ad-slot="XXXXXXXX"></ins>
+</div>
+{% endif %}
+
 <!-- ═══════════════════════════ TOP BAR ═══════════════════════════ -->
 <div id="topbar">
   <div class="logo">Holz<span>BAU</span> 3D</div>
@@ -849,6 +857,16 @@
       <button class="tb-btn" style="font-size:10px;padding:3px 7px" onclick="addGroup()">+ Gruppe</button>
     </div>
     <div id="group-list" style="flex:1;overflow-y:auto"></div>
+
+    {% if show_ads %}
+    <div id="ad-sidebar" style="padding:8px;border-top:1px solid #0f3460;margin-top:auto;">
+      <div style="background:#0f3460;border:1px dashed #333;padding:8px;text-align:center;font-size:11px;color:#666;min-height:120px;display:flex;align-items:center;justify-content:center;">
+        <!-- AdSense sidebar ad -->
+        <span>Werbung</span>
+      </div>
+      <a href="/subscribe" style="display:block;margin-top:6px;text-align:center;font-size:11px;color:#4f9cf9;text-decoration:none;">✨ Werbefrei mit Premium</a>
+    </div>
+    {% endif %}
   </div>
 
 </div>

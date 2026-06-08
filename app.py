@@ -209,6 +209,18 @@ CREATE TABLE IF NOT EXISTS app_settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL DEFAULT '1'
 );
+
+CREATE TABLE IF NOT EXISTS subscriptions (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+    stripe_customer_id  TEXT,
+    stripe_sub_id       TEXT,
+    plan            TEXT NOT NULL DEFAULT 'free',
+    status          TEXT NOT NULL DEFAULT 'active',
+    current_period_end  TEXT,
+    created_at      TEXT DEFAULT (datetime('now')),
+    UNIQUE(user_id)
+);
 """
 
 def migrate_db():
@@ -728,6 +740,7 @@ def inject_globals():
     return {
         'now': datetime.now(timezone.utc).replace(tzinfo=None),
         'csrf_token': generate_csrf,
+        'user_plan': get_user_plan(session['user_id']) if session.get('user_id') else 'free',
     }
 
 
@@ -2550,11 +2563,142 @@ def wiki():
 @app.route('/holzbau')
 @login_required
 def holzbau():
-    return render_template('holzbau.html')
+    plan = get_user_plan(session['user_id']) if session.get('user_id') else 'free'
+    return render_template('holzbau.html', show_ads=(plan == 'free'))
 
 
 # ---------------------------------------------------------------------------
 # Entry point
+# ---------------------------------------------------------------------------
+
+# ── PUBLIC LANDING ──────────────────────────────────────────────
+@app.route('/landing')
+def landing():
+    return render_template('landing.html')
+
+@app.route('/pricing')
+def pricing_public():
+    return render_template('pricing_public.html')
+
+# ── SUBSCRIPTION ────────────────────────────────────────────────
+def get_user_plan(user_id):
+    """Returns 'premium' or 'free'"""
+    row = query_db('SELECT plan, status FROM subscriptions WHERE user_id=?', [user_id], one=True)
+    if row and row['plan'] == 'premium' and row['status'] == 'active':
+        return 'premium'
+    return 'free'
+
+@app.route('/subscribe')
+@login_required
+def subscribe():
+    user_id = session['user_id']
+    plan = get_user_plan(user_id)
+    stripe_configured = bool(os.environ.get('STRIPE_SECRET_KEY'))
+    sub = query_db('SELECT * FROM subscriptions WHERE user_id=?', [user_id], one=True)
+    return render_template('subscribe.html', plan=plan, stripe_configured=stripe_configured, sub=row_to_dict(sub) if sub else {})
+
+@app.route('/subscribe/create-checkout', methods=['POST'])
+@login_required
+def subscribe_create_checkout():
+    token = request.form.get('csrf_token', '')
+    if not validate_csrf(token):
+        abort(403)
+    stripe_key = os.environ.get('STRIPE_SECRET_KEY')
+    price_id = os.environ.get('STRIPE_PRICE_ID')
+    if not stripe_key or not price_id:
+        flash('Stripe ist nicht konfiguriert. Bitte STRIPE_SECRET_KEY und STRIPE_PRICE_ID setzen.', 'danger')
+        return redirect(url_for('subscribe'))
+    try:
+        import stripe
+        stripe.api_key = stripe_key
+        user_id = session['user_id']
+        sub_row = query_db('SELECT stripe_customer_id FROM subscriptions WHERE user_id=?', [user_id], one=True)
+        customer_id = sub_row['stripe_customer_id'] if sub_row and sub_row['stripe_customer_id'] else None
+        checkout = stripe.checkout.Session.create(
+            customer=customer_id,
+            payment_method_types=['card'],
+            line_items=[{'price': price_id, 'quantity': 1}],
+            mode='subscription',
+            success_url=request.host_url + 'subscribe?success=1',
+            cancel_url=request.host_url + 'subscribe?cancelled=1',
+            metadata={'user_id': str(user_id)},
+        )
+        return redirect(checkout.url, code=303)
+    except Exception as e:
+        flash(f'Stripe Fehler: {str(e)}', 'danger')
+        return redirect(url_for('subscribe'))
+
+@app.route('/subscribe/cancel', methods=['POST'])
+@login_required
+def subscribe_cancel():
+    token = request.form.get('csrf_token', '')
+    if not validate_csrf(token):
+        abort(403)
+    user_id = session['user_id']
+    stripe_key = os.environ.get('STRIPE_SECRET_KEY')
+    if not stripe_key:
+        flash('Stripe nicht konfiguriert.', 'danger')
+        return redirect(url_for('subscribe'))
+    try:
+        import stripe
+        stripe.api_key = stripe_key
+        sub_row = query_db('SELECT stripe_sub_id FROM subscriptions WHERE user_id=?', [user_id], one=True)
+        if sub_row and sub_row['stripe_sub_id']:
+            stripe.Subscription.modify(sub_row['stripe_sub_id'], cancel_at_period_end=True)
+            execute_db('UPDATE subscriptions SET status=? WHERE user_id=?', ['cancelled', user_id])
+            flash('Abo wird zum Ende der Laufzeit gekündigt.', 'success')
+        else:
+            flash('Kein aktives Abo gefunden.', 'warning')
+    except Exception as e:
+        flash(f'Fehler: {str(e)}', 'danger')
+    return redirect(url_for('subscribe'))
+
+@app.route('/webhook/stripe', methods=['POST'])
+def stripe_webhook():
+    stripe_key = os.environ.get('STRIPE_SECRET_KEY')
+    webhook_secret = os.environ.get('STRIPE_WEBHOOK_SECRET')
+    if not stripe_key:
+        abort(400)
+    try:
+        import stripe
+        stripe.api_key = stripe_key
+        payload = request.get_data()
+        sig = request.headers.get('Stripe-Signature', '')
+        if webhook_secret:
+            event = stripe.Webhook.construct_event(payload, sig, webhook_secret)
+        else:
+            event = stripe.Event.construct_from(stripe.util.convert_to_stripe_object(
+                stripe.util.json.loads(payload), stripe_key, None), stripe_key)
+        _handle_stripe_event(event)
+        return jsonify(ok=True)
+    except Exception as e:
+        return jsonify(error=str(e)), 400
+
+def _handle_stripe_event(event):
+    data = event['data']['object']
+    etype = event['type']
+    if etype == 'checkout.session.completed':
+        user_id = int(data.get('metadata', {}).get('user_id', 0))
+        if not user_id:
+            return
+        customer_id = data.get('customer')
+        sub_id = data.get('subscription')
+        existing = query_db('SELECT id FROM subscriptions WHERE user_id=?', [user_id], one=True)
+        if existing:
+            execute_db('UPDATE subscriptions SET stripe_customer_id=?, stripe_sub_id=?, plan=?, status=? WHERE user_id=?',
+                      [customer_id, sub_id, 'premium', 'active', user_id])
+        else:
+            execute_db('INSERT INTO subscriptions (user_id, stripe_customer_id, stripe_sub_id, plan, status) VALUES (?,?,?,?,?)',
+                      [user_id, customer_id, sub_id, 'premium', 'active'])
+    elif etype in ('customer.subscription.deleted', 'customer.subscription.updated'):
+        sub_id = data.get('id')
+        status = data.get('status', 'cancelled')
+        plan = 'premium' if status == 'active' else 'free'
+        db_status = 'active' if status == 'active' else 'cancelled'
+        period_end = datetime.fromtimestamp(data.get('current_period_end', 0)).isoformat() if data.get('current_period_end') else None
+        execute_db('UPDATE subscriptions SET plan=?, status=?, current_period_end=? WHERE stripe_sub_id=?',
+                  [plan, db_status, period_end, sub_id])
+
 # ---------------------------------------------------------------------------
 
 if __name__ == '__main__':
