@@ -881,6 +881,13 @@
 
 
 <!-- Three.js + OrbitControls via ES modules -->
+<script>
+// Raw diagnostic: show mousedown target in page title
+document.addEventListener('mousedown', function(e) {
+  var el = e.target;
+  document.title = 'MD:' + el.tagName + '#' + (el.id||'') + ' btn=' + e.button;
+}, true);
+</script>
 <script type="importmap">
 {
   "imports": {
