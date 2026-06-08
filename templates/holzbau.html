@@ -738,18 +738,6 @@
   <div class="ctx-item" style="color:#e94560" onclick="deleteSelected();closeCtxMenu()">✕ Löschen</div>
 </div>
 
-<!-- ═══════════════════════════ MODALS ═══════════════════════════ -->
-<div id="modal-save" class="modal-overlay">
-  <div class="modal-box">
-    <h3>Projekt speichern / laden</h3>
-    <p style="font-size:12px;color:#888;margin-bottom:8px">JSON-Projektdaten kopieren oder einfügen:</p>
-    <textarea id="modal-json"></textarea>
-    <div class="modal-actions">
-      <button class="tb-btn" onclick="loadFromModal()">Laden</button>
-      <button class="tb-btn" onclick="closeModal()">Schließen</button>
-    </div>
-  </div>
-</div>
 
 <!-- Three.js + OrbitControls via ES modules -->
 <script type="importmap">
@@ -1789,48 +1777,54 @@ function removeMesh(mesh) {
 
 function saveProject() {
   const data = {
-    version: 1,
-    beams: beams.map(b => ({ id: b.id, name: b.name, woodType: b.woodType, L: b.L, B: b.B, H: b.H, axis: b.axis, x: b.x, y: b.y, z: b.z })),
+    version: 2,
+    beams: beams.map(b => ({
+      id: b.id, name: b.name, woodType: b.woodType,
+      L: b.L, B: b.B, H: b.H, axis: b.axis,
+      x: b.x, y: b.y, z: b.z,
+      rx: b.rx||0, ry: b.ry||0, rz: b.rz||0
+    })),
   };
   const json = JSON.stringify(data, null, 2);
-  document.getElementById('modal-json').value = json;
-  document.getElementById('modal-save').classList.add('open');
-
-  // Also try localStorage
-  try { localStorage.setItem('holzbau_project', json); } catch(e) {}
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'holzbau_projekt.json';
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function loadProject() {
-  let stored = '';
-  try { stored = localStorage.getItem('holzbau_project') || ''; } catch(e) {}
-  document.getElementById('modal-json').value = stored;
-  document.getElementById('modal-save').classList.add('open');
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json';
+  input.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        pushHistory();
+        clearAllBeams();
+        data.beams.forEach(s => {
+          const beam = { ...s, mesh: null };
+          beams.push(beam);
+          buildMesh(beam);
+        });
+        if (data.beams.length) idCounter = Math.max(...data.beams.map(b=>b.id)) + 1;
+        updateUI();
+      } catch(err) {
+        alert('Fehler beim Laden: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
 }
 
-function loadFromModal() {
-  const json = document.getElementById('modal-json').value.trim();
-  if (!json) { closeModal(); return; }
-  try {
-    const data = JSON.parse(json);
-    pushHistory();
-    clearAllBeams();
-    data.beams.forEach(s => {
-      const beam = { ...s, mesh: null };
-      beam.mesh = createBeamMesh(beam);
-      scene.add(beam.mesh);
-      beams.push(beam);
-    });
-    idCounter = beams.length > 0 ? Math.max(...beams.map(b => b.id)) + 1 : 1;
-    updateUI();
-    closeModal();
-  } catch (err) {
-    alert('Fehler beim Laden: ' + err.message);
-  }
-}
-
-function closeModal() {
-  document.getElementById('modal-save').classList.remove('open');
-}
+function closeModal() {}
 
 // ══════════════════════════════════════════════
 // EXPORT STÜCKLISTE
