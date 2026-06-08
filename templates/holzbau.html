@@ -1958,6 +1958,7 @@ let panStart = { x: 0, y: 0 };
 let isPanning = false;
 
 // ── INPUT EVENTS — use mousedown/mousemove/mouseup (more reliable than pointer events)
+{ const d=document.getElementById('_dbg'); if(d){ d.textContent='LISTENER REGISTERED'; d.style.display='block'; } }
 renderer.domElement.addEventListener('mousedown', onPointerDown, { passive: false });
 document.addEventListener('mousemove', onPointerMove, { passive: false });
 document.addEventListener('mouseup',   onPointerUp);
@@ -2014,6 +2015,9 @@ function getGroundPoint(clientX, clientY) {
 }
 
 function onPointerDown(e) {
+  // DEBUG TOP
+  { const d=document.getElementById('_dbg'); if(d) d.textContent='onPD called btn='+e.button+' beams='+beams.length; }
+
   if (e.button === 2) e.preventDefault(); // prevent browser context menu for right click only
 
   // Measure tool: drag to measure (mousedown = first point, mouseup = second point)
