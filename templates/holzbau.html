@@ -2104,8 +2104,11 @@ function loadProject() {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = '.json,application/json';
+  input.style.display = 'none';
+  document.body.appendChild(input);
   input.onchange = e => {
     const file = e.target.files[0];
+    document.body.removeChild(input);
     if (!file) return;
     const reader = new FileReader();
     reader.onload = ev => {
@@ -2115,8 +2118,10 @@ function loadProject() {
         clearAllBeams();
         data.beams.forEach(s => {
           const beam = { ...s, mesh: null };
+          const mesh = createBeamMesh(beam);
+          beam.mesh = mesh;
+          scene.add(mesh);
           beams.push(beam);
-          buildMesh(beam);
         });
         if (data.beams.length) idCounter = Math.max(...data.beams.map(b=>b.id)) + 1;
         updateUI();
