@@ -2007,19 +2007,16 @@ function getGroundPoint(clientX, clientY) {
 function onPointerDown(e) {
   if (e.button !== 1) e.preventDefault(); // don't suppress mousedown for middle mouse (orbit)
 
-  // Measure tool: left click picks a point
+  // Measure tool: drag to measure (mousedown = first point, mouseup = second point)
   if (measureActive && e.button === 0) {
     const pt = pickMeasurePoint(e.clientX, e.clientY);
     if (!pt) return;
-    if (measurePts.length >= 2) measurePts = [];
-    measurePts.push(pt);
+    measurePts = [pt];
+    measureDragging = true;
+    measureCursorPt = pt.clone();
+    renderer.domElement.setPointerCapture(e.pointerId);
     const hint = document.getElementById('measure-hint');
-    if (measurePts.length === 1) {
-      hint.textContent = '📏 Maßband — 2. Punkt anklicken | Esc = Abbrechen';
-    } else {
-      hint.textContent = '📏 Maßband — Ergebnis. Neu klicken für neue Messung | Esc = Beenden';
-      document.getElementById('btn-measure-clear').style.display = '';
-    }
+    hint.textContent = '📏 Maßband — Maustaste halten und ziehen zum 2. Punkt';
     drawMeasureCanvas();
     return;
   }
@@ -2115,6 +2112,13 @@ function onPointerDown(e) {
 }
 
 function onPointerMove(e) {
+  // Measure tool: live preview while dragging
+  if (measureActive && measureDragging && measurePts.length === 1) {
+    const pt = pickMeasurePoint(e.clientX, e.clientY);
+    if (pt) { measureCursorPt = pt; drawMeasureCanvas(); }
+    return;
+  }
+
   // Drag beam(s)
   if (isDragging && dragBeam) {
     const snap0 = dragSelectionSnapshot[dragBeam.id] || { x: dragBeam.x, y: dragBeam.y, z: dragBeam.z };
@@ -2210,6 +2214,21 @@ function onPointerMove(e) {
 }
 
 function onPointerUp(e) {
+  // Measure tool: commit second point on release
+  if (measureActive && measureDragging && e.button === 0) {
+    measureDragging = false;
+    const pt = pickMeasurePoint(e.clientX, e.clientY);
+    if (pt && measurePts.length === 1) {
+      measurePts.push(pt);
+      measureCursorPt = null;
+      const hint = document.getElementById('measure-hint');
+      hint.textContent = '📏 Maßband — Neu ziehen für neue Messung | Esc = Beenden';
+      document.getElementById('btn-measure-clear').style.display = '';
+    }
+    drawMeasureCanvas();
+    return;
+  }
+
   if (isDragging) {
     isDragging = false;
     dragBeam = null;
@@ -2929,6 +2948,8 @@ window.addEventListener('unhandledrejection', ev => {
 
 let measureActive = false;
 let measurePts = []; // up to 2 THREE.Vector3
+let measureDragging = false;  // true while mouse is held after first point
+let measureCursorPt = null;   // live cursor position during drag
 let measureLineObj = null;   // permanent line
 let measureGhostObj = null;  // line to cursor while picking 2nd point
 const measureGround = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -2960,7 +2981,10 @@ function drawMeasureCanvas() {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  const pts = measurePts;
+  // Build effective point list: if dragging, show [pt1, cursor]
+  const pts = (measureDragging && measurePts.length === 1 && measureCursorPt)
+    ? [measurePts[0], measureCursorPt]
+    : measurePts;
   if (pts.length === 0) return;
 
   function project(v3) {
@@ -2990,13 +3014,13 @@ function drawMeasureCanvas() {
     const distMm = Math.round(dist);
     const distM  = (dist / 1000).toFixed(3);
 
-    // Main line
+    // Main line (dashed while dragging, solid when committed)
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
-    ctx.strokeStyle = '#e94560';
+    ctx.strokeStyle = measureDragging ? '#ff9933' : '#e94560';
     ctx.lineWidth = 2;
-    ctx.setLineDash([6, 4]);
+    ctx.setLineDash(measureDragging ? [4, 3] : [6, 4]);
     ctx.stroke();
     ctx.setLineDash([]);
 
@@ -3053,7 +3077,7 @@ function toggleMeasure() {
   if (measureActive) {
     btn.classList.add('active');
     hint.style.display = 'block';
-    hint.textContent = '📏 Maßband — 1. Punkt anklicken';
+    hint.textContent = '📏 Maßband — Maustaste drücken und ziehen zum Messen';
     clearMeasure(false);
   } else {
     btn.classList.remove('active');
@@ -3064,6 +3088,8 @@ function toggleMeasure() {
 
 function clearMeasure(deactivate = true) {
   measurePts = [];
+  measureDragging = false;
+  measureCursorPt = null;
   const canvas = document.getElementById('measure-canvas');
   if (canvas) { const ctx = canvas.getContext('2d'); ctx.clearRect(0,0,canvas.width,canvas.height); }
   document.getElementById('btn-measure-clear').style.display = 'none';
@@ -3132,7 +3158,7 @@ function printProject() {
   renderer.render(scene,camera);
 
   // --- SVG plan generator ---
-  function makePlanSVG(projectFn, W, H, label, forceScale) {
+  function makePlanSVG(projectFn, W, H, label, forceScale, extraPoly = null) {
     const PAD = 55, DIM = 28;
     const svgW = W + PAD*2 + DIM*2;
     const svgH = H + PAD*2 + DIM*2;
@@ -3193,15 +3219,20 @@ function printProject() {
       }
     });
 
-    // Overall dimension lines
+    // Overall dimension lines (tick-mark style — no SVG markers needed)
     function dimH(u0,u1,v, distMm) {
       const [sx0,sy]=toSVG(u0,v), [sx1]=toSVG(u1,v);
       const extY = sy + 18;
       const mm = Math.round(distMm);
       const txt = mm>=1000 ? `${(mm/1000).toFixed(2)} m` : `${mm} mm`;
+      // extension lines
       parts.push(`<line x1="${sx0}" y1="${sy}" x2="${sx0}" y2="${extY+4}" stroke="#e94560" stroke-width="0.7"/>`);
       parts.push(`<line x1="${sx1}" y1="${sy}" x2="${sx1}" y2="${extY+4}" stroke="#e94560" stroke-width="0.7"/>`);
-      parts.push(`<line x1="${sx0}" y1="${extY}" x2="${sx1}" y2="${extY}" stroke="#e94560" stroke-width="0.8" marker-start="url(#arr)" marker-end="url(#arr)"/>`);
+      // dimension line
+      parts.push(`<line x1="${sx0}" y1="${extY}" x2="${sx1}" y2="${extY}" stroke="#e94560" stroke-width="0.8"/>`);
+      // end ticks
+      parts.push(`<line x1="${sx0}" y1="${extY-4}" x2="${sx0}" y2="${extY+4}" stroke="#e94560" stroke-width="1.2"/>`);
+      parts.push(`<line x1="${sx1}" y1="${extY-4}" x2="${sx1}" y2="${extY+4}" stroke="#e94560" stroke-width="1.2"/>`);
       parts.push(`<text x="${(sx0+sx1)/2}" y="${extY+10}" text-anchor="middle" font-size="8" fill="#e94560" font-family="Arial">${txt}</text>`);
     }
     function dimV(v0,v1,u, distMm) {
@@ -3209,9 +3240,14 @@ function printProject() {
       const extX = sx - 18;
       const mm = Math.round(distMm);
       const txt = mm>=1000 ? `${(mm/1000).toFixed(2)} m` : `${mm} mm`;
+      // extension lines
       parts.push(`<line x1="${sx}" y1="${sy0}" x2="${extX-4}" y2="${sy0}" stroke="#e94560" stroke-width="0.7"/>`);
       parts.push(`<line x1="${sx}" y1="${sy1}" x2="${extX-4}" y2="${sy1}" stroke="#e94560" stroke-width="0.7"/>`);
-      parts.push(`<line x1="${extX}" y1="${sy0}" x2="${extX}" y2="${sy1}" stroke="#e94560" stroke-width="0.8" marker-start="url(#arr)" marker-end="url(#arr)"/>`);
+      // dimension line
+      parts.push(`<line x1="${extX}" y1="${sy0}" x2="${extX}" y2="${sy1}" stroke="#e94560" stroke-width="0.8"/>`);
+      // end ticks
+      parts.push(`<line x1="${extX-4}" y1="${sy0}" x2="${extX+4}" y2="${sy0}" stroke="#e94560" stroke-width="1.2"/>`);
+      parts.push(`<line x1="${extX-4}" y1="${sy1}" x2="${extX+4}" y2="${sy1}" stroke="#e94560" stroke-width="1.2"/>`);
       const tmx = extX-14, tmy = (sy0+sy1)/2;
       parts.push(`<text x="${tmx}" y="${tmy}" text-anchor="middle" font-size="8" fill="#e94560" font-family="Arial" transform="rotate(-90,${tmx},${tmy})">${txt}</text>`);
     }
@@ -3220,12 +3256,17 @@ function printProject() {
     dimH(wU0, wU1, wV1, wU1-wU0);
     dimV(wV0, wV1, wU0, wV1-wV0);
 
+    // Optional overlay polygon (e.g. Grundriss outline for top view)
+    if (extraPoly && extraPoly.length >= 2) {
+      const svgPts = extraPoly.map(([u,v]) => { const [sx,sy]=toSVG(u,v); return `${sx},${sy}`; }).join(' ');
+      parts.push(`<polygon points="${svgPts}" fill="rgba(14,197,94,0.08)" stroke="#0ec562" stroke-width="1.5" stroke-dasharray="6,3"/>`);
+    }
+
     // Border
     const [bx0,by0]=toSVG(wU0,wV0),[bx1,by1]=toSVG(wU1,wV1);
     parts.push(`<rect x="${Math.min(bx0,bx1)}" y="${Math.min(by0,by1)}" width="${Math.abs(bx1-bx0)}" height="${Math.abs(by1-by0)}" fill="none" stroke="#0f3460" stroke-width="1"/>`);
 
-    const defs = `<defs><marker id="arr" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 Z" fill="#e94560"/></marker></defs>`;
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}">${defs}${parts.join('')}</svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}">${parts.join('')}</svg>`;
   }
 
   // Compute a shared mm-per-px scale so all plans are comparable
@@ -3233,8 +3274,17 @@ function printProject() {
   const PLAN_W = 420, PLAN_H = 320, PAD_SHARED = 55;
   const sharedScale = (Math.min(PLAN_W, PLAN_H) - PAD_SHARED * 2) / worldSpan * 0.88;
 
+  // Build Grundriss floor plan polygon for top view
+  const fpS1 = parseFloat(document.getElementById('fp-s1')?.value) || 0;
+  const fpS2 = parseFloat(document.getElementById('fp-s2')?.value) || 0;
+  const fpS3 = parseFloat(document.getElementById('fp-s3')?.value) || 0;
+  // Points in world XZ: A=(0,0), B=(S1,0), C=(S1,S3), D=(0,S2); top view projects (x,-z)
+  const grundrissPolyTop = (fpS1>0 && (fpS2>0||fpS3>0))
+    ? [[0,0],[fpS1,0],[fpS1,-fpS3],[0,-fpS2]]
+    : null;
+
   // Top view: X=horizontal, Z=vertical (flip Z so north is up)
-  const svgTop   = makePlanSVG((x,y,z) => [x, -z], PLAN_W, PLAN_H, 'Draufsicht (von oben)',   sharedScale);
+  const svgTop   = makePlanSVG((x,y,z) => [x, -z], PLAN_W, PLAN_H, 'Draufsicht (von oben)',   sharedScale, grundrissPolyTop);
   // Front view: X=horizontal, Y=vertical (flip Y so top is up)
   const svgFront = makePlanSVG((x,y,z) => [x, -y], PLAN_W, PLAN_H, 'Ansicht Vorne',            sharedScale);
   // Side view: Z=horizontal, Y=vertical (flip Y)
