@@ -66,7 +66,7 @@
     white-space: nowrap;
   }
   button.tb-btn:hover { background: #e94560; color: #fff; }
-  button.tb-btn.active { background: #e94560; color: #fff; }
+  button.tb-btn.active { background: #4caf50; color: #fff; border-color: #4caf50; }
   button.tb-btn.green { border-color: #4caf50; }
   button.tb-btn.green:hover, button.tb-btn.green.active { background: #4caf50; }
   button.tb-btn.orange { border-color: #ff9800; }
@@ -881,15 +881,6 @@
 
 
 <!-- Three.js + OrbitControls via ES modules -->
-<div id="_dbg" style="position:fixed;bottom:0;left:0;right:0;background:#e94560;color:#fff;font-size:14px;font-weight:bold;padding:6px 12px;z-index:99999;display:none;pointer-events:none"></div>
-<script>
-document.addEventListener('mousedown', function(e) {
-  var el = e.target;
-  var info = 'KLICK: ' + el.tagName + (el.id?'#'+el.id:'') + ' btn=' + e.button + ' x=' + e.clientX + ' y=' + e.clientY;
-  var d = document.getElementById('_dbg');
-  if(d){ d.textContent = info; d.style.display='block'; }
-}, true);
-</script>
 <script type="importmap">
 {
   "imports": {
@@ -1007,6 +998,10 @@ let snapEnabled = true;
 let currentMode = 'select'; // 'select' | 'move' | 'rotate'
 let history = [];     // undo stack
 let idCounter = 1;
+let measureActive = false;
+let measurePts = [];
+let measureDragging = false;
+let measureCursorPt = null;
 
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
@@ -1958,7 +1953,6 @@ let panStart = { x: 0, y: 0 };
 let isPanning = false;
 
 // ── INPUT EVENTS — use mousedown/mousemove/mouseup (more reliable than pointer events)
-{ const d=document.getElementById('_dbg'); if(d){ d.textContent='LISTENER REGISTERED'; d.style.display='block'; } }
 renderer.domElement.addEventListener('mousedown', onPointerDown, { passive: false });
 document.addEventListener('mousemove', onPointerMove, { passive: false });
 document.addEventListener('mouseup',   onPointerUp);
@@ -2015,9 +2009,6 @@ function getGroundPoint(clientX, clientY) {
 }
 
 function onPointerDown(e) {
-  // DEBUG TOP
-  { const d=document.getElementById('_dbg'); if(d) d.textContent='onPD btn='+e.button+' beams='+beams.length+' measureActive='+measureActive; }
-
   if (e.button === 2) e.preventDefault(); // prevent browser context menu for right click only
 
   // Measure tool: drag to measure (mousedown = first point, mouseup = second point)
@@ -2970,10 +2961,6 @@ window.addEventListener('unhandledrejection', ev => {
 // MASSBANDWERKZEUG
 // ══════════════════════════════════════════════
 
-let measureActive = false;
-let measurePts = []; // up to 2 THREE.Vector3
-let measureDragging = false;  // true while mouse is held after first point
-let measureCursorPt = null;   // live cursor position during drag
 let measureLineObj = null;   // permanent line
 let measureGhostObj = null;  // line to cursor while picking 2nd point
 const measureGround = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
