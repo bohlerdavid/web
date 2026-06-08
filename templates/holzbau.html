@@ -483,7 +483,7 @@
     <span class="tb-label">Datei</span>
     <button class="tb-btn" onclick="newProject()">Neu</button>
     <button class="tb-btn" onclick="saveProject()">Speichern</button>
-    <label class="tb-btn" style="cursor:pointer" title="Projekt laden">Laden<input type="file" id="load-file-input" accept=".json,application/json" style="display:none" onchange="handleLoadFile(this)"></label>
+    <label class="tb-btn" style="cursor:pointer" title="Projekt laden">Laden<input type="file" id="load-file-input" accept=".json,application/json" style="display:none"></label>
     <button class="tb-btn" onclick="exportStückliste()">Stückliste ↓</button>
   </div>
 
@@ -1000,6 +1000,28 @@ let idCounter = 1;
 
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
+
+// ══════════════════════════════════════════════
+// EARLY EXPORT — must stay here, before any code that could throw.
+// All function declarations below are hoisted by JS, so they are available
+// here even though their text appears later in the file.
+// This ensures onclick handlers always work, even if later init code crashes.
+// ══════════════════════════════════════════════
+Object.assign(window, {
+  addBeam, deleteSelected, duplicateSelected,
+  setMode, toggleSnap, setView, resetCamera,
+  saveProject, loadProject, handleLoadFile, closeModal,
+  exportStückliste, applyEdit, deleteBeam,
+  calcFloorPlan, updateFloorOutline, updateRoofOutline, drawFloorPreview,
+  newProject, clearAllBeams,
+  rotateSelected, switchAxis, closeCtxMenu, showContextMenu,
+  showTab, setDims, setAngle,
+  addGroup, renderGroupList, selectGroup, moveBeamToGroup, deleteGroup,
+  addDeco, deleteDeco, clearAllDecos, moveDecoToGroup,
+  deleteDecoSelected, applyDecoEdit, updateDecoSelPanel,
+  toggleMeasure, clearMeasure,
+  printProject,
+});
 
 // ══════════════════════════════════════════════
 // BEAM CREATION
@@ -1935,6 +1957,11 @@ renderer.domElement.addEventListener('contextmenu', onContextMenu, true);
 renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
 document.addEventListener('click', e => { if (!document.getElementById('ctx-menu').contains(e.target)) closeCtxMenu(); });
 
+// File load input — wired via JS (not inline onchange) for reliability
+document.getElementById('load-file-input').addEventListener('change', function() {
+  handleLoadFile(this);
+});
+
 function getIntersects(clientX, clientY) {
   const rect = renderer.domElement.getBoundingClientRect();
   mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
@@ -2189,7 +2216,7 @@ function onPointerMove(e) {
 }
 
 function onPointerUp(e) {
-  if (isOrbiting && e.button === 1) { isOrbiting = false; return; }
+  if (isOrbiting && (e.button === 1 || e.type === 'pointercancel')) { isOrbiting = false; return; }
   if (isDragging) {
     isDragging = false;
     dragBeam = null;
@@ -3340,24 +3367,7 @@ function printProject() {
   win.document.close();
 }
 
-// Expose functions to global scope FIRST — before any init calls that might throw
-Object.assign(window, {
-  addBeam, deleteSelected, duplicateSelected,
-  setMode, toggleSnap, setView, resetCamera,
-  saveProject, loadProject, handleLoadFile, closeModal,
-  exportStückliste, applyEdit, deleteBeam,
-  calcFloorPlan, updateFloorOutline, updateRoofOutline, drawFloorPreview,
-  newProject, clearAllBeams,
-  rotateSelected, switchAxis, closeCtxMenu, showContextMenu,
-  showTab, setDims, setAngle,
-  addGroup, renderGroupList, selectGroup, moveBeamToGroup, deleteGroup,
-  addDeco, deleteDeco, clearAllDecos, moveDecoToGroup,
-  deleteDecoSelected, applyDecoEdit, updateDecoSelPanel,
-  toggleMeasure, clearMeasure,
-  printProject,
-});
-
-// Start empty
+// Init
 try {
   calcFloorPlan();
   updateUI();
