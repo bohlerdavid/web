@@ -2440,15 +2440,27 @@ window.addEventListener('unhandledrejection', ev => {
   if (bar) bar.innerHTML = `<span style="color:#e94560;font-weight:bold">⚠ Fehler: ${ev.reason}</span>`;
 });
 
-// Start empty
-calcFloorPlan();
-updateUI();
-
-// Expose functions to global scope (needed because this is a module script)
+// Expose functions to global scope FIRST — before any init calls that might throw
 Object.assign(window, {
   addBeam, deleteSelected, duplicateSelected,
   setMode, toggleSnap, setView, resetCamera,
   saveProject, loadProject, closeModal,
+  exportStückliste, applyEdit, deleteBeam,
+  calcFloorPlan, updateFloorOutline, updateRoofOutline, drawFloorPreview,
+  newProject, clearAllBeams,
+  rotateSelected, switchAxis, closeCtxMenu, showContextMenu,
+  showTab, setDims, setAngle,
+  addGroup, renderGroupList, selectGroup, moveBeamToGroup, deleteGroup,
+  addDeco, deleteDeco, clearAllDecos,
+});
+
+// Start empty
+try {
+  calcFloorPlan();
+  updateUI();
+} catch(e) {
+  console.error('Init error:', e);
+}
   exportStückliste, applyEdit, deleteBeam,
   calcFloorPlan, updateFloorOutline, updateRoofOutline, drawFloorPreview,
   newProject, clearAllBeams,
