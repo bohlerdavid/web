@@ -1893,22 +1893,34 @@ function getBeamHalfD(b) { return (b.axis === 'z' ? b.L : b.B) / 2; }
 
 // WASD camera movement state
 const wasd = { w:false, a:false, s:false, d:false, q:false, e:false };
-
 const WASD_KEYS = new Set(['w','a','s','d','q','e']);
+
+// Track whether mouse is over the 3D viewport
+let mouseInViewport = false;
+viewport.addEventListener('mouseenter', () => { mouseInViewport = true; });
+viewport.addEventListener('mouseleave', () => {
+  mouseInViewport = false;
+  // Release all WASD keys when mouse leaves
+  Object.keys(wasd).forEach(k => wasd[k] = false);
+});
 
 document.addEventListener('keydown', e => {
   const key = e.key.toLowerCase();
 
-  // WASD always works — before input-field check
+  // WASD: only active when mouse is in viewport AND no input is focused
+  const tag = document.activeElement.tagName;
+  const inputFocused = tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA';
+
   if (WASD_KEYS.has(key) && !e.ctrlKey && !e.metaKey) {
-    wasd[key] = true;
-    e.preventDefault();
+    if (mouseInViewport && !inputFocused) {
+      wasd[key] = true;
+      e.preventDefault();
+    }
     return;
   }
 
   // Block other shortcuts when an input is focused
-  const tag = document.activeElement.tagName;
-  if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+  if (inputFocused) return;
 
   if (e.key === 'Delete' || e.key === 'Backspace') { deleteSelected(); return; }
   if (e.key === 'Escape') { closeCtxMenu(); selectBeam(null); setMode('select'); updateUI(); return; }
