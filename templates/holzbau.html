@@ -2117,7 +2117,8 @@ function loadProject() {
         pushHistory();
         clearAllBeams();
         data.beams.forEach(s => {
-          const beam = { ...s, mesh: null };
+          // Defaults for fields missing in older v1 files
+          const beam = { rx:0, ry:0, rz:0, group:'Standard', ...s, mesh: null };
           const mesh = createBeamMesh(beam);
           beam.mesh = mesh;
           scene.add(mesh);
