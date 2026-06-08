@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HolzBau 3D – Kostenloser 3D Holzkonstruktionsplaner | Im Browser</title>
+
+  <!-- SEO Meta -->
+  <meta name="description" content="HolzBau 3D – Kostenloser 3D Holzkonstruktionsplaner im Browser. Balken planen, Stückliste exportieren, Draufsicht drucken. Jetzt kostenlos testen!">
+  <meta name="keywords" content="Holzbau, 3D Planer, Holzkonstruktion, Balkenkonstruktion, Zimmererei Software, Holzbau Software kostenlos, 3D Holzplanung, Holzkonstruktion planen">
+  <meta name="robots" content="index, follow">
+  <meta name="author" content="HolzBau 3D">
+  <link rel="canonical" href="https://holzbau3d.de/landing">
+
+  <!-- Open Graph (Facebook/LinkedIn) -->
+  <meta property="og:title" content="HolzBau 3D – 3D Holzkonstruktionsplaner im Browser">
+  <meta property="og:description" content="Plane Holzkonstruktionen in 3D direkt im Browser. Kostenlos mit Werbung oder Premium ab 9,99€/Monat.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://holzbau3d.de">
+  <meta property="og:image" content="https://holzbau3d.de/static/og-image.jpg">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="HolzBau 3D – 3D Holzkonstruktionsplaner">
+  <meta name="twitter:description" content="Kostenlos Holzkonstruktionen in 3D planen. Stückliste, Draufsicht, PDF-Export.">
+
+  <!-- Structured Data: SoftwareApplication -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "HolzBau 3D",
+    "applicationCategory": "DesignApplication",
+    "operatingSystem": "Web Browser",
+    "offers": [
+      {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "EUR",
+        "name": "Kostenlos"
+      },
+      {
+        "@type": "Offer",
+        "price": "9.99",
+        "priceCurrency": "EUR",
+        "billingDuration": "P1M",
+        "name": "Premium"
+      }
+    ],
+    "description": "3D Holzkonstruktionsplaner direkt im Browser – keine Installation nötig.",
+    "url": "https://holzbau3d.de"
+  }
+  </script>
+
+  <!-- Structured Data: FAQPage -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Ist HolzBau 3D wirklich kostenlos?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Ja, der Grundplan ist dauerhaft kostenlos. Im kostenlosen Plan werden Werbeanzeigen eingeblendet. Mit Premium (9,99€/Monat) nutzen Sie die App vollständig werbefrei und erhalten zusätzliche Features wie den PDF-Export."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Was kann ich mit HolzBau 3D planen?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Sie können beliebige Holzkonstruktionen aus Balken, Stützen und Riegeln in 3D planen – z. B. Terrassenüberdachungen, Carports, Fachwerkwände, Pergolen oder Dachstühle. Die automatische Stückliste listet alle Bauteile mit Maßen und Mengen."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Welche Browser werden unterstützt?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "HolzBau 3D läuft in allen modernen Browsern: Chrome, Firefox, Edge und Safari. Eine Installation ist nicht nötig – alles funktioniert direkt im Browser."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Wie kann ich mein Premium-Abo kündigen?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Das Premium-Abo ist monatlich kündbar. Sie können jederzeit in Ihrem Konto unter Einstellungen → Abonnement kündigen. Die Kündigung wird am Ende des bezahlten Zeitraums wirksam."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Kann ich meine Projekte speichern und später weiter bearbeiten?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Ja. Projekte werden als JSON-Datei exportiert und können jederzeit wieder geladen werden – sowohl im kostenlosen als auch im Premium-Plan."
+        }
+      }
+    ]
+  }
+  </script>
+
+  <!-- Preconnect for CDN performance -->
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <style>
+    :root {
+      --bg-primary: #0d0d1a;
+      --bg-secondary: #111128;
+      --bg-card: rgba(255,255,255,0.04);
+      --accent-blue: #4f9cf9;
+      --accent-purple: #7c3aed;
+      --accent-gradient: linear-gradient(135deg, #4f9cf9 0%, #7c3aed 100%);
+      --text-primary: #f0f0f8;
+      --text-muted: #8888aa;
+      --border: rgba(255,255,255,0.08);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* ── NAVBAR ── */
+    .navbar-custom {
+      background: rgba(13,13,26,0.85);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 0;
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+    }
+    .navbar-custom .nav-logo {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      text-decoration: none;
+    }
+    .navbar-custom .nav-logo .accent { background: var(--accent-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .navbar-custom .nav-link-item {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.2s;
+    }
+    .navbar-custom .nav-link-item:hover { color: var(--text-primary); }
+
+    /* ── HERO ── */
+    .hero {
+      min-height: 90vh;
+      display: flex;
+      align-items: center;
+      position: relative;
+      overflow: hidden;
+      padding: 80px 0 60px;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(79,156,249,0.15) 0%, transparent 70%),
+                  radial-gradient(ellipse 60% 50% at 80% 70%, rgba(124,58,237,0.1) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(79,156,249,0.1);
+      border: 1px solid rgba(79,156,249,0.3);
+      border-radius: 100px;
+      padding: 6px 14px;
+      font-size: 13px;
+      color: var(--accent-blue);
+      margin-bottom: 24px;
+    }
+    .hero h1 {
+      font-size: clamp(2.6rem, 6vw, 5rem);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -2px;
+      margin-bottom: 24px;
+    }
+    .hero h1 .gradient-text {
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero p.lead {
+      font-size: 1.2rem;
+      color: var(--text-muted);
+      max-width: 520px;
+      margin-bottom: 36px;
+    }
+    .btn-primary-custom {
+      background: var(--accent-gradient);
+      border: none;
+      border-radius: 8px;
+      padding: 14px 28px;
+      font-weight: 600;
+      font-size: 15px;
+      color: #fff;
+      text-decoration: none;
+      display: inline-block;
+      transition: opacity 0.2s, transform 0.2s;
+    }
+    .btn-primary-custom:hover { opacity: 0.9; transform: translateY(-1px); color: #fff; }
+    .btn-secondary-custom {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 13px 28px;
+      font-weight: 600;
+      font-size: 15px;
+      color: var(--text-primary);
+      text-decoration: none;
+      display: inline-block;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .btn-secondary-custom:hover { border-color: rgba(255,255,255,0.25); transform: translateY(-1px); color: var(--text-primary); }
+
+    /* Hero 3D preview mock */
+    .hero-preview {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 32px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
+      position: relative;
+    }
+    .hero-preview .preview-bar {
+      background: rgba(255,255,255,0.04);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .dot-red { background: #ff5f56; }
+    .dot-yellow { background: #febc2e; }
+    .dot-green { background: #28c840; }
+    .preview-body {
+      padding: 24px;
+      min-height: 300px;
+      background: linear-gradient(145deg, #0f1829 0%, #111228 100%);
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .preview-3d {
+      width: 180px;
+      height: 140px;
+      position: relative;
+    }
+    /* Simple CSS 3D box illusion */
+    .cube-face {
+      position: absolute;
+      border: 1px solid rgba(79,156,249,0.4);
+    }
+    .cube-top {
+      width: 120px; height: 40px;
+      background: rgba(79,156,249,0.15);
+      top: 0; left: 30px;
+      transform: skewX(-30deg);
+    }
+    .cube-front {
+      width: 120px; height: 100px;
+      background: rgba(79,156,249,0.1);
+      top: 39px; left: 30px;
+    }
+    .cube-side {
+      width: 40px; height: 100px;
+      background: rgba(79,156,249,0.06);
+      top: 39px; right: 10px;
+      transform: skewY(-30deg);
+    }
+    .grid-lines {
+      position: absolute;
+      inset: 0;
+      opacity: 0.15;
+      background-image: linear-gradient(rgba(79,156,249,0.3) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(79,156,249,0.3) 1px, transparent 1px);
+      background-size: 30px 30px;
+    }
+
+    /* ── AD DEMO BANNER ── */
+    .ad-demo-banner {
+      background: #0f1829;
+      border: 1px dashed rgba(255,255,255,0.15);
+      border-radius: 8px;
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 16px;
+    }
+    .ad-demo-banner .ad-label {
+      background: rgba(255,255,255,0.06);
+      padding: 2px 8px;
+      border-radius: 4px;
+      letter-spacing: 1px;
+      font-size: 10px;
+      text-transform: uppercase;
+    }
+
+    /* ── SECTION SHARED ── */
+    section { padding: 96px 0; }
+    .section-label {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--accent-blue);
+      margin-bottom: 12px;
+    }
+    .section-title {
+      font-size: clamp(1.8rem, 4vw, 3rem);
+      font-weight: 800;
+      letter-spacing: -1px;
+      line-height: 1.15;
+      margin-bottom: 16px;
+    }
+    .section-sub {
+      color: var(--text-muted);
+      font-size: 1.05rem;
+      max-width: 480px;
+    }
+
+    /* ── FEATURES ── */
+    .features-section { background: var(--bg-secondary); }
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px;
+      height: 100%;
+      transition: border-color 0.3s, transform 0.3s, box-shadow 0.3s;
+    }
+    .feature-card:hover {
+      border-color: rgba(79,156,249,0.35);
+      transform: translateY(-4px);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.3), 0 0 0 1px rgba(79,156,249,0.1);
+    }
+    .feature-icon {
+      width: 48px;
+      height: 48px;
+      background: rgba(79,156,249,0.1);
+      border: 1px solid rgba(79,156,249,0.2);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      color: var(--accent-blue);
+      margin-bottom: 16px;
+    }
+    .feature-card h3 {
+      font-size: 17px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .feature-card p {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* ── PRICING ── */
+    .pricing-section { background: var(--bg-primary); }
+    .pricing-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 40px 32px;
+      position: relative;
+      transition: transform 0.3s, box-shadow 0.3s;
+    }
+    .pricing-card:hover {
+      transform: translateY(-6px);
+      box-shadow: 0 32px 60px rgba(0,0,0,0.4);
+    }
+    .pricing-card.featured {
+      border-color: rgba(79,156,249,0.4);
+      background: linear-gradient(145deg, rgba(79,156,249,0.06) 0%, rgba(124,58,237,0.06) 100%);
+      box-shadow: 0 0 0 1px rgba(79,156,249,0.15), 0 32px 60px rgba(0,0,0,0.3);
+    }
+    .pricing-badge {
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--accent-gradient);
+      border-radius: 100px;
+      padding: 4px 16px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
+      white-space: nowrap;
+    }
+    .pricing-plan-name {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+    .pricing-price {
+      font-size: 3rem;
+      font-weight: 800;
+      letter-spacing: -2px;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+    .pricing-price .currency { font-size: 1.5rem; vertical-align: super; font-weight: 600; }
+    .pricing-price .period { font-size: 1rem; color: var(--text-muted); font-weight: 400; letter-spacing: 0; }
+    .pricing-tagline {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 28px;
+    }
+    .pricing-divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 24px 0;
+    }
+    .pricing-feature {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+    .pricing-feature .icon-check { color: #22c55e; font-size: 16px; flex-shrink: 0; margin-top: 2px; }
+    .pricing-feature .icon-x { color: #ef4444; font-size: 16px; flex-shrink: 0; margin-top: 2px; }
+    .pricing-feature .icon-warn { color: #eab308; font-size: 16px; flex-shrink: 0; margin-top: 2px; }
+
+    /* Ad preview in free card */
+    .ad-preview-box {
+      background: rgba(15,24,41,0.8);
+      border: 1px dashed rgba(255,255,255,0.12);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 11px;
+      color: #666;
+      text-align: center;
+      margin-top: 16px;
+    }
+
+    /* ── FOOTER ── */
+    footer {
+      background: var(--bg-secondary);
+      border-top: 1px solid var(--border);
+      padding: 40px 0;
+    }
+    footer .footer-logo {
+      font-size: 18px;
+      font-weight: 800;
+    }
+    footer .footer-logo .accent {
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    footer a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 13px;
+      transition: color 0.2s;
+    }
+    footer a:hover { color: var(--text-primary); }
+
+    /* ── ANIMATIONS ── */
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-in {
+      animation: fadeInUp 0.6s ease-out both;
+    }
+    .delay-1 { animation-delay: 0.1s; }
+    .delay-2 { animation-delay: 0.2s; }
+    .delay-3 { animation-delay: 0.3s; }
+    .delay-4 { animation-delay: 0.4s; }
+  </style>
+</head>
+<body>
+
+<header>
+<!-- ── NAVBAR ── -->
+<nav class="navbar-custom" aria-label="Hauptnavigation">
+  <div class="container d-flex align-items-center justify-content-between">
+    <a href="/landing" class="nav-logo text-decoration-none">
+      <span style="color:#f0f0f8">Holz</span><span class="accent">BAU 3D</span>
+    </a>
+    <div class="d-flex align-items-center gap-4">
+      <a href="#features" class="nav-link-item d-none d-md-inline">Features</a>
+      <a href="#pricing" class="nav-link-item d-none d-md-inline">Preise</a>
+      <a href="/login" class="nav-link-item">Anmelden</a>
+      <a href="/login" class="btn-primary-custom py-2 px-4" style="font-size:14px">Kostenlos starten</a>
+    </div>
+  </div>
+</nav>
+</header>
+
+<main>
+<!-- ── HERO ── -->
+<section class="hero" aria-labelledby="hero-heading">
+  <div class="container">
+    <div class="row align-items-center g-5">
+      <div class="col-lg-6">
+        <div class="hero-badge animate-in">
+          <i class="bi bi-box"></i> Jetzt im Browser — kein Download nötig
+        </div>
+        <h1 id="hero-heading" class="animate-in delay-1">
+          3D Holzkonstruktion<br>
+          <span class="gradient-text">direkt im Browser</span>
+        </h1>
+        <p class="lead animate-in delay-2">
+          Plane, visualisiere und exportiere Holzkonstruktionen in 3D — vollständig im Browser, ohne Installation. Inklusive automatischer Stückliste und PDF-Export.
+        </p>
+        <div class="d-flex flex-wrap gap-3 animate-in delay-3">
+          <a href="/login" class="btn-primary-custom">
+            <i class="bi bi-rocket-takeoff me-2"></i>Kostenlos testen
+          </a>
+          <a href="#pricing" class="btn-secondary-custom">
+            <i class="bi bi-star me-2"></i>Premium — 9,99€/Monat
+          </a>
+        </div>
+        <div class="ad-demo-banner animate-in delay-4">
+          <div class="d-flex align-items-center gap-2">
+            <span class="ad-label">Anzeige</span>
+            <span>Im kostenlosen Plan werden Werbeanzeigen eingeblendet</span>
+          </div>
+          <a href="#pricing" style="color: var(--accent-blue); font-size:11px; text-decoration:none; white-space:nowrap">
+            Werbefrei mit Premium →
+          </a>
+        </div>
+      </div>
+      <div class="col-lg-6 animate-in delay-2">
+        <div class="hero-preview">
+          <div class="preview-bar">
+            <div class="dot dot-red"></div>
+            <div class="dot dot-yellow"></div>
+            <div class="dot dot-green"></div>
+            <span style="font-size:12px; color: var(--text-muted); margin-left:8px">HolzBAU 3D — projekt.json</span>
+          </div>
+          <div class="preview-body">
+            <div class="grid-lines"></div>
+            <div style="position:relative; z-index:1; text-align:center;">
+              <div class="preview-3d mx-auto" style="margin-bottom:20px">
+                <div class="cube-top"></div>
+                <div class="cube-front"></div>
+                <div class="cube-side"></div>
+              </div>
+              <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
+                <span style="background:rgba(79,156,249,0.15);border:1px solid rgba(79,156,249,0.3);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--accent-blue)">&#9632; Stütze 120×120</span>
+                <span style="background:rgba(124,58,237,0.15);border:1px solid rgba(124,58,237,0.3);border-radius:6px;padding:4px 10px;font-size:11px;color:#a78bfa">&#9632; Träger 80×160</span>
+                <span style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);border-radius:6px;padding:4px 10px;font-size:11px;color:#4ade80">&#9632; Riegel 60×100</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FEATURES ── -->
+<section class="features-section" id="features" aria-labelledby="features-heading">
+  <div class="container">
+    <div class="text-center mb-5">
+      <div class="section-label">Features</div>
+      <h2 id="features-heading" class="section-title">Alles was du brauchst</h2>
+      <p class="section-sub mx-auto">Von der 3D-Planung bis zum fertigen Dokument — HolzBau 3D deckt den gesamten Workflow ab.</p>
+    </div>
+    <div class="row g-4">
+      <div class="col-md-6 col-lg-3">
+        <div class="feature-card">
+          <div class="feature-icon"><i class="bi bi-box"></i></div>
+          <h3>3D Visualisierung</h3>
+          <p>Interaktive 3D-Ansicht im Browser. Rotieren, zoomen und prüfen Sie Ihre Konstruktion aus jedem Blickwinkel — in Echtzeit.</p>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <div class="feature-card">
+          <div class="feature-icon" style="background:rgba(124,58,237,0.1);border-color:rgba(124,58,237,0.2);color:#a78bfa"><i class="bi bi-table"></i></div>
+          <h3>Stückliste / BOM</h3>
+          <p>Automatisch generierte Stückliste (Bill of Materials) als CSV-Export. Alle Bauteile, Maße und Mengen auf einen Blick.</p>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <div class="feature-card">
+          <div class="feature-icon" style="background:rgba(34,197,94,0.1);border-color:rgba(34,197,94,0.2);color:#4ade80"><i class="bi bi-layers"></i></div>
+          <h3>Gruppen &amp; Layer</h3>
+          <p>Organisieren Sie Ihre Konstruktion in Gruppen und Layer. Ein- und ausblenden einzelner Ebenen für übersichtliches Arbeiten.</p>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <div class="feature-card">
+          <div class="feature-icon" style="background:rgba(234,179,8,0.1);border-color:rgba(234,179,8,0.2);color:#fbbf24"><i class="bi bi-file-earmark-pdf"></i></div>
+          <h3>Druck / PDF Export</h3>
+          <p>Exportieren Sie Ihre Planung als druckfertiges PDF oder als JSON-Projektdatei für spätere Bearbeitung.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── PRICING ── -->
+<section class="pricing-section" id="pricing" aria-labelledby="pricing-heading">
+  <div class="container">
+    <div class="text-center mb-5">
+      <div class="section-label">Preise</div>
+      <h2 id="pricing-heading" class="section-title">Einfache, transparente Preise</h2>
+      <p class="section-sub mx-auto">Starten Sie kostenlos — upgraden Sie wenn Sie mehr brauchen.</p>
+    </div>
+    <div class="row g-4 justify-content-center">
+
+      <!-- FREE CARD -->
+      <div class="col-md-5">
+        <div class="pricing-card">
+          <div class="pricing-plan-name">Free</div>
+          <div class="pricing-price">
+            <span class="currency">€</span>0
+            <span class="period">/Monat</span>
+          </div>
+          <div class="pricing-tagline">Mit Werbung — für Einsteiger</div>
+          <hr class="pricing-divider">
+          <div class="pricing-feature">
+            <i class="bi bi-check-circle-fill icon-check"></i>
+            <span>Vollständige 3D-Planung</span>
+          </div>
+          <div class="pricing-feature">
+            <i class="bi bi-check-circle-fill icon-check"></i>
+            <span>Stückliste als CSV exportieren</span>
+          </div>
+          <div class="pricing-feature">
+            <i class="bi bi-check-circle-fill icon-check"></i>
+            <span>JSON-Projekt speichern &amp; laden</span>
+          </div>
+          <div class="pricing-feature">
+            <i class="bi bi-exclamation-circle-fill icon-warn"></i>
+            <span>Werbeanzeigen eingeblendet</span>
+          </div>
+          <div class="pricing-feature">
+            <i class="bi bi-x-circle-fill icon-x"></i>
+            <span style="color:var(--text-muted)">Keine PDF-Exportfunktion</span>
+          </div>
+          <div class="ad-preview-box">
+            <div style="width:100%;height:60px;display:flex;align-items:center;justify-content:center;gap:6px;">
+              <span style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#444;">Anzeige</span>
+              <span style="background:#1a1a3e;border:1px dashed #333;flex:1;height:40px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#444;border-radius:4px">Google AdSense Banner</span>
+            </div>
+          </div>
+          <div class="mt-4">
+            <a href="/login" class="btn-secondary-custom d-block text-center">
+              Kostenlos starten
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- PREMIUM CARD -->
+      <div class="col-md-5">
+        <div class="pricing-card featured">
+          <div class="pricing-badge">Empfohlen</div>
+          <div class="pricing-plan-name" style="color:var(--accent-blue)">Premium</div>
+          <div class="pricing-price">
+            <span class="currency" style="background:var(--accent-gradient);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">€</span>
+            <span style="background:var(--accent-gradient);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">9,99</span>
+            <span class="period">/Monat</span>
+          </div>
+          <div class="pricing-tagline">Werbefrei, alle Features</div>
+          <hr class="pricing-divider">
+          <div class="pricing-feature">
+            <i class="bi bi-check-circle-fill icon-check"></i>
+            <span>Alles aus Free, plus:</span>
+          </div>
+          <div class="pricing-feature">
+            <i class="bi bi-check-circle-fill icon-check"></i>
+            <span><strong>Vollständig werbefrei</strong></span>
+          </div>
+          <div class="pricing-feature">
+            <i class="bi bi-check-circle-fill icon-check"></i>
+            <span>PDF-Export &amp; Druckansicht</span>
+          </div>
+          <div class="pricing-feature">
+            <i class="bi bi-check-circle-fill icon-check"></i>
+            <span>Prioritäts-Support</span>
+          </div>
+          <div class="pricing-feature">
+            <i class="bi bi-check-circle-fill icon-check"></i>
+            <span>Alle zukünftigen Features</span>
+          </div>
+          <div class="mt-4">
+            <a href="/subscribe" class="btn-primary-custom d-block text-center">
+              <i class="bi bi-star-fill me-2"></i>Jetzt upgraden
+            </a>
+          </div>
+          <div class="text-center mt-2" style="font-size:12px;color:var(--text-muted)">
+            Jederzeit kündbar · Sicher via Stripe
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ── FAQ ── -->
+<section id="faq" aria-labelledby="faq-heading" style="background: var(--bg-secondary);">
+  <div class="container">
+    <div class="text-center mb-5">
+      <div class="section-label">FAQ</div>
+      <h2 id="faq-heading" class="section-title">Häufige Fragen</h2>
+      <p class="section-sub mx-auto">Alles Wichtige rund um HolzBau 3D auf einen Blick.</p>
+    </div>
+    <div class="row justify-content-center">
+      <div class="col-lg-8">
+
+        <div class="feature-card mb-3">
+          <h3 style="font-size:16px; margin-bottom:8px;">Ist HolzBau 3D wirklich kostenlos?</h3>
+          <p>Ja, der Grundplan ist dauerhaft kostenlos. Im kostenlosen Plan werden Werbeanzeigen eingeblendet. Mit Premium (9,99€/Monat) nutzen Sie die App vollständig werbefrei und erhalten zusätzliche Features wie den PDF-Export.</p>
+        </div>
+
+        <div class="feature-card mb-3">
+          <h3 style="font-size:16px; margin-bottom:8px;">Was kann ich mit HolzBau 3D planen?</h3>
+          <p>Sie können beliebige Holzkonstruktionen aus Balken, Stützen und Riegeln in 3D planen – z. B. Terrassenüberdachungen, Carports, Fachwerkwände, Pergolen oder Dachstühle. Die automatische Stückliste listet alle Bauteile mit Maßen und Mengen.</p>
+        </div>
+
+        <div class="feature-card mb-3">
+          <h3 style="font-size:16px; margin-bottom:8px;">Welche Browser werden unterstützt?</h3>
+          <p>HolzBau 3D läuft in allen modernen Browsern: Chrome, Firefox, Edge und Safari. Eine Installation ist nicht nötig – alles funktioniert direkt im Browser.</p>
+        </div>
+
+        <div class="feature-card mb-3">
+          <h3 style="font-size:16px; margin-bottom:8px;">Wie kann ich mein Premium-Abo kündigen?</h3>
+          <p>Das Premium-Abo ist monatlich kündbar. Sie können jederzeit in Ihrem Konto unter Einstellungen → Abonnement kündigen. Die Kündigung wird am Ende des bezahlten Zeitraums wirksam.</p>
+        </div>
+
+        <div class="feature-card">
+          <h3 style="font-size:16px; margin-bottom:8px;">Kann ich meine Projekte speichern und später weiter bearbeiten?</h3>
+          <p>Ja. Projekte werden als JSON-Datei exportiert und können jederzeit wieder geladen werden – sowohl im kostenlosen als auch im Premium-Plan.</p>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ── FOOTER ── -->
+<footer>
+  <div class="container">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+      <div>
+        <div class="footer-logo mb-1">
+          <span style="color:var(--text-primary)">Holz</span><span class="accent">BAU 3D</span>
+        </div>
+        <div style="font-size:12px; color:var(--text-muted)">© 2025 HolzBau 3D. Alle Rechte vorbehalten.</div>
+      </div>
+      <div class="d-flex gap-4">
+        <a href="/impressum">Impressum</a>
+        <a href="/datenschutz">Datenschutz</a>
+        <a href="/login">Anmelden</a>
+        <a href="#pricing">Preise</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
