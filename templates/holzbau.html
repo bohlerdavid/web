@@ -951,6 +951,7 @@ Object.entries(WOOD_COLORS).forEach(([k, v]) => {
 
 let beams = [];       // [{id, name, woodType, L, B, H, axis, x, y, z, rx, ry, rz, group, mesh}]
 let selectedIds = new Set(); // multi-selection
+let selectedDecoId = null;
 let groups = ['Standard']; // group names
 let snapEnabled = true;
 let currentMode = 'select'; // 'select' | 'move' | 'rotate'
@@ -1229,6 +1230,40 @@ function makeSelectionHighlight(mesh, on) {
   }
 }
 
+function makeDecoHighlight(mesh, on) {
+  if (!mesh) return;
+  mesh.traverse(o => {
+    if (o.isMesh && o.material) {
+      if (on) {
+        o.userData._prevEmissive = o.material.emissive ? o.material.emissive.getHex() : 0;
+        if (o.material.emissive) o.material.emissive.setHex(0xe94560);
+      } else {
+        if (o.material.emissive && o.userData._prevEmissive !== undefined) {
+          o.material.emissive.setHex(o.userData._prevEmissive);
+        }
+      }
+    }
+  });
+}
+
+function selectDeco(id) {
+  // Clear beam selection
+  beams.forEach(b => makeSelectionHighlight(b.mesh, false));
+  selectedIds = new Set();
+  // Clear previous deco highlight
+  if (selectedDecoId !== null) {
+    const prev = decos.find(d => d.id === selectedDecoId);
+    if (prev) makeDecoHighlight(prev.mesh, false);
+  }
+  selectedDecoId = id;
+  if (id !== null) {
+    const d = decos.find(x => x.id === id);
+    if (d) makeDecoHighlight(d.mesh, true);
+  }
+  updateDecoSelPanel();
+  updateObjList();
+}
+
 function addBeam() {
   const woodType = document.getElementById('wood-type').value;
   const axis = document.getElementById('beam-axis').value;
@@ -1378,6 +1413,93 @@ function updateSelPanel() {
   document.getElementById('edit-rx').value = b.rx || 0;
   document.getElementById('edit-ry').value = b.ry || 0;
   document.getElementById('edit-rz').value = b.rz || 0;
+}
+
+function updateDecoSelPanel() {
+  const info = document.getElementById('sel-info');
+  const beamEdit = document.getElementById('sel-edit');
+  const decoEdit = document.getElementById('deco-edit');
+  if (!decoEdit) return;
+
+  if (selectedDecoId === null) {
+    decoEdit.style.display = 'none';
+    return;
+  }
+  const d = decos.find(x => x.id === selectedDecoId);
+  if (!d) { decoEdit.style.display = 'none'; return; }
+
+  beamEdit.style.display = 'none';
+  info.innerHTML = `<span style="color:#4caf50">🌿</span> <strong>${d.label}</strong><br>Pos: X=${Math.round(d.x)} Y=${Math.round(d.y)} Z=${Math.round(d.z)}`;
+  document.getElementById('st-sel').textContent = d.label;
+
+  decoEdit.style.display = 'block';
+  document.getElementById('deco-px').value = Math.round(d.x);
+  document.getElementById('deco-py').value = Math.round(d.y);
+  document.getElementById('deco-pz').value = Math.round(d.z);
+  document.getElementById('deco-ry').value = d.ry || 0;
+
+  // Show type-specific params
+  const paramsDiv = document.getElementById('deco-params');
+  const def = DEKO_DEFS[d.type];
+  if (def && def.defaultParams) {
+    const p = d.params || {};
+    const dp = def.defaultParams;
+    paramsDiv.innerHTML = Object.entries(dp).map(([key, defVal]) => {
+      const val = p[key] !== undefined ? p[key] : defVal;
+      const labelMap = { W:'Breite (mm)', H:'Höhe (mm)', T:'Dicke (mm)', scale:'Maßstab (%)' };
+      const label = labelMap[key] || key;
+      return `<div class="form-row"><label>${label}</label><input type="number" id="deco-param-${key}" value="${val}" step="${key==='scale'?5:50}" min="${key==='scale'?5:50}" onchange="applyDecoEdit()"></div>`;
+    }).join('');
+  } else {
+    paramsDiv.innerHTML = '';
+  }
+}
+
+function applyDecoEdit() {
+  if (selectedDecoId === null) return;
+  const d = decos.find(x => x.id === selectedDecoId);
+  if (!d) return;
+
+  d.x = parseFloat(document.getElementById('deco-px').value) || 0;
+  d.y = parseFloat(document.getElementById('deco-py').value) || 0;
+  d.z = parseFloat(document.getElementById('deco-pz').value) || 0;
+  d.ry = parseFloat(document.getElementById('deco-ry').value) || 0;
+
+  const def = DEKO_DEFS[d.type];
+  if (def && def.defaultParams) {
+    d.params = d.params || {};
+    Object.keys(def.defaultParams).forEach(key => {
+      const el = document.getElementById('deco-param-' + key);
+      if (el) d.params[key] = parseFloat(el.value) || def.defaultParams[key];
+    });
+    rebuildDecoMesh(d);
+  }
+
+  d.mesh.position.set(d.x, d.y, d.z);
+  d.mesh.rotation.y = (d.ry || 0) * Math.PI / 180;
+  makeDecoHighlight(d.mesh, true);
+}
+
+function rebuildDecoMesh(deco) {
+  const def = DEKO_DEFS[deco.type];
+  if (!def) return;
+  makeDecoHighlight(deco.mesh, false);
+  scene.remove(deco.mesh);
+  deco.mesh.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+  deco.mesh = def.build(deco.params || {});
+  deco.mesh.userData.isDecoId = deco.id;
+  deco.mesh.position.set(deco.x, deco.y, deco.z);
+  deco.mesh.rotation.y = (deco.ry || 0) * Math.PI / 180;
+  scene.add(deco.mesh);
+  if (selectedDecoId === deco.id) makeDecoHighlight(deco.mesh, true);
+}
+
+function deleteDecoSelected() {
+  if (selectedDecoId !== null) {
+    deleteDeco(selectedDecoId);
+    selectedDecoId = null;
+    updateDecoSelPanel();
+  }
 }
 
 function applyEdit() {
@@ -1676,6 +1798,9 @@ function resetCamera() {
 let isDragging = false;       // dragging a beam
 let isOrbiting = false;       // camera orbit with middle mouse
 let dragBeam = null;
+let isDraggingDeco = false;
+let dragDeco = null;
+let dragDecoStartX = 0, dragDecoStartY_px = 0, dragDecoStartZ = 0, dragDecoStartY_world = 0;
 let dragSelectionSnapshot = {}; // {id: {x,y,z}} snapshot at drag start
 let dragOffset = new THREE.Vector3();
 let dragPlane = new THREE.Plane();
@@ -1702,7 +1827,8 @@ function getIntersects(clientX, clientY) {
   mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
   mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
   raycaster.setFromCamera(mouse, camera);
-  return raycaster.intersectObjects(beams.map(b => b.mesh), true);
+  const allMeshes = [...beams.map(b => b.mesh), ...decos.map(d => d.mesh)].filter(Boolean);
+  return raycaster.intersectObjects(allMeshes, true);
 }
 
 function getGroundPoint(clientX, clientY) {
@@ -1752,20 +1878,23 @@ function onPointerDown(e) {
   const hits = getIntersects(e.clientX, e.clientY);
   if (hits.length > 0) {
     let obj = hits[0].object;
-    while (obj.parent && !obj.userData.beamId) obj = obj.parent;
+    // Traverse up to find beamId or isDecoId
+    while (obj.parent && !obj.userData.beamId && obj.userData.isDecoId === undefined) obj = obj.parent;
+
     const beamId = obj.userData.beamId;
+    const decoId = obj.userData.isDecoId;
+
     if (beamId) {
       if (e.shiftKey) {
         addToSelection(beamId);
         updateUI();
       } else {
         if (!selectedIds.has(beamId)) {
+          selectDeco(null); // clear deco selection
           selectBeam(beamId);
           updateUI();
         }
       }
-
-      // Start drag in move mode
       const beam = beams.find(b => b.id === beamId);
       if (beam) {
         isDragging = true;
@@ -1773,20 +1902,38 @@ function onPointerDown(e) {
         dragAltMode = e.altKey;
         dragStartY = e.clientY;
         dragStartBeamY = beam.y;
-        // Snapshot positions of all selected beams for multi-drag
         dragSelectionSnapshot = {};
         selectedIds.forEach(id => {
           const sb = beams.find(b => b.id === id);
           if (sb) dragSelectionSnapshot[id] = { x: sb.x, y: sb.y, z: sb.z };
         });
         renderer.domElement.setPointerCapture(e.pointerId);
-
         if (!dragAltMode) {
-          dragPlane.setFromNormalAndCoplanarPoint(
-            new THREE.Vector3(0, 1, 0), beam.mesh.position
-          );
+          dragPlane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), beam.mesh.position);
           const groundPt = getGroundPoint(e.clientX, e.clientY);
           if (groundPt) dragOffset.copy(beam.mesh.position).sub(groundPt);
+        }
+      }
+      return;
+    }
+
+    if (decoId !== undefined) {
+      selectDeco(decoId);
+      showTab('sel');
+      updateUI();
+      const deco = decos.find(d => d.id === decoId);
+      if (deco) {
+        isDraggingDeco = true;
+        dragDeco = deco;
+        dragDecoStartY_px = e.clientY;
+        dragDecoStartY_world = deco.y;
+        dragDecoStartX = deco.x;
+        dragDecoStartZ = deco.z;
+        renderer.domElement.setPointerCapture(e.pointerId);
+        if (!e.altKey) {
+          dragPlane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), deco.mesh.position);
+          const groundPt = getGroundPoint(e.clientX, e.clientY);
+          if (groundPt) dragOffset.set(deco.x - groundPt.x, 0, deco.z - groundPt.z);
         }
       }
       return;
@@ -1795,6 +1942,7 @@ function onPointerDown(e) {
 
   // Clicked empty space → deselect
   selectBeam(null);
+  selectDeco(null);
   updateUI();
 }
 
@@ -1848,12 +1996,31 @@ function onPointerMove(e) {
     return;
   }
 
+  // Drag deco
+  if (isDraggingDeco && dragDeco) {
+    if (e.altKey) {
+      const dy = dragDecoStartY_px - e.clientY;
+      dragDeco.y = snapValue(dragDecoStartY_world + dy * 2);
+    } else {
+      const pt = getGroundPoint(e.clientX, e.clientY);
+      if (pt) {
+        dragDeco.x = snapValue(pt.x + dragOffset.x);
+        dragDeco.z = snapValue(pt.z + dragOffset.z);
+      }
+    }
+    dragDeco.mesh.position.set(dragDeco.x, dragDeco.y, dragDeco.z);
+    document.getElementById('deco-px') && (document.getElementById('deco-px').value = Math.round(dragDeco.x));
+    document.getElementById('deco-py') && (document.getElementById('deco-py').value = Math.round(dragDeco.y));
+    document.getElementById('deco-pz') && (document.getElementById('deco-pz').value = Math.round(dragDeco.z));
+    return;
+  }
+
   // Hover tooltip
   const hits = getIntersects(e.clientX, e.clientY);
   const tooltip = document.getElementById('tooltip');
   if (hits.length > 0) {
     let obj = hits[0].object;
-    while (obj.parent && !obj.userData.beamId) obj = obj.parent;
+    while (obj.parent && !obj.userData.beamId && obj.userData.isDecoId === undefined) obj = obj.parent;
     const b = beams.find(x => x.id === obj.userData.beamId);
     if (b) {
       tooltip.style.display = 'block';
@@ -1861,6 +2028,15 @@ function onPointerMove(e) {
       tooltip.style.left = (e.clientX - r.left + 12) + 'px';
       tooltip.style.top  = (e.clientY - r.top  + 12) + 'px';
       tooltip.textContent = `${b.name}\n${b.woodType}\n${b.L}×${b.B}×${b.H} mm\nPos: ${Math.round(b.x)},${Math.round(b.y)},${Math.round(b.z)}`;
+      return;
+    }
+    const dd = decos.find(x => x.id === obj.userData.isDecoId);
+    if (dd) {
+      tooltip.style.display = 'block';
+      const r = viewport.getBoundingClientRect();
+      tooltip.style.left = (e.clientX - r.left + 12) + 'px';
+      tooltip.style.top  = (e.clientY - r.top  + 12) + 'px';
+      tooltip.textContent = `${dd.label}\nPos: ${Math.round(dd.x)},${Math.round(dd.y)},${Math.round(dd.z)}`;
       return;
     }
   }
@@ -1873,6 +2049,10 @@ function onPointerUp(e) {
     isDragging = false;
     dragBeam = null;
     updateUI();
+  }
+  if (isDraggingDeco) {
+    isDraggingDeco = false;
+    dragDeco = null;
   }
 }
 
