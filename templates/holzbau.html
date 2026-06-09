@@ -2937,6 +2937,7 @@ function handleLoadFile(e) {
 // ══════════════════════════════════════════════
 
 function exportStückliste() {
+  if (!requirePremium('📋 Stückliste exportieren', 'CSV-Export der Stückliste ist eine Premium-Funktion.')) return;
   const grouped = {};
   beams.forEach(b => {
     const key = `${b.woodType}||${b.name}||${b.L}×${b.B}×${b.H}`;
@@ -3052,6 +3053,10 @@ function _buildSawnAngleGeo(beam) {
 }
 
 function toggleSaw() {
+  if (!IS_PREMIUM && !sawActive) {
+    requirePremium('🪚 Säge-Tool', 'Balken präzise zuschneiden — Premium-Funktion.');
+    return;
+  }
   sawActive = !sawActive;
   document.getElementById('btn-saw').classList.toggle('active', sawActive);
   document.getElementById('saw-panel').style.display = sawActive ? 'flex' : 'none';
@@ -3375,6 +3380,7 @@ function makeGLTFDef(label, url, defaultHeightMM) {
 // ══════════════════════════════════════════════
 
 function addBeamRow() {
+  if (!requirePremium('⊕⊕ Parallelreihe', 'Mehrere parallele Balken auf einmal hinzufügen — Premium-Funktion.')) return;
   const count   = parseInt(document.getElementById('par-count').value)   || 3;
   const spacing = parseFloat(document.getElementById('par-spacing').value) || 600;
   const dir     = document.getElementById('par-dir').value || 'z';
@@ -3484,6 +3490,7 @@ function renderPhaseFilterBar() {
 // ══════════════════════════════════════════════
 
 function showSchnittplan() {
+  if (!requirePremium('✂️ Schnittplan-Optimierung', 'Die Schnittplan-Optimierung minimiert Holzverschnitt — Premium-Funktion.')) return;
   const BOARD_LEN = parseInt(document.getElementById('schnitt-board-len')?.value) || 4000;
 
   // Group by woodType + B×H (only rectangular beams)
@@ -3854,6 +3861,7 @@ const DEKO_DEFS = {
 };
 
 function addDeco(type) {
+  if (!requirePremium('🌿 Deko-Objekte', 'Dekoration, Möbel und Maßstabsobjekte sind Premium-Funktionen.')) return;
   const def = DEKO_DEFS[type];
   if (!def) return;
   const groupSel = document.getElementById('beam-group-sel');
@@ -4117,6 +4125,7 @@ function updateMeasureCanvas() {
 // ══════════════════════════════════════════════
 
 function printProject() {
+  if (!requirePremium('🖨 Drucken / PDF', 'Drucken und PDF-Export ist eine Premium-Funktion.')) return;
   if (beams.length === 0) { alert('Keine Balken vorhanden.'); return; }
 
   // --- Bounding box of all beams ---
