@@ -1,15 +1,18 @@
-import sqlite3
 import os
 import secrets
 import time
 from functools import wraps
 from datetime import datetime, timedelta
+from urllib.parse import urlparse
+
 from flask import (
     Flask, render_template, request, redirect, url_for,
     flash, g, abort, jsonify, session
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
+import pymysql
+import pymysql.cursors
 
 load_dotenv()
 
@@ -20,28 +23,31 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
-_db_dir = os.environ.get('DB_DIR', os.path.dirname(os.path.abspath(__file__)))
-os.makedirs(_db_dir, exist_ok=True)
-DATABASE = os.path.join(_db_dir, 'holzbau.db')
-
 # ---------------------------------------------------------------------------
-# Brute-force protection
+# Database (MySQL)
 # ---------------------------------------------------------------------------
 
-_login_attempts = {}
-LOGIN_MAX_ATTEMPTS = 5
-LOGIN_LOCKOUT_SECONDS = 300
+def _parse_db_url():
+    url = os.environ.get('MYSQL_URL') or os.environ.get('DATABASE_URL', '')
+    if not url:
+        raise RuntimeError('MYSQL_URL environment variable not set')
+    p = urlparse(url)
+    return {
+        'host':     p.hostname,
+        'port':     p.port or 3306,
+        'user':     p.username,
+        'password': p.password,
+        'database': p.path.lstrip('/'),
+        'charset':  'utf8mb4',
+        'cursorclass': pymysql.cursors.DictCursor,
+        'autocommit': False,
+    }
 
-
-# ---------------------------------------------------------------------------
-# Database
-# ---------------------------------------------------------------------------
 
 def get_db():
     db = getattr(g, '_database', None)
     if db is None:
-        db = g._database = sqlite3.connect(DATABASE)
-        db.row_factory = sqlite3.Row
+        db = g._database = pymysql.connect(**_parse_db_url())
     return db
 
 
@@ -53,17 +59,23 @@ def close_connection(exception):
 
 
 def query_db(query, args=(), one=False):
-    cur = get_db().execute(query, args)
-    rv = cur.fetchall()
-    cur.close()
+    # Convert SQLite ? placeholders to MySQL %s
+    query = query.replace('?', '%s')
+    db = get_db()
+    with db.cursor() as cur:
+        cur.execute(query, args)
+        rv = cur.fetchall()
     return (rv[0] if rv else None) if one else rv
 
 
 def execute_db(query, args=()):
+    query = query.replace('?', '%s')
     db = get_db()
-    cur = db.execute(query, args)
+    with db.cursor() as cur:
+        cur.execute(query, args)
+        last_id = cur.lastrowid
     db.commit()
-    return cur.lastrowid
+    return last_id
 
 
 def row_to_dict(row):
@@ -72,44 +84,54 @@ def row_to_dict(row):
     return dict(row)
 
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS app_users (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    username      TEXT    NOT NULL UNIQUE,
-    password_hash TEXT    NOT NULL,
-    full_name     TEXT,
-    email         TEXT,
-    created_at    TEXT    DEFAULT (datetime('now')),
-    last_login    TEXT
-);
-
-CREATE TABLE IF NOT EXISTS subscriptions (
-    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id            INTEGER NOT NULL UNIQUE,
-    plan               TEXT    NOT NULL DEFAULT 'free',
-    status             TEXT    NOT NULL DEFAULT 'active',
-    stripe_customer_id TEXT,
-    stripe_sub_id      TEXT,
-    current_period_end TEXT,
-    created_at         TEXT    DEFAULT (datetime('now'))
-);
-"""
+SCHEMA_STATEMENTS = [
+    """CREATE TABLE IF NOT EXISTS app_users (
+        id            INT PRIMARY KEY AUTO_INCREMENT,
+        username      VARCHAR(100) NOT NULL UNIQUE,
+        password_hash VARCHAR(255) NOT NULL,
+        full_name     VARCHAR(200),
+        email         VARCHAR(200),
+        created_at    DATETIME DEFAULT NOW(),
+        last_login    DATETIME
+    )""",
+    """CREATE TABLE IF NOT EXISTS subscriptions (
+        id                 INT PRIMARY KEY AUTO_INCREMENT,
+        user_id            INT NOT NULL UNIQUE,
+        plan               VARCHAR(20) NOT NULL DEFAULT 'free',
+        status             VARCHAR(20) NOT NULL DEFAULT 'active',
+        stripe_customer_id VARCHAR(100),
+        stripe_sub_id      VARCHAR(100),
+        current_period_end DATETIME,
+        created_at         DATETIME DEFAULT NOW()
+    )""",
+]
 
 
 def init_db():
     with app.app_context():
         db = get_db()
-        db.executescript(SCHEMA)
+        with db.cursor() as cur:
+            for stmt in SCHEMA_STATEMENTS:
+                cur.execute(stmt)
+            # Create default admin if no users exist
+            cur.execute("SELECT COUNT(*) as c FROM app_users")
+            count = cur.fetchone()['c']
+            if count == 0:
+                pw_hash = generate_password_hash('Admin1234!')
+                cur.execute(
+                    "INSERT INTO app_users (username, password_hash, full_name) VALUES (%s, %s, %s)",
+                    ('admin', pw_hash, 'Administrator')
+                )
         db.commit()
-        # Create default admin if no users exist
-        existing = db.execute("SELECT COUNT(*) FROM app_users").fetchone()[0]
-        if existing == 0:
-            pw_hash = generate_password_hash('Admin1234!')
-            db.execute(
-                "INSERT INTO app_users (username, password_hash, full_name) VALUES (?,?,?)",
-                ('admin', pw_hash, 'Administrator')
-            )
-            db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Brute-force protection
+# ---------------------------------------------------------------------------
+
+_login_attempts = {}
+LOGIN_MAX_ATTEMPTS = 5
+LOGIN_LOCKOUT_SECONDS = 300
 
 
 # ---------------------------------------------------------------------------
@@ -139,12 +161,23 @@ def login_required(f):
     return decorated
 
 
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login'))
+        if session.get('role') != 'admin':
+            abort(403)
+        return f(*args, **kwargs)
+    return decorated
+
+
 # ---------------------------------------------------------------------------
 # Context processor
 # ---------------------------------------------------------------------------
 
 @app.context_processor
-def inject_user():
+def inject_globals():
     user_plan = 'free'
     if session.get('user_id'):
         user_plan = get_user_plan(session['user_id'])
@@ -200,7 +233,8 @@ def login():
             session['user_id'] = user['id']
             session['username'] = user['username']
             session['full_name'] = user['full_name'] or user['username']
-            execute_db("UPDATE app_users SET last_login = datetime('now') WHERE id = ?", (user['id'],))
+            session['role'] = 'admin' if user['username'] == 'admin' else 'user'
+            execute_db("UPDATE app_users SET last_login = NOW() WHERE id = ?", (user['id'],))
             next_url = request.form.get('next') or request.args.get('next') or url_for('holzbau')
             return redirect(next_url)
         else:
@@ -251,6 +285,7 @@ def register():
         session['user_id'] = user_id
         session['username'] = username
         session['full_name'] = full_name or username
+        session['role'] = 'user'
         flash('Willkommen bei HolzBau 3D!', 'success')
         return redirect(url_for('holzbau'))
 
@@ -297,6 +332,23 @@ def profile():
         return redirect(url_for('profile'))
 
     return render_template('profile.html', user=row_to_dict(user), csrf_token=generate_csrf())
+
+
+# ---------------------------------------------------------------------------
+# Admin
+# ---------------------------------------------------------------------------
+
+@app.route('/admin/users')
+@admin_required
+def admin_users():
+    users = query_db("""
+        SELECT u.id, u.username, u.full_name, u.email, u.created_at, u.last_login,
+               COALESCE(s.plan, 'free') as plan, COALESCE(s.status, '') as sub_status
+        FROM app_users u
+        LEFT JOIN subscriptions s ON s.user_id = u.id
+        ORDER BY u.created_at DESC
+    """)
+    return render_template('admin_users.html', users=users)
 
 
 # ---------------------------------------------------------------------------
