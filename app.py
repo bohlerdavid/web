@@ -12,7 +12,10 @@ from flask import (
     flash, g, Response, abort, jsonify, session
 )
 from werkzeug.security import generate_password_hash, check_password_hash
+from dotenv import load_dotenv
 import scanner
+
+load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'it-device-mgmt-secret-2024')
