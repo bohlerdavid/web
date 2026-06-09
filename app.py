@@ -407,6 +407,16 @@ def landing():
     return render_template('landing.html')
 
 
+@app.route('/impressum')
+def impressum():
+    return render_template('impressum.html')
+
+
+@app.route('/datenschutz')
+def datenschutz():
+    return render_template('datenschutz.html')
+
+
 @app.route('/pricing')
 def pricing_public():
     return render_template('pricing_public.html')
