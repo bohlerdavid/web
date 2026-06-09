@@ -1,9 +1,10 @@
 import os
 import secrets
 import time
+import logging
 from functools import wraps
 from datetime import datetime, timedelta
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 
 from flask import (
     Flask, render_template, request, redirect, url_for,
@@ -16,12 +17,19 @@ import pymysql.cursors
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'holzbau3d-secret-key')
+
+_secret_key = os.environ.get('SECRET_KEY')
+if not _secret_key:
+    raise RuntimeError('SECRET_KEY environment variable must be set')
+app.secret_key = _secret_key
 
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') != 'development'
 
 # ---------------------------------------------------------------------------
 # Database (MySQL)
@@ -130,8 +138,31 @@ def init_db():
 # ---------------------------------------------------------------------------
 
 _login_attempts = {}
+_register_attempts = {}
+_checkout_attempts = {}
 LOGIN_MAX_ATTEMPTS = 5
 LOGIN_LOCKOUT_SECONDS = 300
+REGISTER_MAX_ATTEMPTS = 10   # per 10 min
+CHECKOUT_MAX_ATTEMPTS = 5    # per 10 min
+
+
+def _is_safe_redirect(url):
+    """Only allow redirects to internal paths."""
+    if not url:
+        return False
+    test = urljoin(request.host_url, url)
+    return test.startswith(request.host_url)
+
+
+def _check_rate_limit(store, ip, max_attempts, window=600):
+    """Returns True if blocked."""
+    now = time.time()
+    entry = store.get(ip, {'count': 0, 'since': now})
+    if now - entry['since'] > window:
+        entry = {'count': 0, 'since': now}
+    entry['count'] += 1
+    store[ip] = entry
+    return entry['count'] > max_attempts
 
 
 # ---------------------------------------------------------------------------
@@ -235,7 +266,8 @@ def login():
             session['full_name'] = user['full_name'] or user['username']
             session['role'] = 'admin' if user['username'] == 'admin' else 'user'
             execute_db("UPDATE app_users SET last_login = NOW() WHERE id = ?", (user['id'],))
-            next_url = request.form.get('next') or request.args.get('next') or url_for('holzbau')
+            raw_next = request.form.get('next') or request.args.get('next', '')
+            next_url = raw_next if _is_safe_redirect(raw_next) else url_for('holzbau')
             return redirect(next_url)
         else:
             count = attempt_info['count'] + 1
@@ -255,6 +287,10 @@ def register():
         return redirect(url_for('holzbau'))
 
     if request.method == 'POST':
+        if _check_rate_limit(_register_attempts, request.remote_addr, REGISTER_MAX_ATTEMPTS):
+            flash('Zu viele Registrierungsversuche. Bitte warte 10 Minuten.', 'danger')
+            return render_template('register.html', csrf_token=generate_csrf())
+
         token = request.form.get('csrf_token', '')
         if not validate_csrf(token):
             flash('Ungültige Anfrage.', 'danger')
@@ -403,6 +439,9 @@ def subscribe():
 def subscribe_create_checkout():
     if not validate_csrf(request.form.get('csrf_token', '')):
         abort(403)
+    if _check_rate_limit(_checkout_attempts, request.remote_addr, CHECKOUT_MAX_ATTEMPTS):
+        flash('Zu viele Versuche. Bitte warte kurz.', 'danger')
+        return redirect(url_for('subscribe'))
     stripe_key = os.environ.get('STRIPE_SECRET_KEY')
     price_id = os.environ.get('STRIPE_PRICE_ID')
     if not stripe_key or not price_id:
@@ -425,7 +464,8 @@ def subscribe_create_checkout():
         )
         return redirect(checkout.url, code=303)
     except Exception as e:
-        flash(f'Stripe Fehler: {str(e)}', 'danger')
+        logger.error('Stripe checkout error: %s', type(e).__name__)
+        flash('Zahlung konnte nicht gestartet werden. Bitte versuche es erneut.', 'danger')
         return redirect(url_for('subscribe'))
 
 
@@ -458,22 +498,23 @@ def subscribe_cancel():
 def stripe_webhook():
     stripe_key = os.environ.get('STRIPE_SECRET_KEY')
     webhook_secret = os.environ.get('STRIPE_WEBHOOK_SECRET')
-    if not stripe_key:
+    if not stripe_key or not webhook_secret:
+        logger.error('Stripe webhook called but STRIPE_SECRET_KEY or STRIPE_WEBHOOK_SECRET not set')
         abort(400)
     try:
         import stripe
         stripe.api_key = stripe_key
         payload = request.get_data()
         sig = request.headers.get('Stripe-Signature', '')
-        if webhook_secret:
-            event = stripe.Webhook.construct_event(payload, sig, webhook_secret)
-        else:
-            import json
-            event = stripe.Event.construct_from(json.loads(payload), stripe_key)
+        event = stripe.Webhook.construct_event(payload, sig, webhook_secret)
         _handle_stripe_event(event)
         return jsonify(ok=True)
+    except stripe.error.SignatureVerificationError:
+        logger.warning('Stripe webhook signature verification failed')
+        abort(400)
     except Exception as e:
-        return jsonify(error=str(e)), 400
+        logger.error('Stripe webhook error: %s', type(e).__name__)
+        return jsonify(error='Webhook error'), 400
 
 
 def _handle_stripe_event(event):
