@@ -2564,7 +2564,7 @@ def wiki():
 @login_required
 def holzbau():
     plan = get_user_plan(session['user_id']) if session.get('user_id') else 'free'
-    return render_template('holzbau.html', show_ads=(plan == 'free'))
+    return render_template('holzbau.html', show_ads=(plan == 'free'), user_plan=plan)
 
 
 # ---------------------------------------------------------------------------
