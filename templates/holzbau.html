@@ -5,543 +5,773 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Holzkonstruktion 3D</title>
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
-  body {
-    font-family: 'Segoe UI', Arial, sans-serif;
-    background: #1a1a2e;
-    color: #e0e0e0;
-    height: 100vh;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-  }
+:root {
+  --bg: #0e1117;
+  --bg-panel: #161b27;
+  --bg-card: #1e2535;
+  --bg-input: #192030;
+  --bg-hover: #232d45;
+  --border: #283755;
+  --border-2: #1e2c42;
+  --accent: #4e8cdd;
+  --accent-2: #6ba3e8;
+  --accent-dim: rgba(78,140,221,.13);
+  --accent-glow: rgba(78,140,221,.28);
+  --green: #38d89c;
+  --orange: #f5993f;
+  --red: #ef4a5b;
+  --red-dim: rgba(239,74,91,.12);
+  --text: #dde5f4;
+  --text-2: #7a8ba3;
+  --text-3: #44536a;
+  --topbar-h: 46px;
+  --left-w: 300px;
+  --right-w: 220px;
+  --status-h: 26px;
+  --r: 7px;
+  --r-sm: 5px;
+  --r-lg: 11px;
+  --font: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
 
-  /* ── TOP BAR ── */
-  #topbar {
-    background: linear-gradient(135deg, #16213e 0%, #0f3460 100%);
-    border-bottom: 2px solid #e94560;
-    padding: 6px 12px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-shrink: 0;
-    flex-wrap: wrap;
-    z-index: 100;
-  }
-  #topbar .logo {
-    font-size: 18px;
-    font-weight: 700;
-    color: #e94560;
-    letter-spacing: 1px;
-    white-space: nowrap;
-  }
-  #topbar .logo span { color: #a8d8a8; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  .tb-group {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background: rgba(255,255,255,0.05);
-    border-radius: 6px;
-    padding: 4px 8px;
-    border: 1px solid rgba(255,255,255,0.1);
-  }
-  .tb-label {
-    font-size: 10px;
-    color: #888;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
 
-  button.tb-btn {
-    background: #0f3460;
-    border: 1px solid #e94560;
-    color: #e0e0e0;
-    padding: 5px 10px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
-    transition: all 0.2s;
-    white-space: nowrap;
-  }
-  button.tb-btn:hover { background: #e94560; color: #fff; }
-  button.tb-btn.active { background: #4caf50; color: #fff; border-color: #4caf50; }
-  button.tb-btn.green { border-color: #4caf50; }
-  button.tb-btn.green:hover, button.tb-btn.green.active { background: #4caf50; }
-  button.tb-btn.orange { border-color: #ff9800; }
-  button.tb-btn.orange:hover, button.tb-btn.orange.active { background: #ff9800; }
+/* ═══ TOPBAR ═══ */
+#topbar {
+  height: var(--topbar-h);
+  min-height: var(--topbar-h);
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex-shrink: 0;
+  z-index: 100;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+#topbar::-webkit-scrollbar { display: none; }
 
-  select.tb-select, input.tb-input {
-    background: #1a1a2e;
-    border: 1px solid #444;
-    color: #e0e0e0;
-    padding: 4px 6px;
-    border-radius: 4px;
-    font-size: 12px;
-  }
-  input.tb-input { width: 64px; text-align: center; }
+.logo {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.5px;
+  margin-right: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.logo span { color: var(--accent); }
 
-  /* ── MAIN AREA ── */
-  #main {
-    display: flex;
-    flex: 1;
-    overflow: hidden;
-  }
+.tb-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 5px;
+  flex-shrink: 0;
+}
+.tb-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.tb-label {
+  font-size: 10px;
+  color: var(--text-3);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 0 3px;
+  white-space: nowrap;
+}
 
-  /* ── LEFT PANEL ── */
-  #left-panel {
-    width: 300px;
-    background: #16213e;
-    border-right: 1px solid #0f3460;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    flex-shrink: 0;
-  }
+.tb-btn {
+  height: 28px;
+  padding: 0 9px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  color: var(--text-2);
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .12s, border-color .12s, color .12s;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.tb-btn:hover { background: var(--bg-card); border-color: var(--border); color: var(--text); }
+.tb-btn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+.tb-btn.green { color: var(--green); border-color: rgba(56,216,156,.2); background: rgba(56,216,156,.06); }
+.tb-btn.green:hover { background: rgba(56,216,156,.14); border-color: var(--green); }
+.tb-btn.orange { color: var(--orange); }
+.tb-btn.orange:hover { background: rgba(245,153,63,.1); border-color: var(--orange); }
 
-  .panel-section {
-    border-bottom: 1px solid #0f3460;
-    padding: 10px;
-  }
-  .panel-title {
-    font-size: 11px;
-    font-weight: 600;
-    color: #e94560;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    margin-bottom: 8px;
-  }
+.tb-input {
+  height: 26px;
+  width: 50px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 12px;
+  text-align: center;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+.tb-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
 
-  .form-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-bottom: 6px;
-  }
-  .form-row label {
-    font-size: 11px;
-    color: #aaa;
-    width: 80px;
-    flex-shrink: 0;
-  }
-  .form-row input, .form-row select {
-    flex: 1;
-    background: #0f3460;
-    border: 1px solid #1a4a7a;
-    color: #e0e0e0;
-    padding: 4px 6px;
-    border-radius: 4px;
-    font-size: 12px;
-  }
-  .form-row input:focus, .form-row select:focus {
-    outline: none;
-    border-color: #e94560;
-  }
-
-  .dim-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 4px;
-    margin-bottom: 6px;
-  }
-  .dim-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-  .dim-cell label { font-size: 10px; color: #888; }
-  .dim-cell input {
-    width: 100%;
-    background: #0f3460;
-    border: 1px solid #1a4a7a;
-    color: #e0e0e0;
-    padding: 4px;
-    border-radius: 4px;
-    font-size: 12px;
-    text-align: center;
+/* ═══ LAYOUT ═══ */
+#main {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
   }
 
-  .add-btn {
-    width: 100%;
-    padding: 8px;
-    background: linear-gradient(135deg, #e94560, #c0392b);
-    border: none;
-    color: #fff;
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 600;
-    margin-top: 4px;
-    transition: opacity 0.2s;
-  }
-  .add-btn:hover { opacity: 0.85; }
+/* ── LEFT PANEL ── */
+#left-panel {
+  width: var(--left-w);
+  min-width: var(--left-w);
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
 
-  /* Selected info */
-  #sel-info {
-    font-size: 11px;
-    color: #aaa;
-    line-height: 1.6;
-  }
-  #sel-info strong { color: #e0e0e0; }
+.panel-section {
+  border-top: 1px solid var(--border-2);
+  padding-top: 10px;
+  margin-top: 10px;
+}
+.panel-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  margin-bottom: 10px;
+}
 
-  /* Parts list */
-  #parts-scroll {
-    flex: 1;
-    overflow-y: auto;
-    padding: 0;
-  }
-  #parts-scroll::-webkit-scrollbar { width: 4px; }
-  #parts-scroll::-webkit-scrollbar-track { background: #0f3460; }
-  #parts-scroll::-webkit-scrollbar-thumb { background: #e94560; border-radius: 2px; }
+.form-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.form-row label {
+  font-size: 11px;
+  color: var(--text-2);
+  font-weight: 500;
+  width: 80px;
+  flex-shrink: 0;
+}
+.form-row input, .form-row select {
+  flex: 1;
+  height: 28px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 12px;
+  padding: 0 7px;
+}
+.form-row input:focus, .form-row select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dim);
+}
 
-  #parts-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 11px;
-  }
-  #parts-table th {
-    background: #0f3460;
-    color: #e94560;
-    padding: 5px 6px;
-    text-align: left;
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    position: sticky;
-    top: 0;
-  }
-  #parts-table td {
-    padding: 4px 6px;
-    border-bottom: 1px solid #1a2a4a;
-    color: #ccc;
-  }
-  #parts-table tr:hover td { background: rgba(233,69,96,0.08); cursor: pointer; }
-  #parts-table tr.selected-row td { background: rgba(233,69,96,0.2); color: #fff; }
+.dim-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 5px;
+  margin-bottom: 6px;
+}
+.dim-cell { display: flex; flex-direction: column; gap: 3px; }
+.dim-cell label {
+  font-size: 10px;
+  color: var(--text-3);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.dim-cell input, .dim-cell select {
+  height: 28px;
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 12px;
+  text-align: center;
+  padding: 0 3px;
+}
+.dim-cell input:focus, .dim-cell select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dim);
+}
 
-  .parts-total {
-    padding: 8px 10px;
-    border-top: 2px solid #e94560;
-    font-size: 11px;
-    color: #aaa;
-    background: #16213e;
-  }
-  .parts-total strong { color: #e94560; }
+.add-btn {
+  width: 100%;
+  height: 32px;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--r);
+  color: #fff;
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .12s, transform .1s, box-shadow .12s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.add-btn:hover {
+  background: var(--accent-2);
+  box-shadow: 0 3px 10px var(--accent-glow);
+  transform: translateY(-1px);
+}
+.add-btn:active { transform: none; box-shadow: none; }
 
-  /* ── 3D VIEWPORT ── */
-  #viewport {
-    flex: 1;
-    position: relative;
-    overflow: hidden;
-  }
-  #viewport canvas { display: block; }
+#sel-info { font-size: 11px; color: var(--text-2); line-height: 1.6; }
+#sel-info strong { color: var(--text); }
 
-  /* ── STATUS BAR ── */
-  #statusbar {
-    background: #0f3460;
-    border-top: 1px solid #1a4a7a;
-    padding: 3px 12px;
-    font-size: 11px;
-    color: #888;
-    display: flex;
-    gap: 20px;
-    flex-shrink: 0;
-  }
-  #statusbar span { color: #aaa; }
-  #statusbar strong { color: #e94560; }
+#parts-scroll { flex: 1; overflow-y: auto; padding: 0; }
 
-  /* ── OVERLAY CONTROLS ── */
-  #view-controls {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    z-index: 10;
-  }
-  .view-btn {
-    background: rgba(15,52,96,0.9);
-    border: 1px solid #1a4a7a;
-    color: #ccc;
-    width: 32px;
-    height: 32px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 14px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s;
-  }
-  .view-btn:hover { background: #e94560; border-color: #e94560; color: #fff; }
+#parts-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+#parts-table th {
+  background: var(--bg-card);
+  color: var(--text-3);
+  padding: 5px 8px;
+  text-align: left;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  position: sticky;
+  top: 0;
+}
+#parts-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-2);
+  color: var(--text);
+}
+#parts-table tr:hover td { background: var(--bg-hover); cursor: pointer; }
+#parts-table tr.selected-row td { background: var(--accent-dim); color: var(--accent); }
 
-  /* ── MODAL ── */
-  .modal-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.7);
-    z-index: 1000;
-    align-items: center;
-    justify-content: center;
-  }
-  .modal-overlay.open { display: flex; }
-  .modal-box {
-    background: #16213e;
-    border: 1px solid #e94560;
-    border-radius: 8px;
-    padding: 20px;
-    min-width: 320px;
-    max-width: 90vw;
-    max-height: 80vh;
-    overflow-y: auto;
-  }
-  .modal-box h3 { color: #e94560; margin-bottom: 12px; font-size: 16px; }
-  .modal-box textarea {
-    width: 100%;
-    background: #0f3460;
-    border: 1px solid #1a4a7a;
-    color: #e0e0e0;
-    padding: 8px;
-    border-radius: 4px;
-    font-family: monospace;
-    font-size: 11px;
-    height: 200px;
-    resize: vertical;
-  }
-  .modal-actions { display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; }
+.parts-total {
+  padding: 5px 10px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-2);
+  background: var(--bg-card);
+  flex-shrink: 0;
+  font-weight: 500;
+}
+.parts-total strong { color: var(--text); }
 
-  /* ── TOOLTIP ── */
-  #tooltip {
-    position: absolute;
-    background: rgba(15,52,96,0.95);
-    border: 1px solid #e94560;
-    border-radius: 4px;
-    padding: 6px 10px;
-    font-size: 11px;
-    color: #e0e0e0;
-    pointer-events: none;
-    display: none;
-    z-index: 50;
-    white-space: pre;
-    line-height: 1.6;
-  }
+/* ── VIEWPORT ── */
+#viewport {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+#viewport canvas { display: block; }
 
-  /* ── MOVE HANDLE HINT ── */
-  #move-hint {
-    position: absolute;
-    bottom: 30px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(233,69,96,0.9);
-    color: #fff;
-    padding: 4px 12px;
-    border-radius: 20px;
-    font-size: 11px;
-    pointer-events: none;
-    display: none;
-  }
+/* ── STATUS BAR ── */
+#statusbar {
+  height: var(--status-h);
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  padding: 0 12px;
+  font-size: 11px;
+  color: var(--text-3);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+}
+#statusbar span { color: var(--text-2); }
+#statusbar strong { color: var(--text); font-weight: 600; }
 
-  /* Color dots for wood types */
-  .color-dot {
-    display: inline-block;
-    width: 10px; height: 10px;
-    border-radius: 50%;
-    margin-right: 4px;
-    vertical-align: middle;
-  }
+/* ── VIEW CONTROLS ── */
+#view-controls {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  z-index: 50;
+}
+.view-btn {
+  width: 32px;
+  height: 32px;
+  background: rgba(22,27,39,.88);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text-2);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all .12s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(5px);
+}
+.view-btn:hover { background: var(--bg-card); border-color: var(--accent); color: var(--accent); }
 
-  /* Right panel: object list */
-  #right-panel {
-    width: 200px;
-    background: #16213e;
-    border-left: 1px solid #0f3460;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    flex-shrink: 0;
-  }
-  #obj-list {
-    flex: 1;
-    overflow-y: auto;
-    font-size: 11px;
-  }
-  #obj-list::-webkit-scrollbar { width: 4px; }
-  #obj-list::-webkit-scrollbar-track { background: #0f3460; }
-  #obj-list::-webkit-scrollbar-thumb { background: #e94560; border-radius: 2px; }
+/* ── MODAL ── */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 1000; align-items: center; justify-content: center; }
+.modal-overlay.open { display: flex; }
+.modal-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 20px;
+  min-width: 320px;
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+.modal-box h3 { color: var(--text); margin-bottom: 12px; font-size: 15px; font-weight: 700; }
+.modal-box textarea {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px;
+  border-radius: var(--r-sm);
+  font-family: monospace;
+  font-size: 11px;
+  height: 200px;
+  resize: vertical;
+}
+.modal-actions { display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; }
 
-  .obj-item {
-    padding: 5px 8px;
-    border-bottom: 1px solid #1a2a4a;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    transition: background 0.15s;
-  }
-  .obj-item:hover { background: rgba(233,69,96,0.1); }
-  .obj-item.selected { background: rgba(233,69,96,0.25); color: #fff; }
-  .obj-item .obj-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .obj-item .obj-del {
-    color: #666;
-    font-size: 14px;
-    cursor: pointer;
-    padding: 2px;
-    border-radius: 2px;
-  }
-  .obj-item .obj-del:hover { color: #e94560; }
+/* ── TOOLTIP ── */
+#tooltip {
+  position: absolute;
+  background: rgba(14,17,23,.93);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 5px 9px;
+  font-size: 12px;
+  color: var(--text);
+  pointer-events: none;
+  display: none;
+  z-index: 60;
+  white-space: pre;
+  line-height: 1.6;
+}
 
-  .tab-nav {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    grid-template-rows: auto auto;
-    border-bottom: 2px solid #0f3460;
-    flex-shrink: 0;
-  }
-  .tab-btn {
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: #666;
-    padding: 6px 4px;
-    font-size: 11px;
-    cursor: pointer;
-    transition: all 0.2s;
-    white-space: nowrap;
-    text-align: center;
-  }
-  .tab-btn:hover { color: #ccc; background: rgba(255,255,255,0.04); }
-  .tab-btn.active { color: #e94560; border-bottom-color: #e94560; background: rgba(233,69,96,0.08); }
-  /* Row 2: only 2 tabs — center them with col-span trick */
-  .tab-btn.row2 { grid-row: 2; border-top: 1px solid #0f3460; }
-  .tab-pane { display: flex; flex-direction: column; }
+/* ── MOVE HINT ── */
+#move-hint {
+  position: absolute;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(14,17,23,.9);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 4px 14px;
+  font-size: 11px;
+  color: var(--text-2);
+  pointer-events: none;
+  display: none;
+  white-space: nowrap;
+}
 
-  .ctx-item {
-    padding: 7px 14px;
-    font-size: 12px;
-    color: #ccc;
-    cursor: pointer;
-    transition: background 0.15s;
-  }
-  .ctx-item:hover { background: rgba(233,69,96,0.15); color: #fff; }
+/* ── COLOR DOT ── */
+.color-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
 
-  .snap-indicator {
-    position: absolute;
-    bottom: 30px;
-    right: 10px;
-    background: rgba(15,52,96,0.9);
-    border: 1px solid #1a4a7a;
-    border-radius: 4px;
-    padding: 4px 8px;
-    font-size: 10px;
-    color: #888;
-  }
-  .snap-indicator.on { border-color: #4caf50; color: #4caf50; }
+/* ── RIGHT PANEL ── */
+#right-panel {
+  width: var(--right-w);
+  min-width: var(--right-w);
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
 
-  /* ── GROUP MANAGER (right panel) ── */
-  .group-section { border-bottom: 1px solid #0f3460; }
-  .group-header {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 5px 8px;
-    cursor: pointer;
-    background: rgba(15,52,96,0.4);
-    font-size: 11px;
-    font-weight: 600;
-    color: #ccc;
-    user-select: none;
-    transition: background 0.15s;
-  }
-  .group-header:hover { background: rgba(233,69,96,0.15); }
-  .group-header .group-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .group-header .group-count { color: #888; font-size: 10px; font-weight: normal; }
-  .group-header .group-del { color: #555; font-size: 13px; cursor: pointer; padding: 2px 4px; border-radius: 2px; }
-  .group-header .group-del:hover { color: #e94560; }
-  .group-items { display: none; }
-  .group-items.open { display: block; }
-  .group-beam-item {
-    padding: 4px 8px 4px 20px;
-    font-size: 10px;
-    color: #aaa;
-    border-bottom: 1px solid #0f2040;
-    cursor: grab;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    transition: background 0.1s;
-  }
-  .group-beam-item:hover { background: rgba(233,69,96,0.08); }
-  .group-beam-item.dragging { opacity: 0.5; }
-  .group-header.drag-over { background: rgba(76,175,80,0.2); }
+/* ── TAB NAV ── */
+.tab-nav {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: auto auto;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--bg-panel);
+}
+.tab-btn {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-2);
+  padding: 7px 4px;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: color .12s, background .12s;
+  white-space: nowrap;
+  text-align: center;
+}
+.tab-btn:hover { color: var(--text); background: var(--bg-hover); }
+.tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  background: rgba(78,140,221,.06);
+  font-weight: 600;
+}
+.tab-btn.row2 { grid-row: 2; border-top: 1px solid var(--border-2); }
+.tab-pane { display: flex; flex-direction: column; }
+
+/* ── CTX MENU ── */
+.ctx-item {
+  padding: 7px 14px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+  transition: background .1s;
+}
+.ctx-item:hover { background: var(--bg-hover); }
+
+/* ── SNAP INDICATOR ── */
+.snap-indicator {
+  position: absolute;
+  bottom: 30px;
+  right: 10px;
+  background: rgba(14,17,23,.82);
+  border-radius: 20px;
+  padding: 3px 10px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  pointer-events: none;
+  z-index: 50;
+  border: 1px solid transparent;
+}
+.snap-indicator.on { color: var(--green); border-color: rgba(56,216,156,.3); }
+.snap-indicator.off { color: var(--text-3); border-color: var(--border); }
+
+/* ── GROUP MANAGER ── */
+.group-section { border-bottom: 1px solid var(--border-2); }
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  cursor: pointer;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  user-select: none;
+  transition: background .1s;
+}
+.group-header:hover { background: var(--bg-hover); }
+.group-header .group-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-header .group-count {
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 400;
+  background: var(--bg-card);
+  border-radius: 10px;
+  padding: 0 5px;
+  min-width: 18px;
+  text-align: center;
+}
+.group-header .group-del { color: var(--text-3); font-size: 12px; cursor: pointer; padding: 2px 4px; border-radius: 3px; transition: color .1s; }
+.group-header .group-del:hover { color: var(--red); }
+.group-vis { cursor: pointer; user-select: none; font-size: 12px; padding: 0 2px; opacity: 0.55; transition: opacity .1s; }
+.group-vis:hover { opacity: 1; }
+.group-vis.vis-off { opacity: 0.2; filter: grayscale(1); }
+.group-items { display: none; }
+.group-items.open { display: block; }
+.group-beam-item {
+  padding: 3px 8px 3px 20px;
+  font-size: 11px;
+  color: var(--text-2);
+  border-bottom: 1px solid var(--border-2);
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: background .1s;
+}
+.group-beam-item:hover { background: var(--bg-hover); color: var(--text); }
+.group-beam-item.selected { background: var(--accent-dim); color: var(--accent); }
+.group-beam-item.dragging { opacity: 0.5; }
+.group-header.drag-over { background: rgba(56,216,156,.1); }
+.group-section.group-hidden .group-name,
+.group-section.group-hidden .group-count { opacity: 0.4; }
+.group-section.group-hidden .group-beam-item { opacity: 0.3; pointer-events: none; }
+
+/* ── PHASE FILTER ── */
+#phase-filter-bar {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.phase-btn {
+  height: 20px;
+  padding: 0 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  color: var(--text-3);
+  font-family: var(--font);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  transition: all .12s;
+  white-space: nowrap;
+}
+.phase-btn:hover { border-color: var(--accent); color: var(--accent); }
+.phase-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* ── SCHNITTPLAN MODAL ── */
+.schnitt-modal-inner {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  max-width: 900px;
+  margin: 40px auto;
+  padding: 22px;
+  box-shadow: 0 20px 48px rgba(0,0,0,.6);
+}
+.schnitt-bar-row { height: 24px; background: var(--bg-input); border-radius: var(--r-sm); overflow: hidden; display: flex; margin-bottom: 4px; border: 1px solid var(--border-2); }
+.schnitt-bar-seg { display: flex; align-items: center; justify-content: center; font-size: 9px; color: rgba(255,255,255,.8); overflow: hidden; white-space: nowrap; font-weight: 600; border-right: 1px solid rgba(0,0,0,.2); }
+.schnitt-bar-waste { flex: 1; background: var(--bg-card); display: flex; align-items: center; justify-content: center; font-size: 9px; color: var(--text-3); }
+
+/* ── SAW PANEL ── */
+#saw-panel {
+  display: none;
+  align-items: center;
+  gap: 5px;
+  background: rgba(245,153,63,.09);
+  border: 1px solid var(--orange);
+  border-radius: var(--r);
+  padding: 3px 10px;
+  font-size: 11px;
+  color: var(--orange);
+  animation: sawBlink 1.6s ease-in-out infinite;
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+@keyframes sawBlink {
+  0%,100% { border-color: var(--orange); opacity: 1; }
+  50% { border-color: #f5d08f; opacity: .85; }
+}
+#saw-panel .tb-input { width: 46px; }
+#saw-panel .saw-angle-btn {
+  background: var(--bg-input);
+  border: 1px solid var(--orange);
+  color: var(--orange);
+  padding: 2px 6px;
+  font-size: 11px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-family: var(--font);
+  transition: all .1s;
+}
+#saw-panel .saw-angle-btn:hover { background: var(--orange); color: #fff; }
+#btn-saw.active { background: rgba(245,153,63,.12); border-color: var(--orange); color: var(--orange); }
+
+/* ── FLOOR PLAN ── */
+#floor-preview { display: block; margin: 0 auto 10px; background: var(--bg-input); border-radius: var(--r); border: 1px solid var(--border); }
+#fp-info { font-size: 11px; color: var(--green); text-align: center; min-height: 16px; margin: 3px 0; }
+
+/* ── SCROLLBARS ── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+
+/* ── CTX MENU BOX ── */
+#ctx-menu {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  box-shadow: 0 8px 24px rgba(0,0,0,.55);
+  min-width: 175px;
+  overflow: hidden;
+}
+
+/* ── DEKO BUTTONS ── */
+.deko-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 60px;
+  padding: 4px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  color: var(--text);
+  font-family: var(--font);
+  cursor: pointer;
+  transition: background .12s, border-color .12s;
+  gap: 2px;
+  text-align: center;
+  width: 100%;
+}
+.deko-btn:hover { background: var(--bg-hover); border-color: var(--accent); }
+.deko-btn .di { font-size: 18px; line-height: 1.2; }
+.deko-btn .dn { font-size: 11px; font-weight: 500; color: var(--text); line-height: 1.2; }
+.deko-btn .ds { font-size: 9px; color: var(--text-3); line-height: 1.2; }
+
+/* ── LIGHT THEME ── */
+[data-theme="light"] {
+  --bg: #eef1f8;
+  --bg-panel: #ffffff;
+  --bg-card: #e2e8f4;
+  --bg-input: #d8e0f0;
+  --bg-hover: #c8d3e8;
+  --border: #b2c0d8;
+  --border-2: #c0cedf;
+  --accent: #2563eb;
+  --accent-2: #3b7de8;
+  --accent-dim: rgba(37,99,235,.12);
+  --accent-glow: rgba(37,99,235,.22);
+  --green: #16a34a;
+  --orange: #d97706;
+  --red: #dc2626;
+  --red-dim: rgba(220,38,38,.1);
+  --text: #141c2e;
+  --text-2: #3d506e;
+  --text-3: #7a8faa;
+}
+[data-theme="light"] body { background: var(--bg); }
+[data-theme="light"] #viewport { background: #c8d4e6; }
+[data-theme="light"] .snap-indicator.on { background: rgba(22,163,74,.15); color: #16a34a; border-color: rgba(22,163,74,.3); }
+[data-theme="light"] #ctx-menu { box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+[data-theme="light"] .schnitt-modal-inner { background: var(--bg-panel); }
 </style>
 </head>
 <body>
 
-{% if show_ads %}
-<div id="ad-banner-top" style="background:#0f3460;border-bottom:1px solid #1a1a3e;padding:6px 16px;display:flex;align-items:center;justify-content:space-between;font-size:12px;color:#888;">
-  <span>Werbung — <a href="/subscribe" style="color:#4f9cf9">Upgrade auf Premium</a> für werbefreies Erlebnis</span>
-  <!-- Google AdSense placeholder: replace with real ad code -->
-  <ins class="adsbygoogle" style="display:inline-block;width:728px;height:60px;background:#1a1a3e;border:1px dashed #333;" data-ad-client="ca-pub-XXXXXXXX" data-ad-slot="XXXXXXXX"></ins>
-</div>
-{% endif %}
-
-<!-- ═══════════════════════════ TOP BAR ═══════════════════════════ -->
 <div id="topbar">
   <div class="logo">Holz<span>BAU</span> 3D</div>
 
+  <div class="tb-divider"></div>
+
   <div class="tb-group">
-    <span class="tb-label">Datei</span>
-    <button class="tb-btn" onclick="newProject()">Neu</button>
-    <button class="tb-btn" onclick="saveProject()">Speichern</button>
-    <label class="tb-btn" style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;line-height:normal;font-size:12px" title="Projekt laden">Laden<input type="file" id="load-file-input" accept=".json,application/json" style="display:none"></label>
-    <button class="tb-btn" onclick="exportStückliste()">Stückliste ↓</button>
+    <button class="tb-btn" onclick="newProject()" title="Neues Projekt">Neu</button>
+    <button class="tb-btn" onclick="saveProject()" title="Projekt speichern">💾 Speichern</button>
+    <label class="tb-btn" style="cursor:pointer" title="Projekt laden">📂 Laden<input type="file" id="load-file-input" accept=".json,application/json" style="display:none"></label>
+    <button class="tb-btn" onclick="exportStückliste()" title="Stückliste exportieren">📋 Export</button>
   </div>
+
+  <div class="tb-divider"></div>
 
   <div class="tb-group">
     <span class="tb-label">Modus</span>
-    <button class="tb-btn active" id="btn-mode-select" onclick="setMode('select')">Auswählen</button>
-    <button class="tb-btn" id="btn-mode-move" onclick="setMode('move')">Verschieben</button>
-    <button class="tb-btn" id="btn-mode-rotate" onclick="setMode('rotate')">Drehen</button>
+    <button class="tb-btn active" id="btn-mode-select" onclick="setMode('select')">↖ Auswählen</button>
+    <button class="tb-btn" id="btn-mode-move" onclick="setMode('move')">✥ Verschieben</button>
+    <button class="tb-btn" id="btn-mode-rotate" onclick="setMode('rotate')">↻ Drehen</button>
   </div>
 
-  <div class="tb-group">
-    <span class="tb-label">Einrasten</span>
-    <button class="tb-btn green" id="btn-snap" onclick="toggleSnap()">✓ Ein</button>
-    <span class="tb-label" style="margin-left:4px">Raster</span>
-    <input class="tb-input" id="snap-size" type="number" value="10" min="1" max="500" step="5"> mm
-  </div>
+  <div class="tb-divider"></div>
 
   <div class="tb-group">
-    <span class="tb-label">Ansicht</span>
-    <button class="tb-btn" onclick="setView('top')">Oben</button>
-    <button class="tb-btn" onclick="setView('front')">Vorne</button>
-    <button class="tb-btn" onclick="setView('side')">Seite</button>
-    <button class="tb-btn" onclick="setView('iso')">3D</button>
+    <button class="tb-btn green" id="btn-snap" onclick="toggleSnap()">⊞ Raster EIN</button>
+    <input class="tb-input" id="snap-size" type="number" value="10" min="1" max="500" step="5" title="Rastergröße mm">
+    <span style="font-size:11px;color:var(--text-3)">mm</span>
   </div>
 
-  <div class="tb-group">
-    <span class="tb-label">Aktionen</span>
-    <button class="tb-btn orange" onclick="deleteSelected()">⌫ Löschen</button>
-    <button class="tb-btn" onclick="duplicateSelected()">⧉ Kopieren</button>
-  </div>
+  <div class="tb-divider"></div>
 
   <div class="tb-group">
-    <span class="tb-label">Export</span>
-    <button class="tb-btn" onclick="printProject()" title="PDF / Drucken">🖨 Drucken</button>
+    <button class="tb-btn" onclick="setView('top')" title="Ansicht von oben">⊤ Oben</button>
+    <button class="tb-btn" onclick="setView('front')" title="Ansicht von vorne">▣ Vorne</button>
+    <button class="tb-btn" onclick="setView('side')" title="Seitenansicht">◧ Seite</button>
+    <button class="tb-btn" onclick="setView('iso')" title="3D Isometrisch">⬡ 3D</button>
   </div>
 
+  <div class="tb-divider"></div>
+
   <div class="tb-group">
-    <span class="tb-label">Werkzeug</span>
+    <button class="tb-btn orange" onclick="deleteSelected()" title="Ausgewählte löschen">✕ Löschen</button>
+    <button class="tb-btn" onclick="duplicateSelected()" title="Kopieren">⧉ Kopieren</button>
+  </div>
+
+  <div class="tb-divider"></div>
+
+  <div class="tb-group">
     <button class="tb-btn" id="btn-measure" onclick="toggleMeasure()" title="Maßband: 2 Punkte anklicken">📏 Maßband</button>
-    <button class="tb-btn" id="btn-measure-clear" onclick="clearMeasure()" style="display:none;color:#e94560;border-color:#e94560">✕</button>
+    <button class="tb-btn" id="btn-measure-clear" onclick="clearMeasure()" style="display:none;color:var(--red);border-color:var(--red-dim)">✕</button>
+    <button class="tb-btn" id="btn-saw" onclick="toggleSaw()" title="Säge — Balken schneiden">🪚 Säge</button>
+    <button class="tb-btn" onclick="printProject()" title="Drucken / PDF">🖨 Drucken</button>
+  </div>
+
+  <div class="tb-divider"></div>
+  <button class="tb-btn" id="theme-toggle" onclick="toggleTheme()" title="Hell/Dunkel-Modus wechseln" style="font-size:15px;padding:0 6px">🌙</button>
+
+  <div id="saw-panel">
+    <span>🪚 Säge aktiv — Balken anklicken</span>
+    <span style="color:var(--text-3);margin-left:4px">Winkel:</span>
+    <input type="number" id="saw-angle" class="tb-input" value="0" min="-60" max="60" step="1" title="Schnittwinkel in Grad">
+    <span style="color:var(--text-3)">°</span>
+    <button class="saw-angle-btn" onclick="document.getElementById('saw-angle').value=0" title="Gerader Schnitt">⊥ 0°</button>
+    <button class="saw-angle-btn" onclick="document.getElementById('saw-angle').value=22.5">22.5°</button>
+    <button class="saw-angle-btn" onclick="document.getElementById('saw-angle').value=30">30°</button>
+    <button class="saw-angle-btn" onclick="document.getElementById('saw-angle').value=45">45°</button>
+    <button class="saw-angle-btn" onclick="document.getElementById('saw-angle').value=-45">-45°</button>
+    <button class="tb-btn" style="color:var(--red);border-color:var(--red-dim);margin-left:4px" onclick="toggleSaw()">✕ Beenden</button>
   </div>
 </div>
 
-<!-- ═══════════════════════════ MAIN ═══════════════════════════ -->
 <div id="main">
 
-  <!-- ── LEFT PANEL ── -->
   <div id="left-panel">
 
-    <!-- TAB NAVIGATION -->
     <div class="tab-nav">
       <button class="tab-btn active" id="tab-dach" onclick="showTab('dach')">📐 Grundriss</button>
       <button class="tab-btn" id="tab-balken" onclick="showTab('balken')">🪵 Balken</button>
@@ -550,57 +780,45 @@
       <button class="tab-btn row2" id="tab-list" onclick="showTab('list')" style="grid-column:2/span 2">📋 Stückliste</button>
     </div>
 
-    <!-- ══ TAB: GRUNDRISS ══ -->
-    <div id="pane-dach" class="tab-pane" style="display:block;overflow-y:auto;padding:10px">
-      <div class="panel-title">📐 Grundriss (Draufsicht) <span style="font-size:9px;color:#4caf50;font-weight:normal">v4</span></div>
-      <div style="font-size:10px;color:#888;margin-bottom:6px;line-height:1.5">
-        Umriss des Gebäudes von oben — 4 Seitenlängen.<br>
+    <!-- TAB: GRUNDRISS -->
+    <div id="pane-dach" class="tab-pane" style="display:block;overflow-y:auto;padding:12px">
+      <div class="panel-title">Grundriss (Draufsicht)</div>
+      <div style="font-size:11px;color:var(--text-2);margin-bottom:10px;line-height:1.6">
+        Gebäudeumriss von oben — 4 Seitenlängen.<br>
         Ein Feld leer lassen → wird berechnet.
       </div>
-
-      <!-- Top-view SVG Preview -->
-      <svg id="floor-preview" width="216" height="140" style="display:block;margin:0 auto 8px;background:#0f3460;border-radius:6px;border:1px solid #1a4a7a"></svg>
-
-      <!-- Inputs: the 4 sides of the floor plan -->
-      <div style="font-size:10px;color:#aaa;margin-bottom:6px;line-height:1.4">
-        S2 (links) und S3 (rechts) stehen im rechten Winkel zu S1.<br>
-        S4 (Diagonale hinten) wird automatisch berechnet.
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:6px">
+      <svg id="floor-preview" width="216" height="130"></svg>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
         <div class="dim-cell" style="grid-column:1/-1">
-          <label>S1 — Vorne (Breite) [mm]</label>
+          <label>S1 — Vorne / Breite (mm)</label>
           <input type="number" id="fp-s1" value="8000" min="0" step="100" oninput="calcFloorPlan()">
         </div>
         <div class="dim-cell">
-          <label>S2 — Links (Tiefe) [mm]</label>
+          <label>S2 — Links / Tiefe</label>
           <input type="number" id="fp-s2" value="6000" min="0" step="100" oninput="calcFloorPlan()">
         </div>
         <div class="dim-cell">
-          <label>S3 — Rechts (Tiefe) [mm]</label>
+          <label>S3 — Rechts / Tiefe</label>
           <input type="number" id="fp-s3" value="6000" min="0" step="100" oninput="calcFloorPlan()">
         </div>
         <div class="dim-cell" style="grid-column:1/-1">
-          <label style="color:#888">S4 — Diagonale hinten [mm] <em style="font-size:9px">(berechnet)</em></label>
+          <label style="color:var(--text-3)">S4 — Diagonale (berechnet)</label>
           <input type="number" id="fp-s4" value="" min="0" step="100" placeholder="—" readonly
-                 style="color:#888;background:#111827;cursor:not-allowed" tabindex="-1"
-                 title="S4 = sqrt(S1²+(S2-S3)²)">
+                 style="color:var(--text-3);cursor:not-allowed" tabindex="-1">
         </div>
       </div>
-      <div id="fp-info" style="font-size:10px;color:#4caf50;text-align:center;min-height:16px;margin:2px 0"></div>
-
-      <div class="form-row">
-        <label>Sichtbar</label>
-        <input type="checkbox" id="floor-visible" checked onchange="updateFloorOutline()" style="width:auto">
-        <span style="font-size:11px;color:#888">Grundriss anzeigen</span>
+      <div id="fp-info"></div>
+      <div class="form-row" style="margin-top:8px">
+        <label>Anzeigen</label>
+        <input type="checkbox" id="floor-visible" checked onchange="updateFloorOutline()" style="width:auto;accent-color:var(--accent)">
+        <span style="font-size:11px;color:var(--text-2)">Grundriss sichtbar</span>
       </div>
-
-      <button class="add-btn" onclick="updateFloorOutline()" style="margin-top:6px">↺ Grundriss aktualisieren</button>
+      <button class="add-btn" onclick="updateFloorOutline()" style="margin-top:10px;background:var(--bg-card);color:var(--accent);border:1px solid var(--accent)">↺ Grundriss aktualisieren</button>
     </div>
 
-    <!-- ══ TAB: BALKEN ══ -->
-    <div id="pane-balken" class="tab-pane" style="display:none;overflow-y:auto;padding:10px">
-      <div class="panel-title">⊕ Balken hinzufügen</div>
-
+    <!-- TAB: BALKEN -->
+    <div id="pane-balken" class="tab-pane" style="display:none;overflow-y:auto;padding:12px">
+      <div class="panel-title">Balken hinzufügen</div>
       <div class="form-row">
         <label>Holzart</label>
         <select id="wood-type">
@@ -616,215 +834,202 @@
           <option value="Benutzerdefiniert">Benutzerdefiniert</option>
         </select>
       </div>
-
       <div class="form-row">
         <label>Bezeichnung</label>
         <input type="text" id="beam-name" placeholder="z.B. Sparren">
       </div>
-
       <div class="form-row">
         <label>Gruppe</label>
         <select id="beam-group-sel"></select>
       </div>
 
-      <div style="font-size:10px;color:#888;margin-bottom:4px;text-align:center">Balken-Querschnitt & Länge (mm)</div>
-      <div class="dim-row">
-        <div class="dim-cell">
-          <label>Länge (L)</label>
-          <input type="number" id="dim-l" value="4000" min="1" step="10">
+      <div class="panel-section">
+        <div class="panel-title" style="margin-bottom:8px">Abmessungen (mm)</div>
+        <div class="dim-row">
+          <div class="dim-cell"><label>Länge (L)</label><input type="number" id="dim-l" value="4000" min="1" step="10"></div>
+          <div class="dim-cell"><label>Breite (B)</label><input type="number" id="dim-b" value="80" min="1" step="5"></div>
+          <div class="dim-cell"><label>Höhe (H)</label><input type="number" id="dim-h" value="160" min="1" step="5"></div>
         </div>
-        <div class="dim-cell">
-          <label>Breite (B)</label>
-          <input type="number" id="dim-b" value="80" min="1" step="5">
-        </div>
-        <div class="dim-cell">
-          <label>Höhe (H)</label>
-          <input type="number" id="dim-h" value="160" min="1" step="5">
+        <div class="form-row">
+          <label>Ausrichtung</label>
+          <select id="beam-axis">
+            <option value="x">X-Achse →</option>
+            <option value="y">Y-Achse ↑</option>
+            <option value="z">Z-Achse ↗</option>
+          </select>
         </div>
       </div>
 
-      <div class="form-row">
-        <label>Ausrichtung</label>
-        <select id="beam-axis">
-          <option value="x">X-Achse (→)</option>
-          <option value="y">Y-Achse (↑)</option>
-          <option value="z">Z-Achse (↗)</option>
+      <div class="panel-section">
+        <div class="panel-title" style="margin-bottom:8px">Drehung (°)</div>
+        <div class="dim-row">
+          <div class="dim-cell"><label>Rot X</label><input type="number" id="rot-x" value="0" step="1" min="-180" max="180"></div>
+          <div class="dim-cell"><label>Rot Y</label><input type="number" id="rot-y" value="0" step="1" min="-180" max="180"></div>
+          <div class="dim-cell"><label>Rot Z</label><input type="number" id="rot-z" value="0" step="1" min="-180" max="180"></div>
+        </div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          <button class="tb-btn" style="font-size:11px;height:26px;padding:0 8px" onclick="setAngle(0,0,0)">0°</button>
+          <button class="tb-btn" style="font-size:11px;height:26px;padding:0 8px" onclick="setAngle(0,45,0)">Y45°</button>
+          <button class="tb-btn" style="font-size:11px;height:26px;padding:0 8px" onclick="setAngle(0,90,0)">Y90°</button>
+          <button class="tb-btn" style="font-size:11px;height:26px;padding:0 8px" onclick="setAngle(30,0,0)">X30°</button>
+          <button class="tb-btn" style="font-size:11px;height:26px;padding:0 8px" onclick="setAngle(45,0,0)">X45°</button>
+          <button class="tb-btn" style="font-size:11px;height:26px;padding:0 8px" onclick="setAngle(0,0,45)">Z45°</button>
+        </div>
+      </div>
+
+      <div class="form-row" style="margin-top:10px">
+        <label>Bauphase</label>
+        <select id="beam-phase">
+          <option value="">— keine —</option>
+          <option value="Rohbau">Rohbau</option>
+          <option value="Ausbau">Ausbau</option>
+          <option value="Finish">Finish</option>
         </select>
       </div>
+      <button class="add-btn" onclick="addBeam()" style="margin-top:10px">+ Balken hinzufügen</button>
 
-      <div style="font-size:10px;color:#888;margin-bottom:4px;text-align:center">Winkel (°) — Drehung um Achsen</div>
-      <div class="dim-row">
-        <div class="dim-cell">
-          <label>Rot X</label>
-          <input type="number" id="rot-x" value="0" step="1" min="-180" max="180">
-        </div>
-        <div class="dim-cell">
-          <label>Rot Y</label>
-          <input type="number" id="rot-y" value="0" step="1" min="-180" max="180">
-        </div>
-        <div class="dim-cell">
-          <label>Rot Z</label>
-          <input type="number" id="rot-z" value="0" step="1" min="-180" max="180">
-        </div>
-      </div>
-      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">
-        <button class="tb-btn" style="font-size:10px;padding:3px 6px" onclick="setAngle(0,0,0)">0°</button>
-        <button class="tb-btn" style="font-size:10px;padding:3px 6px" onclick="setAngle(0,45,0)">Y 45°</button>
-        <button class="tb-btn" style="font-size:10px;padding:3px 6px" onclick="setAngle(0,90,0)">Y 90°</button>
-        <button class="tb-btn" style="font-size:10px;padding:3px 6px" onclick="setAngle(30,0,0)">X 30°</button>
-        <button class="tb-btn" style="font-size:10px;padding:3px 6px" onclick="setAngle(45,0,0)">X 45°</button>
-        <button class="tb-btn" style="font-size:10px;padding:3px 6px" onclick="setAngle(0,0,45)">Z 45°</button>
-      </div>
-
-      <button class="add-btn" onclick="addBeam()">+ Balken hinzufügen</button>
-
-      <div style="margin-top:10px;padding-top:8px;border-top:1px solid #0f3460">
-        <div style="font-size:10px;color:#888;margin-bottom:6px">Schnellauswahl Standardmaße:</div>
-        <div style="display:flex;flex-wrap:wrap;gap:4px">
-          <button class="tb-btn" style="font-size:10px;padding:3px 6px" onclick="setDims(60,80)">60×80</button>
-          <button class="tb-btn" style="font-size:10px;padding:3px 6px" onclick="setDims(80,120)">80×120</button>
-          <button class="tb-btn" style="font-size:10px;padding:3px 6px" onclick="setDims(100,160)">100×160</button>
-          <button class="tb-btn" style="font-size:10px;padding:3px 6px" onclick="setDims(120,200)">120×200</button>
-          <button class="tb-btn" style="font-size:10px;padding:3px 6px" onclick="setDims(140,220)">140×220</button>
-          <button class="tb-btn" style="font-size:10px;padding:3px 6px" onclick="setDims(160,240)">160×240</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- ══ TAB: AUSWAHL ══ -->
-    <div id="pane-sel" class="tab-pane" style="display:none;overflow-y:auto;padding:10px">
-      <div class="panel-title">✎ Auswahl bearbeiten</div>
-      <div id="sel-info" style="color:#666;font-size:11px">Kein Objekt ausgewählt</div>
-      <div id="sel-edit" style="display:none;margin-top:8px">
+      <div class="panel-section">
+        <div class="panel-title" style="margin-bottom:8px">Parallelreihe</div>
         <div class="dim-row">
-          <div class="dim-cell">
-            <label>Länge</label>
-            <input type="number" id="edit-l" min="1" step="10" onchange="applyEdit()">
-          </div>
-          <div class="dim-cell">
-            <label>Breite</label>
-            <input type="number" id="edit-b" min="1" step="5" onchange="applyEdit()">
-          </div>
-          <div class="dim-cell">
-            <label>Höhe</label>
-            <input type="number" id="edit-h" min="1" step="5" onchange="applyEdit()">
+          <div class="dim-cell"><label>Anzahl</label><input type="number" id="par-count" value="3" min="2" max="30" step="1"></div>
+          <div class="dim-cell"><label>Abstand mm</label><input type="number" id="par-spacing" value="600" min="1" step="10"></div>
+          <div class="dim-cell"><label>Richtung</label>
+            <select id="par-dir"><option value="x">X →</option><option value="z" selected>Z ↗</option><option value="y">Y ↑</option></select>
           </div>
         </div>
-        <div class="form-row">
-          <label>Position X</label>
-          <input type="number" id="edit-px" step="10" onchange="applyEdit()">
-        </div>
-        <div class="form-row">
-          <label>Position Y</label>
-          <input type="number" id="edit-py" step="10" onchange="applyEdit()">
-        </div>
-        <div class="form-row">
-          <label>Position Z</label>
-          <input type="number" id="edit-pz" step="10" onchange="applyEdit()">
-        </div>
-        <div style="border-top:1px solid #0f3460;margin-top:8px;padding-top:8px">
-          <div style="font-size:10px;color:#888;margin-bottom:4px">Winkel (°)</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px">
-            <div class="dim-cell">
-              <label>Rot X</label>
-              <input type="number" id="edit-rx" step="1" onchange="applyEdit()">
-            </div>
-            <div class="dim-cell">
-              <label>Rot Y</label>
-              <input type="number" id="edit-ry" step="1" onchange="applyEdit()">
-            </div>
-            <div class="dim-cell">
-              <label>Rot Z</label>
-              <input type="number" id="edit-rz" step="1" onchange="applyEdit()">
-            </div>
-          </div>
-        </div>
-        <div style="border-top:1px solid #0f3460;margin-top:8px;padding-top:8px">
-          <div class="form-row">
-            <label>Gruppe</label>
-            <select id="edit-group" onchange="moveBeamToGroup([...selectedIds][0], this.value)" style="flex:1"></select>
-          </div>
-          <button class="add-btn" style="background:linear-gradient(135deg,#0f7460,#0a5a4a);margin-top:6px" onclick="duplicateSelected()">⧉ Balken kopieren</button>
-          <button class="add-btn" style="background:linear-gradient(135deg,#3a3460,#2a2448);margin-top:4px" onclick="deleteSelected();updateUI()">✕ Balken löschen</button>
+        <button class="add-btn" onclick="addBeamRow()" style="background:var(--bg-card);color:var(--green);border:1px solid rgba(56,216,156,.3)">⊕⊕ Parallelreihe hinzufügen</button>
+      </div>
+
+      <div class="panel-section">
+        <div class="panel-title" style="margin-bottom:6px">Standardquerschnitte</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px">
+          <button class="tb-btn" style="font-size:11px;height:26px;padding:0 8px" onclick="setDims(60,80)">60×80</button>
+          <button class="tb-btn" style="font-size:11px;height:26px;padding:0 8px" onclick="setDims(80,120)">80×120</button>
+          <button class="tb-btn" style="font-size:11px;height:26px;padding:0 8px" onclick="setDims(100,160)">100×160</button>
+          <button class="tb-btn" style="font-size:11px;height:26px;padding:0 8px" onclick="setDims(120,200)">120×200</button>
+          <button class="tb-btn" style="font-size:11px;height:26px;padding:0 8px" onclick="setDims(140,220)">140×220</button>
+          <button class="tb-btn" style="font-size:11px;height:26px;padding:0 8px" onclick="setDims(160,240)">160×240</button>
         </div>
       </div>
-      <!-- Deco edit panel -->
+    </div>
+
+    <!-- TAB: AUSWAHL -->
+    <div id="pane-sel" class="tab-pane" style="display:none;overflow-y:auto;padding:12px">
+      <div class="panel-title">Auswahl bearbeiten</div>
+      <div id="sel-info" style="color:var(--text-3);font-size:12px;padding:6px 0">Kein Objekt ausgewählt</div>
+      <div id="sel-edit" style="display:none">
+        <div class="dim-row">
+          <div class="dim-cell"><label>Länge</label><input type="number" id="edit-l" min="1" step="10" onchange="applyEdit()"></div>
+          <div class="dim-cell"><label>Breite</label><input type="number" id="edit-b" min="1" step="5" onchange="applyEdit()"></div>
+          <div class="dim-cell"><label>Höhe</label><input type="number" id="edit-h" min="1" step="5" onchange="applyEdit()"></div>
+        </div>
+        <div class="form-row"><label>Pos X</label><input type="number" id="edit-px" step="10" onchange="applyEdit()"></div>
+        <div class="form-row"><label>Pos Y</label><input type="number" id="edit-py" step="10" onchange="applyEdit()"></div>
+        <div class="form-row"><label>Pos Z</label><input type="number" id="edit-pz" step="10" onchange="applyEdit()"></div>
+        <div class="panel-section">
+          <div class="panel-title" style="margin-bottom:8px">Drehung (°)</div>
+          <div class="dim-row">
+            <div class="dim-cell"><label>Rot X</label><input type="number" id="edit-rx" step="1" onchange="applyEdit()"></div>
+            <div class="dim-cell"><label>Rot Y</label><input type="number" id="edit-ry" step="1" onchange="applyEdit()"></div>
+            <div class="dim-cell"><label>Rot Z</label><input type="number" id="edit-rz" step="1" onchange="applyEdit()"></div>
+          </div>
+        </div>
+        <div class="panel-section">
+          <div class="form-row"><label>Gruppe</label><select id="edit-group" onchange="moveBeamToGroup([...selectedIds][0], this.value)" style="flex:1"></select></div>
+          <div class="form-row"><label>Phase</label>
+            <select id="edit-phase" onchange="applyEdit()" style="flex:1">
+              <option value="">— keine —</option>
+              <option value="Rohbau">Rohbau</option>
+              <option value="Ausbau">Ausbau</option>
+              <option value="Finish">Finish</option>
+            </select>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px">
+            <button class="add-btn" onclick="duplicateSelected()" style="background:var(--bg-card);color:var(--accent);border:1px solid var(--accent);font-size:12px">⧉ Kopieren</button>
+            <button class="add-btn" onclick="deleteSelected();updateUI()" style="background:var(--red-dim);color:var(--red);border:1px solid var(--red);font-size:12px">✕ Löschen</button>
+          </div>
+        </div>
+      </div>
       <div id="deco-edit" style="display:none;margin-top:8px">
-        <div style="font-size:10px;color:#4caf50;font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">🌿 Dekoration</div>
-        <div class="form-row">
-          <label>Position X</label>
-          <input type="number" id="deco-px" step="10" onchange="applyDecoEdit()">
-        </div>
-        <div class="form-row">
-          <label>Position Y</label>
-          <input type="number" id="deco-py" step="10" onchange="applyDecoEdit()">
-        </div>
-        <div class="form-row">
-          <label>Position Z</label>
-          <input type="number" id="deco-pz" step="10" onchange="applyDecoEdit()">
-        </div>
-        <div class="form-row">
-          <label>Rotation Y°</label>
-          <input type="number" id="deco-ry" step="15" min="-180" max="360" onchange="applyDecoEdit()">
-        </div>
+        <div class="panel-title" style="color:var(--green)">Dekoration</div>
+        <div class="form-row"><label>Pos X</label><input type="number" id="deco-px" step="10" onchange="applyDecoEdit()"></div>
+        <div class="form-row"><label>Pos Y</label><input type="number" id="deco-py" step="10" onchange="applyDecoEdit()"></div>
+        <div class="form-row"><label>Pos Z</label><input type="number" id="deco-pz" step="10" onchange="applyDecoEdit()"></div>
+        <div class="form-row"><label>Rot Y°</label><input type="number" id="deco-ry" step="15" min="-180" max="360" onchange="applyDecoEdit()"></div>
         <div id="deco-params"></div>
-        <button class="tb-btn" style="width:100%;margin-top:6px;color:#e94560;border-color:#e94560" onclick="deleteDecoSelected()">✕ Löschen</button>
+        <button class="tb-btn" style="width:100%;margin-top:8px;color:var(--red);border-color:var(--red-dim)" onclick="deleteDecoSelected()">✕ Löschen</button>
       </div>
     </div>
 
-    <!-- ══ TAB: DEKO ══ -->
-    <div id="pane-deko" class="tab-pane" style="display:none;overflow-y:auto;padding:10px">
-      <div class="panel-title">🌿 Dekoration &amp; Massstab</div>
-      <div style="font-size:10px;color:#888;margin-bottom:8px">Klick = Objekt bei Ursprung platzieren, dann verschieben.</div>
+    <!-- TAB: DEKO -->
+    <div id="pane-deko" class="tab-pane" style="display:none;overflow-y:auto;padding:12px">
+      <div class="panel-title">Dekoration &amp; Massstab</div>
+      <div style="font-size:11px;color:var(--text-2);margin-bottom:10px">Klicken = platzieren, dann verschieben.</div>
 
-      <div class="panel-section" style="padding:6px 0">
-        <div style="font-size:10px;color:#e94560;font-weight:600;margin-bottom:5px">👤 Massstab</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
-          <button class="tb-btn" style="flex-direction:column;height:52px;font-size:10px" onclick="addDeco('person')">👤<br>Person<br><span style="color:#888;font-size:9px">1.75 m</span></button>
-          <button class="tb-btn" style="flex-direction:column;height:52px;font-size:10px" onclick="addDeco('car')">🚗<br>Auto<br><span style="color:#888;font-size:9px">4.5 × 1.8 m</span></button>
-        </div>
+      <div style="font-size:10px;color:var(--text-3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">👤 Massstab</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:10px">
+        <button class="deko-btn" onclick="addDeco('person')"><span class="di">👤</span><span class="dn">Person</span><span class="ds">1.75 m</span></button>
+        <button class="deko-btn" onclick="addDeco('car')"><span class="di">🚗</span><span class="dn">Auto</span><span class="ds">4.5×1.8 m</span></button>
       </div>
 
-      <div class="panel-section" style="padding:6px 0">
-        <div style="font-size:10px;color:#e94560;font-weight:600;margin-bottom:5px">🌿 Pflanzen</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
-          <button class="tb-btn" style="flex-direction:column;height:52px;font-size:10px" onclick="addDeco('bush')">🌿<br>Busch<br><span style="color:#888;font-size:9px">Ø 0.6 m</span></button>
-          <button class="tb-btn" style="flex-direction:column;height:52px;font-size:10px" onclick="addDeco('tree')">🌲<br>Baum<br><span style="color:#888;font-size:9px">H 3 m</span></button>
-          <button class="tb-btn" style="flex-direction:column;height:52px;font-size:10px" onclick="addDeco('pot_small')">🪴<br>Topf klein<br><span style="color:#888;font-size:9px">H 0.6 m</span></button>
-          <button class="tb-btn" style="flex-direction:column;height:52px;font-size:10px" onclick="addDeco('pot_large')">🪴<br>Topf gross<br><span style="color:#888;font-size:9px">H 1.2 m</span></button>
-        </div>
+      <div style="font-size:10px;color:var(--text-3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">🌿 Pflanzen</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:10px">
+        <button class="deko-btn" onclick="addDeco('bush')"><span class="di">🌿</span><span class="dn">Busch</span><span class="ds">Ø 0.6 m</span></button>
+        <button class="deko-btn" onclick="addDeco('tree')"><span class="di">🌲</span><span class="dn">Baum</span><span class="ds">H 3 m</span></button>
+        <button class="deko-btn" onclick="addDeco('pot_small')"><span class="di">🪴</span><span class="dn">Topf klein</span><span class="ds">H 0.6 m</span></button>
+        <button class="deko-btn" onclick="addDeco('pot_large')"><span class="di">🪴</span><span class="dn">Topf gross</span><span class="ds">H 1.2 m</span></button>
       </div>
 
-      <div class="panel-section" style="padding:6px 0">
-        <div style="font-size:10px;color:#e94560;font-weight:600;margin-bottom:5px">🧱 Mauern &amp; Boden</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
-          <button class="tb-btn" style="flex-direction:column;height:52px;font-size:10px" onclick="addDeco('wall_brick')">🧱<br>Mauer Backstein<br><span style="color:#888;font-size:9px">1×0.2×1 m</span></button>
-          <button class="tb-btn" style="flex-direction:column;height:52px;font-size:10px" onclick="addDeco('wall_concrete')">▪<br>Mauer Beton<br><span style="color:#888;font-size:9px">1×0.2×1 m</span></button>
-          <button class="tb-btn" style="flex-direction:column;height:52px;font-size:10px" onclick="addDeco('wall_stone')">🪨<br>Mauer Stein<br><span style="color:#888;font-size:9px">1×0.4×0.8 m</span></button>
-          <button class="tb-btn" style="flex-direction:column;height:52px;font-size:10px" onclick="addDeco('fence_wood')">🪵<br>Holzzaun<br><span style="color:#888;font-size:9px">1×0.08×1.8 m</span></button>
-          <button class="tb-btn" style="flex-direction:column;height:52px;font-size:10px" onclick="addDeco('tile_1x1')">⬜<br>Fliese 1×1m<br><span style="color:#888;font-size:9px">hellgrau</span></button>
-          <button class="tb-btn" style="flex-direction:column;height:52px;font-size:10px" onclick="addDeco('tile_terrace')">🟫<br>Terrassenboden<br><span style="color:#888;font-size:9px">3×3 m</span></button>
-        </div>
+      <div style="font-size:10px;color:var(--text-3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">🧱 Mauern &amp; Boden</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:10px">
+        <button class="deko-btn" onclick="addDeco('wall_brick')"><span class="di">🧱</span><span class="dn">Backstein</span><span class="ds">1×0.2×1 m</span></button>
+        <button class="deko-btn" onclick="addDeco('wall_concrete')"><span class="di">▪</span><span class="dn">Beton</span><span class="ds">1×0.2×1 m</span></button>
+        <button class="deko-btn" onclick="addDeco('wall_stone')"><span class="di">🪨</span><span class="dn">Stein</span><span class="ds">1×0.4×0.8 m</span></button>
+        <button class="deko-btn" onclick="addDeco('fence_wood')"><span class="di">🪵</span><span class="dn">Holzzaun</span><span class="ds">1×0.08×1.8 m</span></button>
+        <button class="deko-btn" onclick="addDeco('tile_1x1')"><span class="di">⬜</span><span class="dn">Fliese 1×1m</span><span class="ds">hellgrau</span></button>
+        <button class="deko-btn" onclick="addDeco('tile_terrace')"><span class="di">🟫</span><span class="dn">Terrassenboden</span><span class="ds">3×3 m</span></button>
       </div>
 
-      <div style="border-top:1px solid #0f3460;margin-top:8px;padding-top:8px">
-        <div style="font-size:10px;color:#888;margin-bottom:4px">Platzierte Dekoration</div>
+      <div style="font-size:10px;color:var(--text-3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">🛋️ Sitzgelegenheiten</div>
+      <div style="font-size:10px;color:var(--text-3);margin-bottom:6px">3D-Modelle — kurz warten</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:10px">
+        <button class="deko-btn" onclick="addDeco('garden_chair')"><span class="di">🪑</span><span class="dn">Gartenstuhl</span><span class="ds">H 0.88 m</span></button>
+        <button class="deko-btn" onclick="addDeco('rocking_chair')"><span class="di">🪑</span><span class="dn">Schaukelstuhl</span><span class="ds">H 0.9 m</span></button>
+        <button class="deko-btn" onclick="addDeco('lounge_sofa')"><span class="di">🛋️</span><span class="dn">Lounge Sofa</span><span class="ds">H 0.79 m</span></button>
+        <button class="deko-btn" onclick="addDeco('park_bench')"><span class="di">🪑</span><span class="dn">Gartenbank</span><span class="ds">H 0.77 m</span></button>
+        <button class="deko-btn" onclick="addDeco('street_seating')"><span class="di">🪑</span><span class="dn">Stadtbank</span><span class="ds">H 0.77 m</span></button>
+        <button class="deko-btn" onclick="addDeco('liegestuhl')"><span class="di">🏖️</span><span class="dn">Liegestuhl</span><span class="ds">H 0.35 m</span></button>
+      </div>
+
+      <div style="font-size:10px;color:var(--text-3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">🍽️ Tische</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:10px">
+        <button class="deko-btn" onclick="addDeco('picnic_table')"><span class="di">🍃</span><span class="dn">Picknicktisch</span><span class="ds">H 0.75 m</span></button>
+        <button class="deko-btn" onclick="addDeco('round_table')"><span class="di">⭕</span><span class="dn">Runder Tisch</span><span class="ds">H 0.75 m</span></button>
+        <button class="deko-btn" onclick="addDeco('patio_set')"><span class="di">☀️</span><span class="dn">Patio-Set</span><span class="ds">Tisch+Stühle</span></button>
+      </div>
+
+      <div style="font-size:10px;color:var(--text-3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">🔥 Garten &amp; Extras</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:10px">
+        <button class="deko-btn" onclick="addDeco('fire_pit')"><span class="di">🔥</span><span class="dn">Feuerstelle</span><span class="ds">H 0.39 m</span></button>
+        <button class="deko-btn" onclick="addDeco('planter')"><span class="di">🌱</span><span class="dn">Pflanzkasten</span><span class="ds">H 0.4 m</span></button>
+        <button class="deko-btn" onclick="addDeco('parasol')"><span class="di">☂️</span><span class="dn">Sonnenschirm</span><span class="ds">H 2.4 m</span></button>
+      </div>
+
+      <div class="panel-section">
+        <div class="panel-title" style="margin-bottom:6px">Platzierte Dekoration</div>
         <div id="deko-list" style="max-height:120px;overflow-y:auto"></div>
-        <button class="tb-btn" style="width:100%;margin-top:4px;color:#e94560;border-color:#e94560" onclick="clearAllDecos()">✕ Alle Deko löschen</button>
+        <button class="tb-btn" style="width:100%;margin-top:6px;color:var(--red);border-color:var(--red-dim)" onclick="clearAllDecos()">✕ Alle Deko löschen</button>
       </div>
     </div>
 
-    <!-- ══ TAB: STÜCKLISTE ══ -->
+    <!-- TAB: STÜCKLISTE -->
     <div id="pane-list" class="tab-pane" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+      <div style="padding:8px;border-bottom:1px solid var(--border);flex-shrink:0">
+        <button class="tb-btn" style="width:100%;justify-content:center" onclick="showSchnittplan()">✂️ Schnittplan-Optimierung</button>
+      </div>
       <div id="parts-scroll" style="flex:1;overflow-y:auto">
         <table id="parts-table">
-          <thead>
-            <tr>
-              <th>Anz.</th>
-              <th>Bezeichnung</th>
-              <th>L×B×H (mm)</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Anz.</th><th>Bezeichnung</th><th>L×B×H (mm)</th></tr></thead>
           <tbody id="parts-body"></tbody>
         </table>
       </div>
@@ -833,7 +1038,7 @@
 
   </div>
 
-  <!-- ── 3D VIEWPORT ── -->
+  <!-- VIEWPORT -->
   <div id="viewport">
     <div id="view-controls">
       <button class="view-btn" title="Oben" onclick="setView('top')">⊤</button>
@@ -843,60 +1048,66 @@
       <button class="view-btn" title="Zoom Reset" onclick="resetCamera()">⊡</button>
     </div>
     <div id="tooltip"></div>
-    <div id="move-hint">Ziehen: XZ-Ebene | Alt+Ziehen: Höhe (Y) | Pfeiltasten: XZ | PgUp/PgDn: Y | Esc: Abbrechen</div>
+    <div id="move-hint">Ziehen: XZ-Ebene · Alt+Ziehen: Höhe (Y) · Pfeiltasten: XZ · PgUp/PgDn: Y · Esc: Abbrechen</div>
     <div id="snap-indicator" class="snap-indicator on">Raster: EIN</div>
-    <div id="measure-hint" style="display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(15,52,96,0.92);border:1px solid #e94560;border-radius:5px;padding:5px 14px;font-size:12px;color:#e0e0e0;pointer-events:none;white-space:nowrap">📏 Maßband aktiv — 1. Punkt anklicken</div>
+    <div id="measure-hint" style="display:none;position:absolute;top:10px;left:50%;transform:translateX(-50%);background:rgba(14,17,23,.92);border:1px solid var(--accent);border-radius:var(--r);padding:5px 14px;font-size:12px;color:var(--text);pointer-events:none;white-space:nowrap;z-index:55">📏 Maßband aktiv — 1. Punkt anklicken</div>
     <div id="measure-label" style="display:none;position:absolute;pointer-events:none;z-index:50"></div>
     <canvas id="measure-canvas" style="position:absolute;inset:0;pointer-events:none;z-index:49"></canvas>
   </div>
 
-  <!-- ── RIGHT PANEL ── -->
+  <!-- RIGHT PANEL -->
   <div id="right-panel">
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-bottom:1px solid #0f3460;flex-shrink:0">
-      <span class="panel-title" style="margin:0">Gruppen</span>
-      <button class="tb-btn" style="font-size:10px;padding:3px 7px" onclick="addGroup()">+ Gruppe</button>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <span style="font-size:10px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:0.6px">Gruppen</span>
+      <button class="tb-btn" style="height:24px;padding:0 8px;font-size:11px" onclick="addGroup()">+ Gruppe</button>
+    </div>
+    <div id="phase-filter-bar">
+      <button class="phase-btn active" onclick="setPhaseFilter(null)" id="phase-btn-all">Alle</button>
     </div>
     <div id="group-list" style="flex:1;overflow-y:auto"></div>
-
-    {% if show_ads %}
-    <div id="ad-sidebar" style="padding:8px;border-top:1px solid #0f3460;margin-top:auto;">
-      <div style="background:#0f3460;border:1px dashed #333;padding:8px;text-align:center;font-size:11px;color:#666;min-height:120px;display:flex;align-items:center;justify-content:center;">
-        <!-- AdSense sidebar ad -->
-        <span>Werbung</span>
-      </div>
-      <a href="/subscribe" style="display:block;margin-top:6px;text-align:center;font-size:11px;color:#4f9cf9;text-decoration:none;">✨ Werbefrei mit Premium</a>
-    </div>
-    {% endif %}
   </div>
 
 </div>
 
-<!-- ═══════════════════════════ STATUS BAR ═══════════════════════════ -->
 <div id="statusbar">
   <span>Objekte: <strong id="st-count">0</strong></span>
   <span>Ausgewählt: <strong id="st-sel">–</strong></span>
   <span>Kamera: <strong id="st-cam">Isometrisch</strong></span>
   <span>Modus: <strong id="st-mode">Auswählen</strong></span>
-  <span style="margin-left:auto;color:#555">Holzbau 3D · Strg+Z = Rückgängig · Entf = Löschen · F = Fokus</span>
+  <span style="margin-left:auto;color:var(--text-2);font-size:10px">Strg+Z Rückgängig · Entf Löschen · F Fokus</span>
 </div>
 
-<!-- ═══════════════════════════ KONTEXTMENÜ ═══════════════════════════ -->
-<div id="ctx-menu" style="display:none;position:fixed;z-index:500;background:#16213e;border:1px solid #e94560;border-radius:6px;min-width:170px;box-shadow:0 4px 20px rgba(0,0,0,0.5)">
-  <div style="padding:6px 10px;font-size:10px;color:#e94560;border-bottom:1px solid #0f3460;font-weight:600">OBJEKT DREHEN</div>
+<div id="ctx-menu" style="display:none;position:fixed;z-index:500">
+  <div style="padding:6px 12px;font-size:10px;color:var(--text-3);border-bottom:1px solid var(--border);font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Objekt drehen</div>
   <div class="ctx-item" onclick="rotateSelected('x',90)">↻ X-Achse +90°</div>
   <div class="ctx-item" onclick="rotateSelected('x',180)">↺ X-Achse 180°</div>
   <div class="ctx-item" onclick="rotateSelected('y',90)">↻ Y-Achse +90°</div>
   <div class="ctx-item" onclick="rotateSelected('y',180)">↺ Y-Achse 180°</div>
   <div class="ctx-item" onclick="rotateSelected('z',90)">↻ Z-Achse +90°</div>
   <div class="ctx-item" onclick="rotateSelected('z',180)">↺ Z-Achse 180°</div>
-  <div style="border-top:1px solid #0f3460;margin-top:2px"></div>
+  <div style="border-top:1px solid var(--border);margin:2px 0"></div>
   <div class="ctx-item" onclick="switchAxis('x')">→ Ausrichtung X</div>
   <div class="ctx-item" onclick="switchAxis('y')">↑ Ausrichtung Y</div>
   <div class="ctx-item" onclick="switchAxis('z')">↗ Ausrichtung Z</div>
-  <div style="border-top:1px solid #0f3460;margin-top:2px"></div>
-  <div class="ctx-item" style="color:#e94560" onclick="deleteSelected();closeCtxMenu()">✕ Löschen</div>
+  <div style="border-top:1px solid var(--border);margin:2px 0"></div>
+  <div class="ctx-item" style="color:var(--red)" onclick="deleteSelected();closeCtxMenu()">✕ Löschen</div>
 </div>
 
+<div id="schnittplan-modal" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.78);overflow:auto">
+  <div class="schnitt-modal-inner">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <span style="font-size:16px;font-weight:700;color:var(--text)">✂️ Schnittplan-Optimierung</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:11px;color:var(--text-2)">Standardlänge:</span>
+        <input type="number" id="schnitt-board-len" value="4000" min="100" step="100" style="width:70px;background:var(--bg-input);border:1px solid var(--border);color:var(--text);border-radius:var(--r-sm);padding:2px 6px;font-size:12px">
+        <span style="font-size:11px;color:var(--text-2)">mm</span>
+        <button class="tb-btn" onclick="showSchnittplan()">↺ Neu berechnen</button>
+        <button class="tb-btn" style="color:var(--red);border-color:var(--red-dim)" onclick="document.getElementById('schnittplan-modal').style.display='none'">✕ Schließen</button>
+      </div>
+    </div>
+    <div id="schnittplan-content"></div>
+  </div>
+</div>
 
 <!-- Three.js + OrbitControls via ES modules -->
 <script type="importmap">
@@ -911,6 +1122,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader }    from 'three/addons/loaders/GLTFLoader.js';
 
 // ══════════════════════════════════════════════
 // SCENE SETUP
@@ -1006,10 +1218,15 @@ Object.entries(WOOD_COLORS).forEach(([k, v]) => {
   WOOD_COLORS_HEX[k] = '#' + v.toString(16).padStart(6, '0');
 });
 
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 let beams = [];       // [{id, name, woodType, L, B, H, axis, x, y, z, rx, ry, rz, group, mesh}]
 let selectedIds = new Set(); // multi-selection
 let selectedDecoId = null;
 let groups = ['Standard']; // group names
+const hiddenGroups = new Set();         // group names currently hidden in 3D view
 let decos = [];
 let decoIdCounter = 1;
 let snapEnabled = true;
@@ -1033,17 +1250,20 @@ const mouse = new THREE.Vector2();
 Object.assign(window, {
   addBeam, deleteSelected, duplicateSelected,
   setMode, toggleSnap, setView, resetCamera,
-  saveProject, loadProject, handleLoadFile, closeModal,
+  saveProject, handleLoadFile,
   exportStückliste, applyEdit, deleteBeam,
   calcFloorPlan, updateFloorOutline, updateRoofOutline, drawFloorPreview,
   newProject, clearAllBeams,
   rotateSelected, switchAxis, closeCtxMenu, showContextMenu,
   showTab, setDims, setAngle,
-  addGroup, renderGroupList, selectGroup, moveBeamToGroup, deleteGroup,
+  addGroup, renderGroupList, selectGroup, moveBeamToGroup, deleteGroup, toggleGroupVisibility,
   addDeco, deleteDeco, clearAllDecos, moveDecoToGroup,
   deleteDecoSelected, applyDecoEdit, updateDecoSelPanel,
   toggleMeasure, clearMeasure,
   printProject,
+  addBeamRow, setPhaseFilter, showSchnittplan,
+  toggleSaw, executeSawCut,
+  toggleTheme,
 });
 
 // ══════════════════════════════════════════════
@@ -1101,6 +1321,24 @@ function createBeamMesh(beam) {
     const lineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 });
     mesh.add(new THREE.LineSegments(edges, lineMat));
     return mesh;
+  }
+
+  // Angled-cut beam (sawnAngle): custom 8-vertex geometry
+  if (beam.shape === 'sawnAngle') {
+    const color2 = WOOD_COLORS[beam.woodType] || 0xc8864c;
+    const mat2 = new THREE.MeshStandardMaterial({ color: color2, roughness: 0.85, metalness: 0.0, side: THREE.DoubleSide, flatShading: true });
+    const geo2 = _buildSawnAngleGeo(beam);
+    const mesh2 = new THREE.Mesh(geo2, mat2);
+    // Corner-based positioning (geometry starts at local origin)
+    mesh2.position.set(beam.x, beam.y, beam.z);
+    const toRad2 = Math.PI / 180;
+    mesh2.rotation.set((beam.rx||0)*toRad2, (beam.ry||0)*toRad2, (beam.rz||0)*toRad2);
+    mesh2.castShadow = true;
+    mesh2.receiveShadow = true;
+    mesh2.userData.beamId = beam.id;
+    const edges2 = new THREE.EdgesGeometry(geo2);
+    mesh2.add(new THREE.LineSegments(edges2, new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 })));
+    return mesh2;
   }
 
   // Standard rectangular beam
@@ -1253,14 +1491,14 @@ function drawFloorPreview(s1, s2, s3, s4) {
     `<text x="${midAB[0]}" y="${midAB[1]}" fill="#aaa" font-size="10" text-anchor="middle">S1=${Math.round(g.s1)}</text>`,
     `<text x="${midAD[0]}" y="${midAD[1]}" fill="#4caf50" font-size="10" text-anchor="end" dominant-baseline="middle">S2=${Math.round(g.s2)}</text>`,
     `<text x="${midBC[0]}" y="${midBC[1]}" fill="#ff9800" font-size="10" dominant-baseline="middle">S3=${Math.round(g.s3)}</text>`,
-    `<text x="${midDC[0]}" y="${midDC[1]}" fill="#e94560" font-size="10" text-anchor="middle">S4=${Math.round(g.s4)} ✱</text>`,
-    `<text x="${svgW-4}" y="${padT+2}" fill="#555" font-size="9" text-anchor="end">▲N</text>`,
+    `<text x="${midDC[0]}" y="${midDC[1]}" fill="#4e8cdd" font-size="10" text-anchor="middle">S4=${Math.round(g.s4)} ✱</text>`,
+    `<text x="${svgW-4}" y="${padT+2}" fill="#44536a" font-size="9" text-anchor="end">▲N</text>`,
   ];
 
   svg.setAttribute('viewBox', `0 0 ${svgW} ${svgH}`);
   svg.setAttribute('height', svgH);
   svg.innerHTML = `
-    <polygon points="${poly}" fill="rgba(68,136,204,0.18)" stroke="#e94560" stroke-width="2"/>
+    <polygon points="${poly}" fill="rgba(78,140,221,0.15)" stroke="#4e8cdd" stroke-width="2"/>
     ${raA}${raB}
     ${labels.join('\n    ')}
   `;
@@ -1361,9 +1599,12 @@ function addBeam() {
   const rz = parseFloat(document.getElementById('rot-z').value) || 0;
   if (!name) name = `${woodType} ${L}×${B}×${H}`;
   const group = document.getElementById('beam-group-sel')?.value || 'Standard';
-  const beam = { id: idCounter++, name, woodType, shape: 'rect', L, B, H, axis, rx, ry, rz, group, x: 0, y: 0, z: 0, mesh: null };
+  const phase = document.getElementById('beam-phase')?.value || null;
+  const beam = { id: idCounter++, name, woodType, shape: 'rect', L, B, H, axis, rx, ry, rz, group, phase: phase || null, x: 0, y: 0, z: 0, mesh: null };
   pushHistory();
   beam.mesh = createBeamMesh(beam);
+  if (hiddenGroups.has(beam.group)) beam.mesh.visible = false;
+  applyPhaseVisibility(beam);
   scene.add(beam.mesh);
   beams.push(beam);
   selectBeam(beam.id);
@@ -1474,7 +1715,7 @@ function updateSelPanel() {
   const editDiv = document.getElementById('sel-edit');
   const selectedId = [...selectedIds][0] ?? null;
   if (!selectedId) {
-    info.innerHTML = '<span style="color:#555">Kein Objekt ausgewählt</span>';
+    info.innerHTML = '<span style="color:var(--text-3)">Kein Objekt ausgewählt</span>';
     editDiv.style.display = 'none';
     document.getElementById('st-sel').textContent = '–';
     return;
@@ -1498,6 +1739,8 @@ function updateSelPanel() {
   document.getElementById('edit-rx').value = b.rx || 0;
   document.getElementById('edit-ry').value = b.ry || 0;
   document.getElementById('edit-rz').value = b.rz || 0;
+  const editPhase = document.getElementById('edit-phase');
+  if (editPhase) editPhase.value = b.phase || '';
 }
 
 function updateDecoSelPanel() {
@@ -1605,7 +1848,11 @@ function applyEdit() {
   b.rx = parseFloat(document.getElementById('edit-rx').value) || 0;
   b.ry = parseFloat(document.getElementById('edit-ry').value) || 0;
   b.rz = parseFloat(document.getElementById('edit-rz').value) || 0;
+  const editPhaseEl = document.getElementById('edit-phase');
+  if (editPhaseEl) b.phase = editPhaseEl.value || null;
   rebuildMesh(b);
+  applyPhaseVisibility(b);
+  renderPhaseFilterBar();
   updateUI();
 }
 
@@ -1622,17 +1869,17 @@ function rebuildMesh(beam) {
 
 function updatePartsTable() {
   // Group by name + dimensions + woodType
-  const groups = {};
+  const grouped = {};
   beams.forEach(b => {
     const key = `${b.woodType}||${b.name}||${b.L}×${b.B}×${b.H}`;
-    if (!groups[key]) groups[key] = { name: b.name, woodType: b.woodType, L: b.L, B: b.B, H: b.H, ids: [] };
-    groups[key].ids.push(b.id);
+    if (!grouped[key]) grouped[key] = { name: b.name, woodType: b.woodType, L: b.L, B: b.B, H: b.H, ids: [] };
+    grouped[key].ids.push(b.id);
   });
 
   const tbody = document.getElementById('parts-body');
   tbody.innerHTML = '';
   let total = 0;
-  Object.values(groups).sort((a, b) => a.name.localeCompare(b.name)).forEach(g => {
+  Object.values(grouped).sort((a, b) => a.name.localeCompare(b.name)).forEach(g => {
     const tr = document.createElement('tr');
     const dotColor = WOOD_COLORS_HEX[g.woodType] || '#888';
     const isSelected = g.ids.some(id => selectedIds.has(id));
@@ -1646,7 +1893,7 @@ function updatePartsTable() {
     tbody.appendChild(tr);
     total += g.ids.length;
   });
-  document.getElementById('parts-total').innerHTML = `Gesamt: <strong>${total}</strong> Teile | ${Object.keys(groups).length} Positionen`;
+  document.getElementById('parts-total').innerHTML = `Gesamt: <strong>${total}</strong> Teile | ${Object.keys(grouped).length} Positionen`;
   document.getElementById('st-count').textContent = beams.length;
 }
 
@@ -1658,7 +1905,7 @@ function updateUI() {
   updatePartsTable();
   updateObjList();
   updateSelPanel();
-  renderGroupList();
+  renderPhaseFilterBar();
 }
 
 // ══════════════════════════════════════════════
@@ -1700,14 +1947,16 @@ function renderGroupList() {
     const groupBeams = beams.filter(b => b.group === groupName);
     const groupDecos = decos.filter(d => d.group === groupName);
     const totalCount = groupBeams.length + groupDecos.length;
+    const isHidden = hiddenGroups.has(groupName);
     const section = document.createElement('div');
-    section.className = 'group-section';
+    section.className = 'group-section' + (isHidden ? ' group-hidden' : '');
 
     const header = document.createElement('div');
     header.className = 'group-header';
     header.innerHTML = `
       <span class="group-name" title="${groupName}">${groupName}</span>
       <span class="group-count">${totalCount}</span>
+      <span class="group-vis${isHidden ? ' vis-off' : ''}" title="${isHidden ? 'Einblenden' : 'Ausblenden'}" onclick="event.stopPropagation();toggleGroupVisibility('${groupName}')">👁</span>
       ${groupName !== 'Standard' ? `<span class="group-del" title="Gruppe löschen" onclick="event.stopPropagation();deleteGroup('${groupName}')">✕</span>` : ''}
     `;
     header.ondblclick = (e) => {
@@ -1715,7 +1964,7 @@ function renderGroupList() {
       const nameSpan = header.querySelector('.group-name');
       const input = document.createElement('input');
       input.value = groupName;
-      input.style.cssText = 'flex:1;background:#0f3460;border:1px solid #e94560;color:#e0e0e0;padding:2px 4px;border-radius:3px;font-size:11px;';
+      input.style.cssText = 'flex:1;background:var(--bg-input);border:1px solid var(--accent);color:var(--text);padding:2px 4px;border-radius:var(--r-sm);font-size:11px;font-family:var(--font);outline:none;';
       input.onclick = e2 => e2.stopPropagation();
       nameSpan.replaceWith(input);
       input.focus();
@@ -1779,7 +2028,7 @@ function renderGroupList() {
       const item = document.createElement('div');
       item.className = 'group-beam-item';
       item.style.cssText += 'opacity:0.85';
-      item.innerHTML = `<span class="color-dot" style="background:#4caf50"></span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.label}</span><span style="cursor:pointer;color:#e94560;padding:0 2px;font-size:10px" onclick="event.stopPropagation();deleteDeco(${d.id})" title="Löschen">✕</span>`;
+      item.innerHTML = `<span class="color-dot" style="background:var(--green)"></span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.label}</span><span style="cursor:pointer;color:var(--red);padding:0 2px;font-size:10px" onclick="event.stopPropagation();deleteDeco(${d.id})" title="Löschen">✕</span>`;
       item.draggable = true;
       item.ondragstart = (e) => {
         e.dataTransfer.setData('text/plain', 'deco:' + d.id);
@@ -1806,8 +2055,10 @@ function deleteGroup(groupName) {
 
 function moveBeamToGroup(beamId, groupName) {
   const b = beams.find(x => x.id === beamId);
-  if (!b) return;
+  if (!b || b.group === groupName) return;
+  pushHistory();
   b.group = groupName;
+  if (b.mesh) b.mesh.visible = !hiddenGroups.has(groupName);
   renderGroupList();
 }
 
@@ -1951,6 +2202,8 @@ function resetCamera() {
 // ══════════════════════════════════════════════
 
 // ── Pointer state ──
+let _tooltipThrottle = 0;
+let _lastMouseX = -1, _lastMouseY = -1;
 let isDragging = false;       // dragging a beam
 let isOrbiting = false;       // camera orbit with middle mouse
 let dragBeam = null;
@@ -2027,6 +2280,14 @@ function getGroundPoint(clientX, clientY) {
 function onPointerDown(e) {
   if (e.button === 2) e.preventDefault(); // prevent browser context menu for right click only
 
+  // Säge tool: left click → cut beam at hover position
+  if (sawActive && e.button === 0) {
+    if (_sawHoverBeamId !== null) {
+      executeSawCut();
+    }
+    return; // always consume click when saw is active
+  }
+
   // Measure tool: drag to measure (mousedown = first point, mouseup = second point)
   if (measureActive && e.button === 0) {
     const pt = pickMeasurePoint(e.clientX, e.clientY);
@@ -2057,16 +2318,6 @@ function onPointerDown(e) {
 
   // Left mouse button
   if (e.button !== 0) return;
-
-  // DEBUG
-  { const rect=renderer.domElement.getBoundingClientRect();
-    const nx=((e.clientX-rect.left)/rect.width)*2-1;
-    const ny=-((e.clientY-rect.top)/rect.height)*2+1;
-    const allM=[...beams.map(b=>b.mesh),...decos.map(d=>d.mesh)].filter(Boolean);
-    const d=document.getElementById('_dbg');
-    const hits2=getIntersects(e.clientX,e.clientY);
-    if(d) d.textContent=`rect:${Math.round(rect.left)},${Math.round(rect.top)} ${Math.round(rect.width)}x${Math.round(rect.height)} | norm:${nx.toFixed(2)},${ny.toFixed(2)} | meshes:${allM.length} | hits:${hits2.length}`;
-  }
 
   const hits = getIntersects(e.clientX, e.clientY);
   if (hits.length > 0) {
@@ -2140,6 +2391,15 @@ function onPointerDown(e) {
 }
 
 function onPointerMove(e) {
+  _lastMouseX = e.clientX;
+  _lastMouseY = e.clientY;
+
+  // Säge: update hover indicator (only when not dragging)
+  if (sawActive && !isDragging && !isDraggingDeco) {
+    updateSawIndicator(e);
+    return; // skip regular drag/tooltip logic while saw is active
+  }
+
   // Measure tool: live preview while dragging
   if (measureActive && measureDragging && measurePts.length === 1) {
     const pt = pickMeasurePoint(e.clientX, e.clientY);
@@ -2213,7 +2473,10 @@ function onPointerMove(e) {
     return;
   }
 
-  // Hover tooltip — only when mouse is inside viewport
+  // Hover tooltip — throttled to ~20fps, only when mouse is inside viewport
+  const _now = performance.now();
+  if (_now - _tooltipThrottle < 50) return;
+  _tooltipThrottle = _now;
   const vpRect = viewport.getBoundingClientRect();
   const inVP = e.clientX >= vpRect.left && e.clientX <= vpRect.right && e.clientY >= vpRect.top && e.clientY <= vpRect.bottom;
   const tooltip = document.getElementById('tooltip');
@@ -2318,16 +2581,15 @@ function rotateSelected(axis, deg) {
   const b = beams.find(x => x.id === selectedId);
   if (!b) return;
   pushHistory();
-  const rad = deg * Math.PI / 180;
-  b.mesh.rotation[axis] += rad;
-  // Sync axis change based on 90° rotation
-  if (deg === 90 || deg === -90) {
-    const map = { x: ['y','z','x'], y: ['z','x','y'], z: ['x','y','z'] };
-    // swap L/B/H when rotating 90°
+  if (axis === 'x') b.rx = ((b.rx || 0) + deg + 360) % 360;
+  if (axis === 'y') b.ry = ((b.ry || 0) + deg + 360) % 360;
+  if (axis === 'z') b.rz = ((b.rz || 0) + deg + 360) % 360;
+  if (Math.abs(deg) === 90) {
     if (axis === 'z') { const tmp = b.L; b.L = b.H; b.H = tmp; }
     if (axis === 'x') { const tmp = b.H; b.H = b.B; b.B = tmp; }
     if (axis === 'y') { const tmp = b.L; b.L = b.B; b.B = tmp; }
   }
+  rebuildMesh(b);
   updateUI();
 }
 
@@ -2355,24 +2617,20 @@ function getBeamHalfD(b) { return (b.axis === 'z' ? b.L : b.B) / 2; }
 const wasd = { w:false, a:false, s:false, d:false, q:false, e:false };
 const WASD_KEYS = new Set(['w','a','s','d','q','e']);
 
-// Track whether mouse is over the 3D viewport
-let mouseInViewport = false;
-viewport.addEventListener('mouseenter', () => { mouseInViewport = true; });
+// Release WASD keys when mouse leaves viewport
 viewport.addEventListener('mouseleave', () => {
-  mouseInViewport = false;
-  // Release all WASD keys when mouse leaves
   Object.keys(wasd).forEach(k => wasd[k] = false);
 });
 
 document.addEventListener('keydown', e => {
   const key = e.key.toLowerCase();
 
-  // WASD: only active when mouse is in viewport AND no input is focused
+  // WASD: active whenever no text input is focused
   const tag = document.activeElement.tagName;
   const inputFocused = tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA';
 
   if (WASD_KEYS.has(key) && !e.ctrlKey && !e.metaKey) {
-    if (mouseInViewport && !inputFocused) {
+    if (!inputFocused) {
       wasd[key] = true;
       e.preventDefault();
     }
@@ -2448,7 +2706,10 @@ function applyWASD() {
 // ══════════════════════════════════════════════
 
 function pushHistory() {
-  const snap = beams.map(b => ({ ...b, mesh: null }));
+  const snap = {
+    beams: beams.map(b => ({ ...b, mesh: null })),
+    decos: decos.map(d => ({ ...d, mesh: null })),
+  };
   history.push(JSON.stringify(snap));
   if (history.length > 50) history.shift();
 }
@@ -2458,15 +2719,35 @@ function undo() {
   const snap = JSON.parse(history.pop());
 
   clearAllBeams();
+  clearAllDecos();
 
-  snap.forEach(s => {
+  // Support both new {beams, decos} format and legacy array format
+  const snapBeams = Array.isArray(snap) ? snap : (snap.beams || []);
+  snapBeams.forEach(s => {
     const beam = { ...s, mesh: null };
     beam.mesh = createBeamMesh(beam);
     scene.add(beam.mesh);
     beams.push(beam);
   });
-  // Restore idCounter
   idCounter = beams.length > 0 ? Math.max(...beams.map(b => b.id)) + 1 : 1;
+
+  (snap.decos || []).forEach(s => {
+    const def = DEKO_DEFS[s.type];
+    if (!def) return;
+    const deco = { ry: 0, group: 'Standard', params: {}, ...s, mesh: null };
+    deco.mesh = def.build(deco.params);
+    if (def.defaultParams && def.defaultParams.scale !== undefined) {
+      deco.mesh.scale.setScalar((deco.params.scale || 100) / 100);
+    }
+    deco.mesh.userData.isDecoId = deco.id;
+    deco.mesh.position.set(deco.x, deco.y, deco.z);
+    deco.mesh.rotation.y = (deco.ry || 0) * Math.PI / 180;
+    scene.add(deco.mesh);
+    decos.push(deco);
+  });
+  if (decos.length > 0) decoIdCounter = Math.max(...decos.map(d => d.id)) + 1;
+
+  renderDekoList();
   updateUI();
 }
 
@@ -2476,7 +2757,11 @@ function undo() {
 
 function newProject() {
   clearAllBeams();
+  clearAllDecos();
+  hiddenGroups.clear();
+  activePhaseFilter = null;
   idCounter = 1;
+  decoIdCounter = 1;
   history = [];
   updateUI();
 }
@@ -2500,12 +2785,19 @@ function saveProject() {
   const data = {
     version: 3,
     groups: groups,
+    hiddenGroups: [...hiddenGroups],
     beams: beams.map(b => ({
       id: b.id, name: b.name, woodType: b.woodType,
       L: b.L, B: b.B, H: b.H, axis: b.axis,
       x: b.x, y: b.y, z: b.z,
       rx: b.rx||0, ry: b.ry||0, rz: b.rz||0,
-      group: b.group || 'Standard'
+      group: b.group || 'Standard',
+      phase: b.phase || null,
+      shape: b.shape || 'rect',
+      ...(b.shape === 'sawnAngle' ? {
+        _sawFL: b._sawFL, _sawBL: b._sawBL,
+        _sawFR: b._sawFR, _sawBR: b._sawBR
+      } : {})
     })),
     decos: decos.map(d => ({
       id: d.id, type: d.type, label: d.label,
@@ -2541,9 +2833,13 @@ function handleLoadFile(input) {
         data.groups.forEach(g => { if (!groups.includes(g)) groups.push(g); });
         if (!groups.includes('Standard')) groups.unshift('Standard');
       }
+      hiddenGroups.clear();
+      if (Array.isArray(data.hiddenGroups)) data.hiddenGroups.forEach(g => hiddenGroups.add(g));
+      activePhaseFilter = null;
       (data.beams || []).forEach(s => {
-        const beam = { rx:0, ry:0, rz:0, group:'Standard', ...s, mesh: null };
+        const beam = { rx:0, ry:0, rz:0, group:'Standard', phase: null, ...s, mesh: null };
         beam.mesh = createBeamMesh(beam);
+        if (hiddenGroups.has(beam.group)) beam.mesh.visible = false;
         scene.add(beam.mesh);
         beams.push(beam);
       });
@@ -2560,6 +2856,7 @@ function handleLoadFile(input) {
         deco.mesh.userData.isDecoId = deco.id;
         deco.mesh.position.set(deco.x, deco.y, deco.z);
         deco.mesh.rotation.y = (deco.ry || 0) * Math.PI / 180;
+        if (hiddenGroups.has(deco.group)) deco.mesh.visible = false;
         scene.add(deco.mesh);
         decos.push(deco);
       });
@@ -2574,85 +2871,22 @@ function handleLoadFile(input) {
   reader.readAsText(file);
 }
 
-function loadProject() {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.json,application/json';
-  input.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
-  document.body.appendChild(input);
-  input.addEventListener('change', e => {
-    const file = e.target.files[0];
-    document.body.removeChild(input);
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      try {
-        const data = JSON.parse(ev.target.result);
-        pushHistory();
-        clearAllBeams();
-        clearAllDecos();
-        // Restore groups
-        if (Array.isArray(data.groups)) {
-          groups.length = 0;
-          data.groups.forEach(g => { if (!groups.includes(g)) groups.push(g); });
-          if (!groups.includes('Standard')) groups.unshift('Standard');
-        }
-        // Restore beams
-        (data.beams || []).forEach(s => {
-          const beam = { rx:0, ry:0, rz:0, group:'Standard', ...s, mesh: null };
-          beam.mesh = createBeamMesh(beam);
-          scene.add(beam.mesh);
-          beams.push(beam);
-        });
-        if (data.beams && data.beams.length) idCounter = Math.max(...data.beams.map(b=>b.id)) + 1;
-        // Restore decos
-        (data.decos || []).forEach(s => {
-          const def = DEKO_DEFS[s.type];
-          if (!def) return;
-          const deco = { ry:0, group:'Standard', params:{}, ...s, mesh: null };
-          deco.mesh = def.build(deco.params);
-          if (def.defaultParams && def.defaultParams.scale !== undefined) {
-            const sc = (deco.params.scale || 100) / 100;
-            deco.mesh.scale.setScalar(sc);
-          }
-          deco.mesh.userData.isDecoId = deco.id;
-          deco.mesh.position.set(deco.x, deco.y, deco.z);
-          deco.mesh.rotation.y = (deco.ry || 0) * Math.PI / 180;
-          scene.add(deco.mesh);
-          decos.push(deco);
-        });
-        if (data.decos && data.decos.length) decoIdCounter = Math.max(...data.decos.map(d=>d.id)) + 1;
-        renderDekoList();
-        resetCamera();
-        updateUI();
-        alert(`✓ Projekt geladen: ${beams.length} Balken, ${decos.length} Deko-Objekte`);
-      } catch(err) {
-        alert('Fehler beim Laden: ' + err.message);
-      }
-    };
-    reader.readAsText(file);
-  });
-  // Trigger file dialog — must happen synchronously in click handler
-  input.click();
-}
-
-function closeModal() {}
 
 // ══════════════════════════════════════════════
 // EXPORT STÜCKLISTE
 // ══════════════════════════════════════════════
 
 function exportStückliste() {
-  const groups = {};
+  const grouped = {};
   beams.forEach(b => {
     const key = `${b.woodType}||${b.name}||${b.L}×${b.B}×${b.H}`;
-    if (!groups[key]) groups[key] = { name: b.name, woodType: b.woodType, L: b.L, B: b.B, H: b.H, count: 0 };
-    groups[key].count++;
+    if (!grouped[key]) grouped[key] = { name: b.name, woodType: b.woodType, L: b.L, B: b.B, H: b.H, count: 0 };
+    grouped[key].count++;
   });
 
   let csv = 'Pos;Anzahl;Bezeichnung;Holzart;Länge (mm);Breite (mm);Höhe (mm);Volumen (dm³)\n';
   let pos = 1;
-  Object.values(groups).sort((a, b) => a.name.localeCompare(b.name)).forEach(g => {
+  Object.values(grouped).sort((a, b) => a.name.localeCompare(b.name)).forEach(g => {
     const vol = ((g.L * g.B * g.H) / 1e6).toFixed(3);
     csv += `${pos++};${g.count};${g.name};${g.woodType};${g.L};${g.B};${g.H};${vol}\n`;
   });
@@ -2689,32 +2923,592 @@ function animate() {
 animate();
 
 // ══════════════════════════════════════════════
-// SAMPLE PROJECT
+// SÄGE TOOL
 // ══════════════════════════════════════════════
 
-function loadSample() {
-  // Simple wooden frame: 4 posts + 2 beams
-  const sample = [
-    { id:1, name:'Stiel', woodType:'Fichte', L:100, B:100, H:3000, axis:'y', x:0,    y:0, z:0 },
-    { id:2, name:'Stiel', woodType:'Fichte', L:100, B:100, H:3000, axis:'y', x:3000, y:0, z:0 },
-    { id:3, name:'Stiel', woodType:'Fichte', L:100, B:100, H:3000, axis:'y', x:0,    y:0, z:4000 },
-    { id:4, name:'Stiel', woodType:'Fichte', L:100, B:100, H:3000, axis:'y', x:3000, y:0, z:4000 },
-    { id:5, name:'Rähm',  woodType:'Fichte', L:3000, B:100, H:120, axis:'x', x:0,   y:2880, z:0 },
-    { id:6, name:'Rähm',  woodType:'Fichte', L:3000, B:100, H:120, axis:'x', x:0,   y:2880, z:4000 },
-    { id:7, name:'Pfette', woodType:'Lärche', L:4200, B:120, H:200, axis:'z', x:1400, y:2880, z:0 },
-    { id:8, name:'Schwelle', woodType:'Eiche', L:3200, B:120, H:120, axis:'x', x:-100, y:0, z:0 },
-    { id:9, name:'Schwelle', woodType:'Eiche', L:3200, B:120, H:120, axis:'x', x:-100, y:0, z:4000 },
-  ];
-  clearAllBeams();
-  sample.forEach(s => {
-    const beam = { ...s, mesh: null };
+let sawActive = false;
+let _sawHoverBeamId = null;
+let _sawCutT = 0.5;  // normalized 0..1 along beam axis
+
+// ── Indicator Plane ──────────────────────────
+const _sawIndMat = new THREE.MeshBasicMaterial({
+  color: 0xff6600, transparent: true, opacity: 0.55,
+  side: THREE.DoubleSide, depthTest: false
+});
+const _sawIndicator = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), _sawIndMat);
+_sawIndicator.visible = false;
+_sawIndicator.renderOrder = 999;
+scene.add(_sawIndicator);
+
+// Thin orange border around the indicator
+const _sawBorderMat = new THREE.LineBasicMaterial({ color: 0xff4400, linewidth: 2, depthTest: false });
+const _sawBorder = new THREE.LineLoop(
+  new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(-0.5,-0.5,0), new THREE.Vector3(0.5,-0.5,0),
+    new THREE.Vector3(0.5,0.5,0),   new THREE.Vector3(-0.5,0.5,0)
+  ]),
+  _sawBorderMat
+);
+_sawBorder.renderOrder = 1000;
+_sawBorder.visible = false;
+scene.add(_sawBorder);
+
+// ── Geometry builder ─────────────────────────
+function _buildSawnAngleGeo(beam) {
+  // Always builds in world-coords starting from (0,0,0) corner.
+  // For axis='x': length→X, height→Y, depth/width→Z
+  const { axis, B, H, _sawFL:fl, _sawBL:bl, _sawFR:fr, _sawBR:br } = beam;
+  // fl/bl/fr/br = left-front, left-back, right-front, right-back lengths along axis
+
+  let verts;
+  if (axis === 'x' || axis === undefined) {
+    verts = [fl,0,0, fl,H,0, bl,0,B, bl,H,B,  fr,0,0, fr,H,0, br,0,B, br,H,B];
+  } else if (axis === 'y') {
+    // length along Y; width B → X; depth H → Z
+    verts = [0,fl,0, B,fl,0, 0,bl,H, B,bl,H,  0,fr,0, B,fr,0, 0,br,H, B,br,H];
+  } else { // z
+    // length along Z; width B → X; height H → Y
+    verts = [0,0,fl, B,0,fl, 0,H,bl, B,H,bl,  0,0,fr, B,0,fr, 0,H,br, B,H,br];
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
+  geo.setIndex([
+    // left end face  — reversed winding so normal points outward (-X for x-beams, -Z for z-beams)
+    0,2,3, 0,3,1,
+    // right/cut end face — reversed winding so normal points outward (+X / +Z)
+    4,5,7, 4,7,6,
+    // bottom
+    0,4,6, 0,6,2,
+    // top
+    1,3,7, 1,7,5,
+    // front (long side, z=0 for x-beams / y=0 for z-beams)
+    0,1,5, 0,5,4,
+    // back (long side, z=B for x-beams / y=H for z-beams)
+    2,6,7, 2,7,3,
+  ]);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function toggleSaw() {
+  sawActive = !sawActive;
+  document.getElementById('btn-saw').classList.toggle('active', sawActive);
+  document.getElementById('saw-panel').style.display = sawActive ? 'flex' : 'none';
+  if (!sawActive) {
+    _sawIndicator.visible = false;
+    _sawBorder.visible = false;
+    _sawHoverBeamId = null;
+    viewport.style.cursor = '';
+  } else {
+    if (measureActive) toggleMeasure();    // deactivate measure if active
+    viewport.style.cursor = 'crosshair';
+  }
+}
+
+function _getSawAngle() {
+  return parseFloat(document.getElementById('saw-angle')?.value) || 0;
+}
+
+function updateSawIndicator(e) {
+  const vpRect = viewport.getBoundingClientRect();
+  const inVP = e.clientX >= vpRect.left && e.clientX <= vpRect.right &&
+               e.clientY >= vpRect.top  && e.clientY <= vpRect.bottom;
+
+  if (!inVP) {
+    _sawIndicator.visible = false;
+    _sawBorder.visible = false;
+    _sawHoverBeamId = null;
+    document.getElementById('tooltip').style.display = 'none';
+    return;
+  }
+
+  const hits = getIntersects(e.clientX, e.clientY);
+  // Find first hit on a beam mesh
+  let beamHit = null;
+  let hit3D = null;
+  for (const hit of hits) {
+    let obj = hit.object;
+    while (obj && !obj.userData.beamId) obj = obj.parent;
+    if (obj && obj.userData.beamId) {
+      beamHit = beams.find(b => b.id === obj.userData.beamId);
+      hit3D = hit.point;
+      break;
+    }
+  }
+
+  if (!beamHit) {
+    _sawIndicator.visible = false;
+    _sawBorder.visible = false;
+    _sawHoverBeamId = null;
+    document.getElementById('tooltip').style.display = 'none';
+    return;
+  }
+
+  // Convert intersection to beam-local space
+  const localPt = beamHit.mesh.worldToLocal(hit3D.clone());
+  const L = beamHit.L;
+
+  // T = normalized position along beam axis (0=start, 1=end)
+  let rawT;
+  // In local space, BoxGeometry is CENTERED (±L/2 etc.)
+  if (beamHit.shape === 'sawnAngle') {
+    // Corner-based geometry: local goes from 0 to L (approx)
+    if (beamHit.axis === 'x') rawT = localPt.x / L;
+    else if (beamHit.axis === 'y') rawT = localPt.y / L;
+    else rawT = localPt.z / L;
+  } else {
+    // BoxGeometry centered: local -L/2 to +L/2
+    if (beamHit.axis === 'x') rawT = (localPt.x + L / 2) / L;
+    else if (beamHit.axis === 'y') rawT = (localPt.y + L / 2) / L;
+    else rawT = (localPt.z + L / 2) / L;
+  }
+
+  // Snap cut position to grid
+  const snapSz = parseFloat(document.getElementById('snap-size')?.value) || 10;
+  let cutMM = Math.round(rawT * L);
+  if (snapEnabled && snapSz > 0) cutMM = Math.round(cutMM / snapSz) * snapSz;
+  cutMM = Math.max(10, Math.min(L - 10, cutMM));
+  const t = cutMM / L;
+
+  _sawHoverBeamId = beamHit.id;
+  _sawCutT = t;
+
+  // Position: convert cut local point to world
+  let cutLocal;
+  if (beamHit.shape === 'sawnAngle') {
+    if (beamHit.axis === 'x') cutLocal = new THREE.Vector3(cutMM, beamHit.H / 2, beamHit.B / 2);
+    else if (beamHit.axis === 'y') cutLocal = new THREE.Vector3(beamHit.B / 2, cutMM, beamHit.H / 2);
+    else cutLocal = new THREE.Vector3(beamHit.B / 2, beamHit.H / 2, cutMM);
+  } else {
+    if (beamHit.axis === 'x') cutLocal = new THREE.Vector3(cutMM - L / 2, 0, 0);
+    else if (beamHit.axis === 'y') cutLocal = new THREE.Vector3(0, cutMM - L / 2, 0);
+    else cutLocal = new THREE.Vector3(0, 0, cutMM - L / 2);
+  }
+  const cutWorld = beamHit.mesh.localToWorld(cutLocal);
+
+  // Indicator size (beam cross-section + 20%)
+  const cross = Math.max(beamHit.B, beamHit.H) * 1.4;
+  _sawIndicator.scale.set(cross, cross, 1);
+  _sawIndicator.position.copy(cutWorld);
+  _sawBorder.scale.set(cross, cross, 1);
+  _sawBorder.position.copy(cutWorld);
+
+  // Orient perpendicular to beam length axis
+  let axisLocal;
+  if (beamHit.axis === 'x') axisLocal = new THREE.Vector3(1, 0, 0);
+  else if (beamHit.axis === 'y') axisLocal = new THREE.Vector3(0, 1, 0);
+  else axisLocal = new THREE.Vector3(0, 0, 1);
+  const axisWorld = axisLocal.clone().transformDirection(beamHit.mesh.matrixWorld).normalize();
+  const defaultNormal = new THREE.Vector3(0, 0, 1);
+  _sawIndicator.quaternion.setFromUnitVectors(defaultNormal, axisWorld);
+  _sawBorder.quaternion.copy(_sawIndicator.quaternion);
+
+  // Apply saw angle tilt
+  const sawAngleDeg = _getSawAngle();
+  if (sawAngleDeg !== 0) {
+    // Tilt the cut plane around the beam's height axis
+    let heightAxisLocal;
+    if (beamHit.axis === 'x') heightAxisLocal = new THREE.Vector3(0, 1, 0);
+    else if (beamHit.axis === 'y') heightAxisLocal = new THREE.Vector3(1, 0, 0);
+    else heightAxisLocal = new THREE.Vector3(0, 1, 0);
+    const heightAxisWorld = heightAxisLocal.clone().transformDirection(beamHit.mesh.matrixWorld).normalize();
+    const tiltQ = new THREE.Quaternion().setFromAxisAngle(heightAxisWorld, sawAngleDeg * Math.PI / 180);
+    _sawIndicator.quaternion.premultiply(tiltQ);
+    _sawBorder.quaternion.copy(_sawIndicator.quaternion);
+  }
+
+  _sawIndicator.visible = true;
+  _sawBorder.visible = true;
+
+  // Tooltip
+  const sawAngleStr = sawAngleDeg !== 0 ? ` | ${sawAngleDeg > 0 ? '+' : ''}${sawAngleDeg}°` : '';
+  const tooltip = document.getElementById('tooltip');
+  tooltip.style.display = 'block';
+  tooltip.style.left = (e.clientX - vpRect.left + 14) + 'px';
+  tooltip.style.top  = (e.clientY - vpRect.top  + 8 ) + 'px';
+  tooltip.textContent = `🪚 ${beamHit.name} | Schnitt bei ${cutMM} mm${sawAngleStr} | Rest: ${L - cutMM} mm`;
+}
+
+function executeSawCut() {
+  if (_sawHoverBeamId === null) return;
+  const beam = beams.find(b => b.id === _sawHoverBeamId);
+  if (!beam) return;
+
+  const L = beam.L;
+  const cutMM = Math.round(_sawCutT * L);
+  if (cutMM <= 0 || cutMM >= L) return;
+
+  const sawAngleDeg = _getSawAngle();
+  const aRad = sawAngleDeg * Math.PI / 180;
+  const depthDim = beam.B; // The "depth" of the cross-section (along Z for X-axis beams)
+  const offset = depthDim * Math.tan(aRad); // length difference front vs back
+
+  pushHistory();
+
+  // ── Build piece data ──────────────────────────────
+  const isAngled = (sawAngleDeg !== 0) && (beam.axis === 'x' || beam.axis === 'z');
+  // (Y-axis angled cuts fall back to perpendicular for simplicity)
+
+  if (!isAngled) {
+    // ── Perpendicular cut: 2 standard rect beams ──
+    const b1 = { ...beam, id: idCounter++, name: beam.name + ' (1)', L: cutMM, mesh: null, shape: 'rect' };
+    const b2 = { ...beam, id: idCounter++, name: beam.name + ' (2)', L: L - cutMM, mesh: null, shape: 'rect' };
+    if (beam.axis === 'x') b2.x = beam.x + cutMM;
+    else if (beam.axis === 'y') b2.y = beam.y + cutMM;
+    else b2.z = beam.z + cutMM;
+
+    [b1, b2].forEach(nb => {
+      nb.mesh = createBeamMesh(nb);
+      if (hiddenGroups.has(nb.group)) nb.mesh.visible = false;
+      applyPhaseVisibility(nb);
+      scene.add(nb.mesh);
+      beams.push(nb);
+    });
+
+  } else if (beam.axis === 'x') {
+    // ── Angled cut along X-axis ──
+    // Piece 1: left end flat (x=0), right end angled
+    const b1 = {
+      ...beam, id: idCounter++, name: beam.name + ' (1)', shape: 'sawnAngle',
+      L: cutMM, mesh: null,
+      _sawFL: 0, _sawBL: 0,        // left end: flat at x=0
+      _sawFR: cutMM,                // right end front (z=0): at x=cutMM
+      _sawBR: cutMM + offset        // right end back  (z=B): shifted by offset
+    };
+    // Piece 2: left end angled (starts at varying x), right end flat
+    // beam2.x = beam.x + cutMM (starts at front z=0 edge)
+    const b2 = {
+      ...beam, id: idCounter++, name: beam.name + ' (2)', shape: 'sawnAngle',
+      x: beam.x + cutMM,
+      L: L - cutMM, mesh: null,
+      _sawFL: 0, _sawBL: offset,    // left cut: 0 at front, offset at back
+      _sawFR: L - cutMM,            // right end front (flat)
+      _sawBR: L - cutMM             // right end back  (flat, same x)
+    };
+
+    [b1, b2].forEach(nb => {
+      nb.mesh = createBeamMesh(nb);
+      if (hiddenGroups.has(nb.group)) nb.mesh.visible = false;
+      applyPhaseVisibility(nb);
+      scene.add(nb.mesh);
+      beams.push(nb);
+    });
+
+  } else if (beam.axis === 'z') {
+    // ── Angled cut along Z-axis ──
+    const b1 = {
+      ...beam, id: idCounter++, name: beam.name + ' (1)', shape: 'sawnAngle',
+      L: cutMM, mesh: null,
+      _sawFL: 0, _sawBL: 0,
+      _sawFR: cutMM, _sawBR: cutMM + offset
+    };
+    const b2 = {
+      ...beam, id: idCounter++, name: beam.name + ' (2)', shape: 'sawnAngle',
+      z: beam.z + cutMM,
+      L: L - cutMM, mesh: null,
+      _sawFL: 0, _sawBL: offset,
+      _sawFR: L - cutMM, _sawBR: L - cutMM
+    };
+
+    [b1, b2].forEach(nb => {
+      nb.mesh = createBeamMesh(nb);
+      if (hiddenGroups.has(nb.group)) nb.mesh.visible = false;
+      applyPhaseVisibility(nb);
+      scene.add(nb.mesh);
+      beams.push(nb);
+    });
+  }
+
+  // Remove original beam
+  const origIdx = beams.findIndex(b => b.id === beam.id);
+  if (origIdx >= 0) {
+    removeMesh(beam.mesh);
+    beams.splice(origIdx, 1);
+  }
+
+  // Reset saw state
+  _sawHoverBeamId = null;
+  _sawIndicator.visible = false;
+  _sawBorder.visible = false;
+  selectBeam(null);
+  updateUI();
+}
+
+// ══════════════════════════════════════════════
+// GLTF MODEL LOADER SYSTEM
+// ══════════════════════════════════════════════
+
+const gltfLoader = new GLTFLoader();
+const _modelCache = new Map();
+
+function normalizeAndBaseModel(gltfScene, targetHeightMM) {
+  gltfScene.scale.set(1, 1, 1);
+  const box = new THREE.Box3().setFromObject(gltfScene);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  if (size.y < 0.001) size.y = 1;
+  const scaleF = targetHeightMM / size.y;
+  gltfScene.scale.setScalar(scaleF);
+  // Move base to y=0
+  const box2 = new THREE.Box3().setFromObject(gltfScene);
+  gltfScene.position.y -= box2.min.y;
+}
+
+function loadGLTFIntoGroup(url, targetHeightMM, threeGroup) {
+  if (_modelCache.has(url)) {
+    const cached = _modelCache.get(url).clone();
+    normalizeAndBaseModel(cached, targetHeightMM);
+    threeGroup.add(cached);
+    return Promise.resolve();
+  }
+  return new Promise((resolve, reject) => {
+    gltfLoader.load(
+      url,
+      (gltf) => {
+        // Cache the original, clone for use
+        _modelCache.set(url, gltf.scene);
+        const model = gltf.scene.clone();
+        normalizeAndBaseModel(model, targetHeightMM);
+        threeGroup.add(model);
+        resolve();
+      },
+      undefined,
+      (err) => reject(err)
+    );
+  });
+}
+
+function makeGLTFDef(label, url, defaultHeightMM) {
+  return {
+    label,
+    defaultParams: { scale: 100 },
+    _gltfUrl: url,
+    _gltfHeight: defaultHeightMM,
+    build(p = {}) {
+      const grp = new THREE.Group();
+      // Placeholder wireframe while GLTF loads
+      const phGeo = new THREE.BoxGeometry(500, defaultHeightMM * 0.8, 500);
+      const phMat = new THREE.MeshStandardMaterial({ color: 0x336699, wireframe: true, transparent: true, opacity: 0.5 });
+      const placeholder = new THREE.Mesh(phGeo, phMat);
+      placeholder.position.y = defaultHeightMM * 0.4;
+      grp.add(placeholder);
+      // Async load real model
+      loadGLTFIntoGroup(url, defaultHeightMM, grp).then(() => {
+        grp.remove(placeholder);
+        placeholder.geometry.dispose();
+        placeholder.material.dispose();
+        const s = ((p && p.scale) || 100) / 100;
+        if (s !== 1) grp.scale.setScalar(s);
+      }).catch(err => {
+        console.warn('[HolzBAU] GLTF load failed:', label, err);
+        // Keep placeholder on error
+        if (placeholder.material) placeholder.material.color.setHex(0xaa4444);
+      });
+      return grp;
+    }
+  };
+}
+
+// ══════════════════════════════════════════════
+// PARALLELBALKEN
+// ══════════════════════════════════════════════
+
+function addBeamRow() {
+  const count   = parseInt(document.getElementById('par-count').value)   || 3;
+  const spacing = parseFloat(document.getElementById('par-spacing').value) || 600;
+  const dir     = document.getElementById('par-dir').value || 'z';
+  const L  = parseFloat(document.getElementById('dim-l').value) || 4000;
+  const B  = parseFloat(document.getElementById('dim-b').value) || 80;
+  const H  = parseFloat(document.getElementById('dim-h').value) || 160;
+  const axis     = document.getElementById('beam-axis').value || 'x';
+  const woodType = document.getElementById('wood-type').value || 'Fichte';
+  const baseName = document.getElementById('beam-name').value || `${woodType} ${L}×${B}×${H}`;
+  const group    = document.getElementById('beam-group-sel')?.value || 'Standard';
+  const phase    = document.getElementById('beam-phase')?.value || '';
+  const rx = parseFloat(document.getElementById('rot-x').value) || 0;
+  const ry = parseFloat(document.getElementById('rot-y').value) || 0;
+  const rz = parseFloat(document.getElementById('rot-z').value) || 0;
+  pushHistory();
+  for (let i = 0; i < count; i++) {
+    const offset = i * spacing;
+    const bx = dir === 'x' ? offset : 0;
+    const by = dir === 'y' ? offset : 0;
+    const bz = dir === 'z' ? offset : 0;
+    const beam = {
+      id: idCounter++, name: `${baseName} ${i + 1}`,
+      woodType, shape: 'rect', L, B, H, axis, rx, ry, rz,
+      group, phase: phase || null, x: bx, y: by, z: bz, mesh: null
+    };
     beam.mesh = createBeamMesh(beam);
+    if (hiddenGroups.has(beam.group)) beam.mesh.visible = false;
+    applyPhaseVisibility(beam);
     scene.add(beam.mesh);
     beams.push(beam);
-  });
-  idCounter = 10;
-  resetCamera();
+  }
   updateUI();
+}
+
+// ══════════════════════════════════════════════
+// BAUPHASEN
+// ══════════════════════════════════════════════
+
+let activePhaseFilter = null; // null = alle anzeigen
+
+function applyPhaseVisibility(b) {
+  if (!b.mesh) return;
+  if (activePhaseFilter === null) return; // keep current visibility state
+  const matchesPhase = !b.phase || b.phase === activePhaseFilter;
+  // Only hide/show based on phase if the group isn't already hiding it
+  if (!hiddenGroups.has(b.group)) {
+    b.mesh.visible = matchesPhase;
+  }
+}
+
+function setPhaseFilter(phase) {
+  activePhaseFilter = phase;
+  // Update button states
+  document.querySelectorAll('.phase-btn').forEach(btn => {
+    btn.classList.remove('active');
+  });
+  if (phase === null) {
+    const allBtn = document.getElementById('phase-btn-all');
+    if (allBtn) allBtn.classList.add('active');
+  } else {
+    const pBtn = document.getElementById('phase-btn-' + phase);
+    if (pBtn) pBtn.classList.add('active');
+  }
+  // Apply to all beams and decos
+  beams.forEach(b => {
+    if (!b.mesh) return;
+    if (hiddenGroups.has(b.group)) { b.mesh.visible = false; return; }
+    if (phase === null) {
+      b.mesh.visible = true;
+    } else {
+      b.mesh.visible = (!b.phase || b.phase === phase);
+    }
+  });
+  decos.forEach(d => {
+    if (!d.mesh) return;
+    if (hiddenGroups.has(d.group)) { d.mesh.visible = false; return; }
+    if (phase === null) {
+      d.mesh.visible = true;
+    } else {
+      d.mesh.visible = (!d.phase || d.phase === phase);
+    }
+  });
+}
+
+function renderPhaseFilterBar() {
+  const bar = document.getElementById('phase-filter-bar');
+  if (!bar) return;
+  // Keep first "Alle" button, re-render the rest
+  const allBtn = document.getElementById('phase-btn-all');
+  // Remove old phase buttons
+  bar.querySelectorAll('.phase-dyn-btn').forEach(el => el.remove());
+  const phases = ['Rohbau', 'Ausbau', 'Finish'];
+  phases.forEach(ph => {
+    // Count beams in this phase
+    const cnt = beams.filter(b => b.phase === ph).length;
+    const btn = document.createElement('button');
+    btn.className = 'phase-btn phase-dyn-btn' + (activePhaseFilter === ph ? ' active' : '');
+    btn.id = 'phase-btn-' + ph;
+    btn.textContent = ph + (cnt ? ` (${cnt})` : '');
+    btn.onclick = () => setPhaseFilter(activePhaseFilter === ph ? null : ph);
+    bar.appendChild(btn);
+  });
+}
+
+// ══════════════════════════════════════════════
+// SCHNITTPLAN-OPTIMIERUNG (First-Fit Decreasing)
+// ══════════════════════════════════════════════
+
+function showSchnittplan() {
+  const BOARD_LEN = parseInt(document.getElementById('schnitt-board-len')?.value) || 4000;
+
+  // Group by woodType + B×H (only rectangular beams)
+  const grpMap = new Map();
+  beams.forEach(b => {
+    if (b.shape && b.shape !== 'rect') return;
+    const key = `${b.woodType}||${b.B}×${b.H}`;
+    if (!grpMap.has(key)) grpMap.set(key, { woodType: b.woodType, B: b.B, H: b.H, pieces: [] });
+    grpMap.get(key).pieces.push(Math.round(b.L));
+  });
+
+  if (grpMap.size === 0) {
+    document.getElementById('schnittplan-content').innerHTML =
+      '<p style="color:var(--text-2);padding:20px;text-align:center">Keine Balken vorhanden.</p>';
+    document.getElementById('schnittplan-modal').style.display = 'block';
+    return;
+  }
+
+  const SEG_COLORS = ['#4caf50','#2196f3','#ff9800','#9c27b0','#f44336','#00bcd4','#8bc34a','#ffc107'];
+  let html = '<div style="display:grid;gap:14px">';
+
+  grpMap.forEach((grp) => {
+    // FFD sort descending
+    const pieces = [...grp.pieces].sort((a, b2) => b2 - a);
+    const bins = [];
+    pieces.forEach(len => {
+      if (len > BOARD_LEN) {
+        // oversized — own "bin" just to show it
+        bins.push({ total: len, remaining: 0, pieces: [len], oversized: true });
+        return;
+      }
+      let placed = false;
+      for (const bin of bins) {
+        if (!bin.oversized && bin.remaining >= len) {
+          bin.pieces.push(len);
+          bin.remaining -= len;
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) bins.push({ total: BOARD_LEN, remaining: BOARD_LEN - len, pieces: [len], oversized: false });
+    });
+
+    const totalWaste = bins.filter(b => !b.oversized).reduce((s, b2) => s + b2.remaining, 0);
+    const totalUsed  = bins.filter(b => !b.oversized).reduce((s, b2) => s + (b2.total - b2.remaining), 0);
+    const eff = totalUsed + totalWaste > 0 ? ((totalUsed / (totalUsed + totalWaste)) * 100).toFixed(1) : '–';
+    const normalBins = bins.filter(b => !b.oversized).length;
+
+    html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:12px">`;
+    html += `<div style="font-weight:700;color:var(--text);margin-bottom:8px;display:flex;justify-content:space-between;align-items:baseline">`;
+    html += `<span>${escHtml(grp.woodType)} | ${grp.B}×${grp.H} mm</span>`;
+    html += `<span style="font-size:11px;color:var(--green)">${normalBins} Stangen · ${eff}% Ausbeute</span>`;
+    html += `</div>`;
+
+    bins.forEach((bin, i) => {
+      if (bin.oversized) {
+        html += `<div style="margin-bottom:6px"><div style="font-size:10px;color:var(--red);margin-bottom:2px">⚠ Überlang (${bin.pieces[0]} mm > ${BOARD_LEN} mm)</div></div>`;
+        return;
+      }
+      html += `<div style="margin-bottom:6px">`;
+      html += `<div style="font-size:10px;color:var(--text-2);margin-bottom:2px">Stange ${i + 1} — ${bin.pieces.join(' + ')} mm` +
+              (bin.remaining > 0 ? ` + <span style="color:var(--text-3)">${bin.remaining} mm Rest</span>` : '') + `</div>`;
+      html += `<div class="schnitt-bar-row">`;
+      bin.pieces.forEach((p, pi) => {
+        const pct = (p / bin.total) * 100;
+        const c = SEG_COLORS[pi % SEG_COLORS.length];
+        html += `<div class="schnitt-bar-seg" style="width:${pct}%;background:${c}">${p > bin.total * 0.08 ? p : ''}</div>`;
+      });
+      if (bin.remaining > 0) {
+        html += `<div class="schnitt-bar-waste">${bin.remaining}</div>`;
+      }
+      html += `</div></div>`;
+    });
+
+    if (totalWaste > 0) {
+      html += `<div style="font-size:10px;color:#666;margin-top:4px">Gesamt-Verschnitt: ${totalWaste} mm`;
+      if (grp.pieces.length > 1) html += ` — ${grp.pieces.length} Teile auf ${normalBins} Stangen`;
+      html += `</div>`;
+    }
+    html += `</div>`;
+  });
+
+  html += '</div>';
+  document.getElementById('schnittplan-content').innerHTML = html;
+  document.getElementById('schnittplan-modal').style.display = 'block';
 }
 
 // ══════════════════════════════════════════════
@@ -2907,6 +3701,96 @@ const DEKO_DEFS = {
       return grp;
     }
   },
+
+  // ─── 3D Möbel & Garten (Poly Haven CC0) ───
+  garden_chair:  makeGLTFDef('Gartenstuhl',   'https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/plastic_monobloc_chair_01/plastic_monobloc_chair_01_2k.gltf',  880),
+  rocking_chair: makeGLTFDef('Schaukelstuhl', 'https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/Rockingchair_01/Rockingchair_01_2k.gltf',                      900),
+  lounge_sofa:   makeGLTFDef('Lounge Sofa',   'https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/painted_wooden_sofa/painted_wooden_sofa_2k.gltf',              790),
+  park_bench:    makeGLTFDef('Gartenbank',    'https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/painted_wooden_bench/painted_wooden_bench_2k.gltf',            770),
+  picnic_table:  makeGLTFDef('Picknicktisch', 'https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/wooden_picnic_table/wooden_picnic_table_2k.gltf',              750),
+  round_table:   makeGLTFDef('Runder Tisch',  'https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/round_wooden_table_01/round_wooden_table_01_2k.gltf',          750),
+  patio_set:     makeGLTFDef('Patio-Set',     'https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/outdoor_table_chair_set_01/outdoor_table_chair_set_01_2k.gltf',750),
+  fire_pit:      makeGLTFDef('Feuerstelle',   'https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/stone_fire_pit/stone_fire_pit_2k.gltf',                        390),
+  planter:       makeGLTFDef('Pflanzkasten',  'https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/planter_box_01/planter_box_01_2k.gltf',                       400),
+  street_seating:makeGLTFDef('Stadtbank',     'https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/modular_street_seating/modular_street_seating_2k.gltf',        770),
+
+  // ─── Prozedurale Modelle (kein CC0-Asset verfügbar) ───
+  parasol: {
+    label: 'Sonnenschirm',
+    defaultParams: { scale: 100 },
+    build(p = {}) {
+      const grp = new THREE.Group();
+      const metalMat = new THREE.MeshStandardMaterial({ color: 0xd0d0d0, metalness: 0.6, roughness: 0.4 });
+      // Pole
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(18, 18, 2300, 10), metalMat);
+      pole.position.y = 1150;
+      // Canopy ribs (8 ribs radiating from top)
+      const ribMat = new THREE.MeshStandardMaterial({ color: 0xbb3030, roughness: 0.7 });
+      for (let i = 0; i < 8; i++) {
+        const angle = (i / 8) * Math.PI * 2;
+        const rib = new THREE.Mesh(new THREE.CylinderGeometry(8, 5, 1150, 6), ribMat);
+        rib.rotation.z = Math.PI / 2 - 0.45;
+        rib.position.set(Math.cos(angle) * 520, 2200 - 120, Math.sin(angle) * 520);
+        rib.rotation.y = angle;
+        grp.add(rib);
+      }
+      // Canopy fabric (open cone)
+      const coneGeo = new THREE.ConeGeometry(1150, 380, 16, 1, true);
+      const canopy = new THREE.Mesh(coneGeo, new THREE.MeshStandardMaterial({ color: 0xcc3333, side: THREE.DoubleSide, roughness: 0.9 }));
+      canopy.position.y = 2130;
+      // Tip
+      const tip = new THREE.Mesh(new THREE.ConeGeometry(22, 140, 8), metalMat);
+      tip.position.y = 2390;
+      // Base weight
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(220, 260, 90, 16), new THREE.MeshStandardMaterial({ color: 0x777777, metalness: 0.4 }));
+      base.position.y = 45;
+      grp.add(pole, canopy, tip, base);
+      return grp;
+    }
+  },
+
+  liegestuhl: {
+    label: 'Liegestuhl',
+    defaultParams: { scale: 100 },
+    build(p = {}) {
+      const grp = new THREE.Group();
+      const woodMat  = new THREE.MeshStandardMaterial({ color: 0xc8a060, roughness: 0.85 });
+      const frameMat = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.5, roughness: 0.4 });
+      const cushMat  = new THREE.MeshStandardMaterial({ color: 0x4488cc, roughness: 0.8 });
+      // Legs
+      [[-820, 0], [-420, 0], [320, 0], [820, 0]].forEach(([lx, lz]) => {
+        [[-130], [130]].forEach(([lz2]) => {
+          const leg = new THREE.Mesh(new THREE.CylinderGeometry(14, 14, 280, 8), frameMat);
+          leg.position.set(lx, 140, lz2);
+          grp.add(leg);
+        });
+      });
+      // Main seat frame
+      const seatFrame = new THREE.Mesh(new THREE.BoxGeometry(1800, 28, 600), woodMat);
+      seatFrame.position.set(0, 280, 0);
+      grp.add(seatFrame);
+      // Seat slats
+      for (let sx = -750; sx <= 650; sx += 90) {
+        const slat = new THREE.Mesh(new THREE.BoxGeometry(28, 18, 560), woodMat);
+        slat.position.set(sx, 298, 0);
+        grp.add(slat);
+      }
+      // Adjustable backrest group (tilted ~30°)
+      const backGrp = new THREE.Group();
+      backGrp.position.set(700, 280, 0);
+      backGrp.rotation.z = -0.55;
+      for (let bx = 60; bx <= 730; bx += 90) {
+        const slat = new THREE.Mesh(new THREE.BoxGeometry(28, 18, 560), woodMat);
+        slat.position.set(bx, 28, 0);
+        backGrp.add(slat);
+      }
+      const backFrame = new THREE.Mesh(new THREE.BoxGeometry(800, 28, 600), woodMat);
+      backFrame.position.set(400, 14, 0);
+      backGrp.add(backFrame);
+      grp.add(backGrp);
+      return grp;
+    }
+  },
 };
 
 function addDeco(type) {
@@ -2923,6 +3807,7 @@ function addDeco(type) {
   }
   deco.mesh.position.set(0, 0, 0);
   deco.mesh.userData.isDecoId = deco.id;
+  if (hiddenGroups.has(deco.group)) deco.mesh.visible = false;
   scene.add(deco.mesh);
   decos.push(deco);
   renderDekoList();
@@ -2935,8 +3820,8 @@ function renderDekoList() {
   list.innerHTML = '';
   decos.forEach(d => {
     const div = document.createElement('div');
-    div.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:3px 4px;font-size:11px;border-bottom:1px solid #0f3460';
-    div.innerHTML = `<span>${d.label}</span><span style="cursor:pointer;color:#e94560" onclick="deleteDeco(${d.id})">✕</span>`;
+    div.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:4px 6px;font-size:11px;border-bottom:1px solid var(--border-2);color:var(--text)';
+    div.innerHTML = `<span>${d.label}</span><span style="cursor:pointer;color:var(--red)" onclick="deleteDeco(${d.id})">✕</span>`;
     list.appendChild(div);
   });
 }
@@ -2953,8 +3838,22 @@ function deleteDeco(id) {
 
 function moveDecoToGroup(decoId, groupName) {
   const d = decos.find(x => x.id === decoId);
-  if (!d) return;
+  if (!d || d.group === groupName) return;
+  pushHistory();
   d.group = groupName;
+  if (d.mesh) d.mesh.visible = !hiddenGroups.has(groupName);
+  renderGroupList();
+}
+
+function toggleGroupVisibility(groupName) {
+  if (hiddenGroups.has(groupName)) {
+    hiddenGroups.delete(groupName);
+  } else {
+    hiddenGroups.add(groupName);
+  }
+  const visible = !hiddenGroups.has(groupName);
+  beams.forEach(b => { if (b.group === groupName && b.mesh) b.mesh.visible = visible; });
+  decos.forEach(d => { if (d.group === groupName && d.mesh) d.mesh.visible = visible; });
   renderGroupList();
 }
 
@@ -2962,15 +3861,36 @@ function clearAllDecos() {
   [...decos].forEach(d => deleteDeco(d.id));
 }
 
+// ── THEME TOGGLE ──────────────────────────────────────────
+function toggleTheme() {
+  const html = document.documentElement;
+  const isNowLight = html.getAttribute('data-theme') !== 'light';
+  html.setAttribute('data-theme', isNowLight ? 'light' : 'dark');
+  const btn = document.getElementById('theme-toggle');
+  if (btn) btn.textContent = isNowLight ? '☀️' : '🌙';
+  try { localStorage.setItem('holzbau-theme', isNowLight ? 'light' : 'dark'); } catch(_) {}
+}
+// Apply saved theme on load
+(function() {
+  try {
+    const saved = localStorage.getItem('holzbau-theme');
+    if (saved === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+      const btn = document.getElementById('theme-toggle');
+      if (btn) btn.textContent = '☀️';
+    }
+  } catch(_) {}
+})();
+
 // Global error handler — shows JS errors visibly in the status bar
 window.addEventListener('error', ev => {
   const bar = document.getElementById('statusbar');
-  if (bar) bar.innerHTML = `<span style="color:#e94560;font-weight:bold">⚠ JS-Fehler: ${ev.message} (${ev.filename?.split('/').pop()}:${ev.lineno})</span>`;
+  if (bar) bar.innerHTML = `<span style="color:var(--red);font-weight:600">⚠ JS-Fehler: ${ev.message} (${ev.filename?.split('/').pop()}:${ev.lineno})</span>`;
   console.error('Global error:', ev);
 });
 window.addEventListener('unhandledrejection', ev => {
   const bar = document.getElementById('statusbar');
-  if (bar) bar.innerHTML = `<span style="color:#e94560;font-weight:bold">⚠ Fehler: ${ev.reason}</span>`;
+  if (bar) bar.innerHTML = `<span style="color:var(--red);font-weight:600">⚠ Fehler: ${ev.reason}</span>`;
 });
 
 // ══════════════════════════════════════════════
@@ -3027,7 +3947,7 @@ function drawMeasureCanvas() {
     const s = project(p);
     ctx.beginPath();
     ctx.arc(s.x, s.y, 6, 0, Math.PI * 2);
-    ctx.fillStyle = '#e94560';
+    ctx.fillStyle = '#4e8cdd';
     ctx.fill();
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = 2;
@@ -3045,7 +3965,7 @@ function drawMeasureCanvas() {
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
-    ctx.strokeStyle = measureDragging ? '#ff9933' : '#e94560';
+    ctx.strokeStyle = measureDragging ? '#f5993f' : '#4e8cdd';
     ctx.lineWidth = 2;
     ctx.setLineDash(measureDragging ? [4, 3] : [6, 4]);
     ctx.stroke();
@@ -3058,7 +3978,7 @@ function drawMeasureCanvas() {
       ctx.beginPath();
       ctx.moveTo(pt.x + Math.cos(perp) * 8, pt.y + Math.sin(perp) * 8);
       ctx.lineTo(pt.x - Math.cos(perp) * 8, pt.y - Math.sin(perp) * 8);
-      ctx.strokeStyle = '#e94560';
+      ctx.strokeStyle = '#4e8cdd';
       ctx.lineWidth = 2;
       ctx.stroke();
     });
@@ -3067,16 +3987,16 @@ function drawMeasureCanvas() {
     const mx = (a.x + b.x) / 2;
     const my = (a.y + b.y) / 2;
     const text = `${distMm} mm  /  ${distM} m`;
-    ctx.font = 'bold 14px Segoe UI, Arial, sans-serif';
+    ctx.font = 'bold 14px Inter, Segoe UI, Arial, sans-serif';
     const tw = ctx.measureText(text).width;
-    ctx.fillStyle = 'rgba(15,52,96,0.92)';
+    ctx.fillStyle = 'rgba(22,27,39,0.95)';
     ctx.beginPath();
-    ctx.roundRect(mx - tw/2 - 10, my - 13, tw + 20, 26, 5);
+    ctx.roundRect(mx - tw/2 - 10, my - 13, tw + 20, 26, 6);
     ctx.fill();
-    ctx.strokeStyle = '#e94560';
+    ctx.strokeStyle = '#4e8cdd';
     ctx.lineWidth = 1.5;
     ctx.stroke();
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = '#dde5f4';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(text, mx, my);
@@ -3233,10 +4153,9 @@ function printProject() {
     parts.push(`</g>`);
 
     // Beams
-    const WOOD_COLORS = { 'Fichte':'#c8a06e','Kiefer':'#d4943a','Lärche':'#b8742e','Eiche':'#8b5e3c','Buche':'#c4884e','Douglasie':'#a06840','Brettschichtholz (BSH)':'#c0a870','Sperrholz':'#d8c090','OSB':'#c8b060','Benutzerdefiniert':'#aaa' };
     rects.forEach(r => {
       const [x0,y0]=toSVG(r.u0,r.v0), [x1,y1]=toSVG(r.u1,r.v1);
-      const fill = WOOD_COLORS[r.b.woodType]||'#c8a06e';
+      const fill = WOOD_COLORS_HEX[r.b.woodType]||'#c8a06e';
       parts.push(`<rect x="${Math.min(x0,x1)}" y="${Math.min(y0,y1)}" width="${Math.abs(x1-x0)}" height="${Math.abs(y1-y0)}" fill="${fill}" fill-opacity="0.7" stroke="#7a5020" stroke-width="0.8"/>`);
       // Cross-hatch for timber
       const rx=Math.min(x0,x1),ry=Math.min(y0,y1),rw=Math.abs(x1-x0),rh=Math.abs(y1-y0);
@@ -3329,7 +4248,7 @@ function printProject() {
     const vol = ((g.L*g.B*g.H)/1e9).toFixed(4);
     const lm  = (g.L/1000).toFixed(3);
     return `<tr>
-      <td>${pos++}</td><td>${g.ids.length}</td><td>${g.name}</td><td>${g.woodType}</td>
+      <td>${pos++}</td><td>${g.ids.length}</td><td>${escHtml(g.name)}</td><td>${escHtml(g.woodType)}</td>
       <td>${g.L}×${g.B}×${g.H}</td><td>${lm} m</td><td>${vol} m³</td>
     </tr>`;
   }).join('');
