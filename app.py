@@ -801,7 +801,7 @@ def login():
                 (user['id'],)
             )
 
-            next_url = request.form.get('next') or request.args.get('next') or url_for('dashboard')
+            next_url = request.form.get('next') or request.args.get('next') or url_for('holzbau')
             return redirect(next_url)
         else:
             # Failure — increment attempts
