@@ -24,7 +24,9 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
-DATABASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'devices.db')
+_db_dir = os.environ.get('DB_DIR', os.path.dirname(os.path.abspath(__file__)))
+os.makedirs(_db_dir, exist_ok=True)
+DATABASE = os.path.join(_db_dir, 'devices.db')
 
 # ---------------------------------------------------------------------------
 # Brute-force protection
@@ -692,6 +694,11 @@ def admin_required(f):
             return redirect(url_for('dashboard'))
         return f(*args, **kwargs)
     return decorated
+
+
+@app.route('/health')
+def health():
+    return 'ok', 200
 
 
 # ---------------------------------------------------------------------------
