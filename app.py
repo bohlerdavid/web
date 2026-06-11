@@ -438,6 +438,31 @@ def admin_users():
     return render_template('admin_users.html', users=users)
 
 
+@app.route('/admin/set_plan', methods=['POST'])
+@admin_required
+def admin_set_plan():
+    if not validate_csrf(request.form.get('csrf_token', '')):
+        flash('Ungültiges CSRF-Token.', 'danger')
+        return redirect(url_for('admin_users'))
+    user_id = request.form.get('user_id', type=int)
+    plan = request.form.get('plan', 'free')
+    if not user_id or plan not in ('free', 'premium'):
+        flash('Ungültige Eingabe.', 'danger')
+        return redirect(url_for('admin_users'))
+    status = 'active' if plan == 'premium' else 'cancelled'
+    existing = query_db('SELECT id FROM subscriptions WHERE user_id=?', [user_id], one=True)
+    if existing:
+        execute_db('UPDATE subscriptions SET plan=?, status=?, stripe_sub_id=NULL WHERE user_id=?',
+                   [plan, status, user_id])
+    else:
+        execute_db('INSERT INTO subscriptions (user_id, plan, status) VALUES (?,?,?)',
+                   [user_id, plan, status])
+    username = query_db('SELECT username FROM app_users WHERE id=?', [user_id], one=True)
+    name = username['username'] if username else f'#{user_id}'
+    flash(f'Plan von {name} auf {plan.upper()} gesetzt.', 'success')
+    return redirect(url_for('admin_users'))
+
+
 # ---------------------------------------------------------------------------
 # HolzBau 3D App
 # ---------------------------------------------------------------------------
