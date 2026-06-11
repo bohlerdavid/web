@@ -4,3 +4,4 @@ stripe>=8.0.0
 python-dotenv>=1.0.0
 gunicorn>=21.2.0
 PyMySQL>=1.1.0
+flask-talisman>=1.1.0

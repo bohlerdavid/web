@@ -12,6 +12,7 @@ from flask import (
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
+from flask_talisman import Talisman
 import pymysql
 import pymysql.cursors
 
@@ -30,6 +31,25 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') != 'development'
+
+# Security headers via Talisman (fixes all 7 Railway warnings)
+_is_dev = os.environ.get('FLASK_ENV') == 'development'
+Talisman(
+    app,
+    force_https=not _is_dev,
+    strict_transport_security=True,
+    strict_transport_security_max_age=31536000,
+    content_security_policy={
+        'default-src': ["'self'", 'cdn.jsdelivr.net'],
+        'script-src': ["'self'", "'unsafe-inline'", 'cdn.jsdelivr.net', 'js.stripe.com'],
+        'style-src': ["'self'", "'unsafe-inline'", 'cdn.jsdelivr.net'],
+        'frame-src': ["'none'"],
+        'img-src': ["'self'", 'data:'],
+    },
+    referrer_policy='strict-origin-when-cross-origin',
+    feature_policy={},
+    session_cookie_secure=not _is_dev,
+)
 
 # ---------------------------------------------------------------------------
 # Database (MySQL)
@@ -222,6 +242,17 @@ def inject_globals():
 @app.route('/health')
 def health():
     return 'ok', 200
+
+
+@app.route('/robots.txt')
+def robots_txt():
+    body = (
+        'User-agent: *\n'
+        'Allow: /\n'
+        'Disallow: /admin/\n'
+        'Sitemap: https://holzbau3d.up.railway.app/sitemap.xml\n'
+    )
+    return app.response_class(body, mimetype='text/plain')
 
 
 # ---------------------------------------------------------------------------
