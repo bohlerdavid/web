@@ -704,7 +704,7 @@ body {
 </div>
 {% endif %}
 <div id="topbar">
-  <div class="logo">Holz<span>BAU</span> 3D</div>
+  <a href="/landing" class="logo" style="text-decoration:none;color:inherit;" title="Zur Startseite">Holz<span>BAU</span> 3D</a>
 
   <div class="tb-divider"></div>
 
@@ -764,6 +764,7 @@ body {
   {% else %}
   <a href="/subscribe" style="margin-left:auto;display:flex;align-items:center;gap:5px;background:rgba(78,140,221,.1);border:1px solid rgba(78,140,221,.25);border-radius:var(--r-sm);padding:2px 10px;font-size:11px;color:var(--accent);font-weight:600;text-decoration:none;flex-shrink:0">⬆ Upgrade</a>
   {% endif %}
+  <a href="/profile" class="tb-btn" title="Mein Profil" style="flex-shrink:0;margin-left:4px;font-size:15px;padding:0 7px;text-decoration:none;">👤</a>
 
   <div id="saw-panel">
     <span>🪚 Säge aktiv — Balken anklicken</span>
