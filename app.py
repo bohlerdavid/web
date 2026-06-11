@@ -33,10 +33,12 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') != 'development'
 
 # Security headers via Talisman (fixes all 7 Railway warnings)
-_is_dev = os.environ.get('FLASK_ENV') == 'development'
+# force_https=False: Railway terminates SSL at the proxy; the app always
+# receives plain HTTP internally, so forcing HTTPS here would redirect
+# Railway's own health checks and break deployment.
 Talisman(
     app,
-    force_https=not _is_dev,
+    force_https=False,
     strict_transport_security=True,
     strict_transport_security_max_age=31536000,
     content_security_policy={
@@ -48,7 +50,7 @@ Talisman(
     },
     referrer_policy='strict-origin-when-cross-origin',
     feature_policy={},
-    session_cookie_secure=not _is_dev,
+    session_cookie_secure=True,
 )
 
 # ---------------------------------------------------------------------------
