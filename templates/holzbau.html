@@ -1614,9 +1614,14 @@ function loadTemplate(key) {
   const tpl = TEMPLATES[key];
   if (!tpl) return;
   pushHistory();
+  const TPL_NAMES = {wand:'Wand', schraegdach:'Schrägdach', satteldach:'Satteldach', fenster:'Fenster', tuer:'Tür', grundriss:'Grundriss'};
+  const prefix = TPL_NAMES[key] || key;
+  let n = 1;
+  while (groups.includes(prefix + ' ' + n)) n++;
+  const groupName = prefix + ' ' + n;
+  groups.push(groupName);
   tpl.beams.forEach(s => {
-    const beam = { rx:0, ry:0, rz:0, group:'Standard', phase:null, shape:'rect', ...s, id: idCounter++, mesh:null };
-    if (!groups.includes(beam.group)) groups.push(beam.group);
+    const beam = { rx:0, ry:0, rz:0, phase:null, shape:'rect', ...s, group: groupName, id: idCounter++, mesh:null };
     beam.mesh = createBeamMesh(beam);
     scene.add(beam.mesh);
     beams.push(beam);
