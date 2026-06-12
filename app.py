@@ -481,7 +481,7 @@ def holzbau():
 
 @app.route('/landing')
 def landing():
-    return redirect(url_for('index'), 301)
+    return render_template('landing.html')
 
 
 @app.route('/impressum')
