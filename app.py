@@ -1404,6 +1404,11 @@ def _activate_premium(user_id, customer_id, sub_id, interval, notify=True):
         if sub_id:
             s = _stripe_api_get('subscriptions/' + sub_id)
             cpe = s.get('current_period_end')
+            if not cpe:
+                # Neuere Stripe-API-Versionen: Laufzeit liegt am Subscription-Item
+                items = (s.get('items') or {}).get('data') or []
+                if items:
+                    cpe = items[0].get('current_period_end')
             if cpe:
                 period_end = datetime.fromtimestamp(cpe).isoformat()
             li = s.get('latest_invoice')
