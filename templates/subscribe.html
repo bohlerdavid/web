@@ -233,6 +233,13 @@
     <input type="hidden" name="plan_type" value="monthly">
     <button type="submit" class="btn-upgrade-big"><i class="bi bi-credit-card"></i> Jetzt upgraden — 9,99 €/Monat</button>
   </form>
+  {% if session.get('role') == 'admin' %}
+  <div style="margin-top:14px;padding:11px 14px;background:#fff7ed;border:1px dashed #fdba74;border-radius:10px;font-size:.78rem;color:#9a3412;">
+    <strong>ℹ️ Admin-Hinweis:</strong> Das Jahres-Abo ist ausgeblendet, weil die Railway-Variable
+    <code>STRIPE_YEARLY_PRICE_ID</code> nicht gesetzt ist. Sobald du sie mit der Stripe-Price-ID
+    des Jahres-Plans (<code>price_…</code>) setzt, erscheinen automatisch beide Karten (monatlich + jährlich).
+  </div>
+  {% endif %}
   {% endif %}
   <p style="color:#9ca3af;font-size:.78rem;margin-top:12px;text-align:center;">
     <i class="bi bi-lock me-1"></i>Sichere Zahlung über Stripe · Jederzeit kündbar
