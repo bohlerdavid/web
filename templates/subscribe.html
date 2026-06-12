@@ -94,7 +94,7 @@
   {% if sub and sub.get('current_period_end') %}
   <div class="info-row">
     <span class="label">{% if sub.get('status') == 'cancelled' %}Zugang bis{% else %}Nächste Abrechnung{% endif %}</span>
-    <span class="value">{{ sub.get('current_period_end')[:10] if sub.get('current_period_end') else '—' }}</span>
+    <span class="value">{{ (sub.get('current_period_end')|string)[:10] if sub.get('current_period_end') else '—' }}</span>
   </div>
   {% endif %}
   <div class="info-row">
