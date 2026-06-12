@@ -538,25 +538,39 @@ SEO_META = {
 }
 
 
+FAQ_ITEMS = {
+    'de': [
+        ('Ist HolzBau 3D kostenlos?', 'Ja. Du kannst Holzkonstruktionen kostenlos in 3D planen. Premium schaltet zusätzlich PDF-Export, Säge-Tool, Schnittplan-Optimierung und unbegrenzte Projekte frei.'),
+        ('Kann ich eine Pergola selbst planen?', 'Ja. Mit HolzBau 3D planst du Pergola, Carport, Dachstuhl, Terrassenüberdachung und beliebige Holzkonstruktionen selbst – inklusive Stückliste und Schnittplan.'),
+        ('Muss ich etwas installieren?', 'Nein. HolzBau 3D läuft komplett im Browser – ohne Installation, auf PC, Tablet und Smartphone.'),
+        ('Welche Konstruktionen kann ich bauen?', 'Vom Carport über die Pergola bis zum kompletten Dachstuhl: Du setzt Balken, Pfosten, Pfetten und Sparren maßstabsgetreu in 3D und drehst die Konstruktion frei im Raum.'),
+        ('Bekomme ich eine Stückliste?', 'Ja. HolzBau 3D erzeugt automatisch eine Stückliste mit allen Balken, Längen und Querschnitten. Als Premium-Nutzer exportierst du sie als CSV und PDF.'),
+        ('In welchen Sprachen ist HolzBau 3D verfügbar?', 'HolzBau 3D gibt es auf Deutsch, Englisch und Französisch – die Sprache wechselst du jederzeit mit einem Klick.'),
+    ],
+    'en': [
+        ('Is HolzBau 3D free?', 'Yes. You can plan wood constructions in 3D for free. Premium additionally unlocks PDF export, the saw tool, cutting-plan optimisation and unlimited projects.'),
+        ('Can I design a pergola myself?', 'Yes. With HolzBau 3D you design pergolas, carports, roof trusses, patio roofs and any wood construction yourself – including parts list and cutting plan.'),
+        ('Do I need to install anything?', 'No. HolzBau 3D runs entirely in your browser – no installation, on PC, tablet and smartphone.'),
+        ('What can I build?', 'From a carport and a pergola to a complete roof truss: you place beams, posts, purlins and rafters to scale in 3D and rotate the structure freely in space.'),
+        ('Do I get a parts list?', 'Yes. HolzBau 3D automatically generates a parts list with all beams, lengths and sections. As a Premium user you export it as CSV and PDF.'),
+        ('Which languages does HolzBau 3D support?', 'HolzBau 3D is available in German, English and French – switch the language any time with one click.'),
+    ],
+    'fr': [
+        ('HolzBau 3D est-il gratuit ?', 'Oui. Vous pouvez concevoir des constructions bois en 3D gratuitement. Premium débloque en plus l’export PDF, l’outil scie, l’optimisation du plan de coupe et les projets illimités.'),
+        ('Puis-je concevoir une pergola moi-même ?', 'Oui. Avec HolzBau 3D, vous concevez pergola, carport, charpente, couverture de terrasse et toute construction bois vous-même – liste de pièces et plan de coupe inclus.'),
+        ('Dois-je installer quelque chose ?', 'Non. HolzBau 3D fonctionne entièrement dans le navigateur – sans installation, sur PC, tablette et smartphone.'),
+        ('Que puis-je construire ?', 'Du carport à la pergola jusqu’à une charpente complète : vous placez poutres, poteaux, pannes et chevrons à l’échelle en 3D et faites pivoter la structure librement.'),
+        ('Ai-je une liste de pièces ?', 'Oui. HolzBau 3D génère automatiquement une liste de pièces avec toutes les poutres, longueurs et sections. En tant qu’utilisateur Premium, vous l’exportez en CSV et PDF.'),
+        ('Dans quelles langues HolzBau 3D est-il disponible ?', 'HolzBau 3D est disponible en allemand, anglais et français – changez de langue à tout moment en un clic.'),
+    ],
+}
+
+FAQ_HEADING = {'de': 'Häufige Fragen', 'en': 'Frequently Asked Questions', 'fr': 'Questions fréquentes'}
+
+
 def _seo_faq(lang):
     """FAQPage-JSON-LD (Rich Snippets) pro Sprache."""
-    faqs = {
-        'de': [
-            ('Ist HolzBau 3D kostenlos?', 'Ja. Du kannst Holzkonstruktionen kostenlos in 3D planen. Premium schaltet PDF-Export, Säge-Tool und unbegrenzte Projekte frei.'),
-            ('Kann ich eine Pergola selbst planen?', 'Ja. Mit HolzBau 3D planst du Pergola, Carport, Dachstuhl und beliebige Holzkonstruktionen selbst – inklusive Stückliste und Schnittplan.'),
-            ('Muss ich etwas installieren?', 'Nein. HolzBau 3D läuft komplett im Browser – ohne Installation, auf jedem Gerät.'),
-        ],
-        'en': [
-            ('Is HolzBau 3D free?', 'Yes. You can plan wood constructions in 3D for free. Premium unlocks PDF export, the saw tool and unlimited projects.'),
-            ('Can I design a pergola myself?', 'Yes. With HolzBau 3D you design pergolas, carports, roof trusses and any wood construction yourself – including parts list and cutting plan.'),
-            ('Do I need to install anything?', 'No. HolzBau 3D runs entirely in your browser – no installation, on any device.'),
-        ],
-        'fr': [
-            ('HolzBau 3D est-il gratuit ?', 'Oui. Vous pouvez concevoir des constructions bois en 3D gratuitement. Premium débloque l’export PDF, l’outil scie et les projets illimités.'),
-            ('Puis-je concevoir une pergola moi-même ?', 'Oui. Avec HolzBau 3D, vous concevez pergola, carport, charpente et toute construction bois vous-même – liste de pièces et plan de coupe inclus.'),
-            ('Dois-je installer quelque chose ?', 'Non. HolzBau 3D fonctionne entièrement dans le navigateur – sans installation, sur tout appareil.'),
-        ],
-    }.get(lang, [])
+    faqs = FAQ_ITEMS.get(_norm_lang(lang), FAQ_ITEMS['de'])
     items = [{'@type': 'Question', 'name': q,
               'acceptedAnswer': {'@type': 'Answer', 'text': a}} for q, a in faqs]
     return {'@context': 'https://schema.org', '@type': 'FAQPage', 'mainEntity': items}
@@ -587,6 +601,8 @@ def _seo_context(lang):
         ],
         'jsonld_app': json.dumps(app_ld, ensure_ascii=False),
         'jsonld_faq': json.dumps(_seo_faq(lang), ensure_ascii=False),
+        'faq_items': FAQ_ITEMS.get(lang, FAQ_ITEMS['de']),
+        'faq_heading': FAQ_HEADING.get(lang, FAQ_HEADING['de']),
     }
 
 
