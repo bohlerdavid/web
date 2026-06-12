@@ -1611,24 +1611,16 @@ const TEMPLATES = {
 
 function loadTemplate(key) {
   if (!requirePremium('Vorlagen', 'Fertige Konstruktionen sind nur im Premium-Abo verfügbar.')) return;
-  if (!confirm('Aktuelle Konstruktion durch die Vorlage ersetzen?')) return;
   const tpl = TEMPLATES[key];
   if (!tpl) return;
   pushHistory();
-  clearAllBeams();
-  groups.length = 0;
-  groups.push('Standard');
-  hiddenGroups.clear();
   tpl.beams.forEach(s => {
-    const beam = { rx:0, ry:0, rz:0, group:'Standard', phase:null, shape:'rect', ...s, mesh:null };
+    const beam = { rx:0, ry:0, rz:0, group:'Standard', phase:null, shape:'rect', ...s, id: idCounter++, mesh:null };
     if (!groups.includes(beam.group)) groups.push(beam.group);
     beam.mesh = createBeamMesh(beam);
     scene.add(beam.mesh);
     beams.push(beam);
   });
-  idCounter = tpl.beams.length + 1;
-  activePhaseFilter = null;
-  resetCamera();
   updateUI();
   showTab('balken');
 }
