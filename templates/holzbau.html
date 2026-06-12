@@ -513,6 +513,8 @@ body {
 
 /* ── GROUP MANAGER ── */
 .group-section { border-bottom: 1px solid var(--border-2); }
+.group-chevron { font-size:8px; color:var(--text-3); display:inline-block; transition:transform .15s; flex-shrink:0; margin-right:1px; }
+.group-section:not(.collapsed) .group-chevron { transform:rotate(90deg); }
 .group-header {
   display: flex;
   align-items: center;
@@ -1158,7 +1160,7 @@ body {
     <div id="phase-filter-bar">
       <button class="phase-btn active" onclick="setPhaseFilter(null)" id="phase-btn-all">Alle</button>
     </div>
-    <div id="group-list" style="flex:1;overflow-y:auto"></div>
+    <div id="group-list" style="flex:1;min-height:0;overflow-y:auto"></div>
   </div>
 
 </div>
@@ -1364,6 +1366,7 @@ let selectedIds = new Set(); // multi-selection
 let selectedDecoId = null;
 let groups = ['Standard']; // group names
 const hiddenGroups = new Set();         // group names currently hidden in 3D view
+const collapsedGroups = new Set();      // group names collapsed in the sidebar list
 let decos = [];
 let decoIdCounter = 1;
 let snapEnabled = true;
@@ -2213,11 +2216,13 @@ function renderGroupList() {
     const totalCount = groupBeams.length + groupDecos.length;
     const isHidden = hiddenGroups.has(groupName);
     const section = document.createElement('div');
-    section.className = 'group-section' + (isHidden ? ' group-hidden' : '');
+    section.className = 'group-section' + (isHidden ? ' group-hidden' : '') + (isCollapsed ? ' collapsed' : '');
 
+    const isCollapsed = collapsedGroups.has(groupName);
     const header = document.createElement('div');
     header.className = 'group-header';
     header.innerHTML = `
+      <span class="group-chevron">▶</span>
       <span class="group-name" title="${groupName}">${groupName}</span>
       <span class="group-count">${totalCount}</span>
       <span class="group-vis${isHidden ? ' vis-off' : ''}" title="${isHidden ? 'Einblenden' : 'Ausblenden'}" onclick="event.stopPropagation();toggleGroupVisibility('${groupName}')">👁</span>
@@ -2251,7 +2256,10 @@ function renderGroupList() {
       selectGroup(groupName);
       updateUI();
       const items = section.querySelector('.group-items');
-      items.classList.toggle('open');
+      const nowOpen = items.classList.toggle('open');
+      section.classList.toggle('collapsed', !nowOpen);
+      if (nowOpen) collapsedGroups.delete(groupName);
+      else collapsedGroups.add(groupName);
     };
     section.ondragover = (e) => { e.preventDefault(); header.classList.add('drag-over'); };
     section.ondragleave = (e) => { if (!section.contains(e.relatedTarget)) header.classList.remove('drag-over'); };
@@ -2273,7 +2281,7 @@ function renderGroupList() {
     };
 
     const items = document.createElement('div');
-    items.className = 'group-items open';
+    items.className = 'group-items' + (isCollapsed ? '' : ' open');
     groupBeams.forEach(b => {
       const item = document.createElement('div');
       item.className = 'group-beam-item' + (selectedIds.has(b.id) ? ' selected' : '');
