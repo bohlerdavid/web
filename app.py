@@ -27,7 +27,7 @@ if not _secret_key:
     raise RuntimeError('SECRET_KEY environment variable must be set')
 app.secret_key = _secret_key
 
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=1)
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') != 'development'
@@ -245,6 +245,12 @@ def inject_globals():
 @app.route('/health')
 def health():
     return 'ok', 200
+
+@app.route('/ping')
+def ping():
+    if 'user_id' in session:
+        session.modified = True
+    return '', 204
 
 
 @app.route('/robots.txt')

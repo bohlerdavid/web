@@ -133,5 +133,48 @@
 (function(){if(localStorage.getItem('cookie_consent'))document.getElementById('cookie-banner').style.display='none';})();
 function cookieConsent(c){localStorage.setItem('cookie_consent',c);document.getElementById('cookie-banner').style.display='none';}
 </script>
+
+{% if session.get('user_id') %}
+<div id="sw-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999999;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:14px;padding:32px;max-width:380px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.35);text-align:center;">
+    <div style="font-size:36px;margin-bottom:12px">⏱️</div>
+    <h3 style="margin:0 0 8px;font-size:1.1rem;font-weight:700;color:#1a1a1a">Sitzung läuft ab</h3>
+    <p style="color:#6b7280;font-size:.9rem;margin:0 0 22px;line-height:1.5">Du wirst in <strong id="sw-count" style="color:#d97706;font-size:1.2rem">60</strong> Sekunden automatisch abgemeldet.</p>
+    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+      <button onclick="swStay()" style="padding:10px 24px;background:#d97706;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:.9rem">Angemeldet bleiben</button>
+      <a href="/logout" style="padding:10px 24px;background:#f3f4f6;color:#374151;border-radius:8px;font-size:.9rem;text-decoration:none;display:inline-flex;align-items:center">Abmelden</a>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  var IDLE_MS = (60 * 60 - 60) * 1000;
+  var t, cd;
+  function reset() {
+    clearTimeout(t); clearInterval(cd);
+    document.getElementById('sw-modal').style.display = 'none';
+    t = setTimeout(warn, IDLE_MS);
+  }
+  function warn() {
+    var s = 60;
+    document.getElementById('sw-count').textContent = s;
+    document.getElementById('sw-modal').style.display = 'flex';
+    cd = setInterval(function(){
+      s--;
+      document.getElementById('sw-count').textContent = s;
+      if (s <= 0) { clearInterval(cd); window.location.href = '/logout'; }
+    }, 1000);
+  }
+  window.swStay = function() {
+    fetch('/ping', {credentials:'same-origin'}).catch(function(){});
+    reset();
+  };
+  ['mousemove','keydown','click','touchstart'].forEach(function(e){
+    document.addEventListener(e, reset, {passive:true});
+  });
+  reset();
+})();
+</script>
+{% endif %}
 </body>
 </html>
