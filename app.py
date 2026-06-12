@@ -831,6 +831,91 @@ def admin_set_plan():
 
 
 # ---------------------------------------------------------------------------
+@app.route('/admin/email-test', methods=['GET'])
+@admin_required
+def admin_email_test():
+    cfg = {
+        'SMTP_HOST': os.environ.get('SMTP_HOST', ''),
+        'SMTP_PORT': os.environ.get('SMTP_PORT', '587'),
+        'SMTP_USER': os.environ.get('SMTP_USER', ''),
+        'SMTP_PASS': os.environ.get('SMTP_PASS', ''),
+        'MAIL_FROM': os.environ.get('MAIL_FROM', ''),
+        'BASE_URL':  os.environ.get('BASE_URL', ''),
+    }
+    def mask(v):
+        if not v:
+            return '<LEER>'
+        if len(v) <= 6:
+            return v[0] + '***'
+        return v[:3] + '***' + v[-2:]
+    L = []
+    L.append('=== SMTP-Konfiguration (Railway Env) ===')
+    L.append('SMTP_HOST: ' + (cfg['SMTP_HOST'] or '<<< LEER / NICHT GESETZT >>>'))
+    L.append('SMTP_PORT: ' + cfg['SMTP_PORT'])
+    L.append('SMTP_USER: ' + (cfg['SMTP_USER'] or '<<< LEER / NICHT GESETZT >>>'))
+    L.append('SMTP_PASS: ' + mask(cfg['SMTP_PASS']) + '  (Laenge: ' + str(len(cfg['SMTP_PASS'])) + ')')
+    L.append('MAIL_FROM: ' + (cfg['MAIL_FROM'] or '<LEER -> nutzt SMTP_USER>'))
+    L.append('BASE_URL:  ' + (cfg['BASE_URL'] or '<LEER -> default https://holzbau3d.app>'))
+    L.append('')
+    test_to = request.values.get('to', '').strip()
+    if test_to:
+        L.append('=== Testversand an ' + test_to + ' ===')
+        host = cfg['SMTP_HOST']
+        port = int(cfg['SMTP_PORT'] or '587')
+        user = cfg['SMTP_USER']
+        pw   = cfg['SMTP_PASS']
+        frm  = cfg['MAIL_FROM'] or user
+        if not host or not user:
+            L.append('FEHLER: SMTP_HOST oder SMTP_USER fehlt -> send_email() bricht sofort ab.')
+        else:
+            try:
+                L.append('1) Verbinde TCP zu ' + host + ':' + str(port) + ' ...')
+                s = smtplib.SMTP(host, port, timeout=15)
+                L.append('   OK verbunden')
+                s.ehlo()
+                L.append('2) STARTTLS ...')
+                s.starttls()
+                s.ehlo()
+                L.append('   OK TLS aktiv')
+                L.append('3) LOGIN als ' + user + ' ...')
+                s.login(user, pw)
+                L.append('   OK Login akzeptiert')
+                L.append('4) Sende Mail von ' + frm + ' an ' + test_to + ' ...')
+                m = MIMEMultipart('alternative')
+                m['Subject'] = 'HolzBau 3D - SMTP Test'
+                m['From'] = 'HolzBau 3D <' + frm + '>'
+                m['To'] = test_to
+                m.attach(MIMEText('<p>SMTP-Test erfolgreich. Der Versand funktioniert!</p>', 'html', 'utf-8'))
+                s.sendmail(frm, [test_to], m.as_string())
+                s.quit()
+                L.append('   OK GESENDET')
+                L.append('')
+                L.append('==> ERFOLG: Brevo hat die Mail angenommen. Pruefe Posteingang + Spam.')
+            except Exception as e:
+                L.append('')
+                L.append('==> FEHLER (' + type(e).__name__ + '): ' + str(e))
+                L.append('')
+                L.append('Haeufige Ursachen:')
+                L.append(' - 535 Authentication failed -> SMTP_USER/SMTP_PASS falsch.')
+                L.append('   Brevo: SMTP_USER = Login aus "SMTP & API > SMTP",')
+                L.append('   SMTP_PASS = der dort erzeugte SMTP-Key (NICHT Account-Passwort, NICHT v3-API-Key).')
+                L.append(' - Timeout -> Railway/Netz blockiert Port. Versuche SMTP_PORT=2525.')
+                L.append(' - 553/501 sender -> MAIL_FROM Absender in Brevo nicht verifiziert.')
+    else:
+        L.append('Tipp: ?to=deine@email.de an die URL anhaengen, um einen Testversand zu starten.')
+    html = ('<html><body style="font-family:Consolas,monospace;background:#0e1117;color:#dde5f4;padding:24px;">'
+            '<h2 style="color:#4e8cdd;">HolzBau 3D - E-Mail Diagnose</h2>'
+            '<pre style="white-space:pre-wrap;font-size:13px;line-height:1.7;background:#161b27;padding:18px;border-radius:10px;border:1px solid #283755;">'
+            + '\n'.join(L) +
+            '</pre><form method="get" style="margin-top:16px;">'
+            '<input name="to" placeholder="test@email.de" value="' + test_to + '" '
+            'style="padding:9px;width:260px;border-radius:6px;border:1px solid #283755;background:#161b27;color:#fff;">'
+            '<button style="padding:9px 18px;margin-left:8px;border-radius:6px;border:none;background:#4e8cdd;color:#fff;cursor:pointer;font-weight:600;">Test senden</button>'
+            '</form></body></html>')
+    return html
+
+
+# ---------------------------------------------------------------------------
 # HolzBau 3D App
 # ---------------------------------------------------------------------------
 
