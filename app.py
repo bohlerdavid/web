@@ -613,9 +613,27 @@ def sitemap():
         f'<url><loc>{u}</loc>{alts()}<changefreq>weekly</changefreq><priority>1.0</priority></url>'
         for u in [SITE + '/', SITE + '/en', SITE + '/fr']
     )
+    import blog_content as _b
+    # Ratgeber-Index je Sprache
+    guide_idx = ''.join(
+        f'<url><loc>{SITE}{p}</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>'
+        for p in _b.GUIDES_PATH.values()
+    )
+    # Ratgeber-Artikel je Sprache mit hreflang-Alternates
+    guide_arts = ''
+    for slug in _b.ordered_slugs():
+        a_alts = ''.join(
+            f'<xhtml:link rel="alternate" hreflang="{l}" href="{SITE}{_b.article_url(slug, l)}"/>'
+            for l in ('de', 'en', 'fr')
+        )
+        for l in ('de', 'en', 'fr'):
+            guide_arts += (f'<url><loc>{SITE}{_b.article_url(slug, l)}</loc>{a_alts}'
+                           f'<changefreq>monthly</changefreq><priority>0.7</priority></url>')
     body = f'''<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
   {home}
+  {guide_idx}
+  {guide_arts}
   <url><loc>{SITE}/pricing</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>{SITE}/impressum</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
   <url><loc>{SITE}/datenschutz</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
@@ -648,6 +666,95 @@ def index_en():
 @app.route('/fr/')
 def index_fr():
     return render_template('landing.html', **_seo_context('fr'))
+
+
+# ---------------------------------------------------------------------------
+# Ratgeber / Blog (SEO-Content, DE/EN/FR)
+# ---------------------------------------------------------------------------
+import blog_content as _blog
+
+
+def _blog_index(lang):
+    lang = _norm_lang(lang)
+    arts = []
+    for slug in _blog.ordered_slugs():
+        a = _blog.ARTICLES[slug].get(lang) or _blog.ARTICLES[slug]['de']
+        arts.append({'slug': slug, 'icon': _blog.ARTICLES[slug]['icon'],
+                     'title': a['title'], 'desc': a['desc'], 'url': _blog.article_url(slug, lang)})
+    alts = [(l, SITE + _blog.GUIDES_PATH[l]) for l in ('de', 'en', 'fr')]
+    alts.append(('x-default', SITE + _blog.GUIDES_PATH['de']))
+    return render_template('blog_index.html', seo_lang=lang, articles=arts, ui=_blog.BLOG_UI[lang],
+                           page_title=_blog.GUIDES_TITLE[lang], intro=_blog.GUIDES_INTRO[lang],
+                           home_url=('/' if lang == 'de' else '/' + lang),
+                           guides_alts=[(l, SITE + _blog.GUIDES_PATH[l]) for l in ('de', 'en', 'fr')],
+                           canonical=SITE + _blog.GUIDES_PATH[lang], alternates=alts)
+
+
+def _blog_article(slug, lang):
+    lang = _norm_lang(lang)
+    if slug not in _blog.ARTICLES:
+        abort(404)
+    a = _blog.ARTICLES[slug].get(lang) or _blog.ARTICLES[slug]['de']
+    alts = [(l, SITE + _blog.article_url(slug, l)) for l in ('de', 'en', 'fr')]
+    alts.append(('x-default', SITE + _blog.article_url(slug, 'de')))
+    url = SITE + _blog.article_url(slug, lang)
+    article_ld = json.dumps({
+        '@context': 'https://schema.org', '@type': 'Article',
+        'headline': a['title'], 'description': a['desc'], 'inLanguage': lang,
+        'datePublished': a['date'], 'dateModified': a['date'],
+        'author': {'@type': 'Organization', 'name': 'HolzBau 3D'},
+        'publisher': {'@type': 'Organization', 'name': 'HolzBau 3D',
+                      'logo': {'@type': 'ImageObject', 'url': SITE + '/static/og-image.png'}},
+        'image': SITE + '/static/og-image.png',
+        'mainEntityOfPage': {'@type': 'WebPage', '@id': url},
+    }, ensure_ascii=False)
+    crumb_ld = json.dumps({
+        '@context': 'https://schema.org', '@type': 'BreadcrumbList',
+        'itemListElement': [
+            {'@type': 'ListItem', 'position': 1, 'name': 'HolzBau 3D', 'item': SITE + ('/' if lang == 'de' else '/' + lang)},
+            {'@type': 'ListItem', 'position': 2, 'name': _blog.GUIDES_TITLE[lang].split('–')[0].strip(), 'item': SITE + _blog.GUIDES_PATH[lang]},
+            {'@type': 'ListItem', 'position': 3, 'name': a['title'], 'item': url},
+        ],
+    }, ensure_ascii=False)
+    others = [{'slug': s, 'icon': _blog.ARTICLES[s]['icon'],
+               'title': (_blog.ARTICLES[s].get(lang) or _blog.ARTICLES[s]['de'])['title'],
+               'url': _blog.article_url(s, lang)}
+              for s in _blog.ordered_slugs() if s != slug]
+    return render_template('blog_article.html', seo_lang=lang, art=a, slug=slug, ui=_blog.BLOG_UI[lang],
+                           guides_url=_blog.GUIDES_PATH[lang], guides_title=_blog.GUIDES_TITLE[lang].split('–')[0].strip(),
+                           home_url=('/' if lang == 'de' else '/' + lang), others=others,
+                           app_url=('/holzbau'), canonical=url, alternates=alts,
+                           jsonld_article=article_ld, jsonld_crumb=crumb_ld)
+
+
+@app.route('/ratgeber')
+def blog_index_de():
+    return _blog_index('de')
+
+
+@app.route('/en/guides')
+def blog_index_en():
+    return _blog_index('en')
+
+
+@app.route('/fr/guides')
+def blog_index_fr():
+    return _blog_index('fr')
+
+
+@app.route('/ratgeber/<slug>')
+def blog_article_de(slug):
+    return _blog_article(slug, 'de')
+
+
+@app.route('/en/guides/<slug>')
+def blog_article_en(slug):
+    return _blog_article(slug, 'en')
+
+
+@app.route('/fr/guides/<slug>')
+def blog_article_fr(slug):
+    return _blog_article(slug, 'fr')
 
 
 @app.route('/login', methods=['GET', 'POST'])
