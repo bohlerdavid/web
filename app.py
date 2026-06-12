@@ -929,20 +929,50 @@ def admin_email_test():
     test_to = request.values.get('to', '').strip()
     if test_to:
         frm = cfg['MAIL_FROM'] or cfg['SMTP_USER']
-        # --- Weg 1: Brevo HTTP API (bevorzugt) ---
+        # --- Weg 1: Brevo HTTP API (bevorzugt) — mit voller Fehleranzeige ---
         if cfg['BREVO_API_KEY']:
             L.append('=== Test via Brevo HTTP-API an ' + test_to + ' ===')
             L.append('POST https://api.brevo.com/v3/smtp/email (Absender: ' + frm + ') ...')
-            ok = _send_email_brevo_api(test_to, 'HolzBau 3D - API Test',
-                                       '<p>HTTP-API-Test erfolgreich. Der Versand funktioniert!</p>')
-            if ok:
+            from_name = os.environ.get('MAIL_FROM_NAME', 'HolzBau 3D')
+            payload = {
+                'sender':      {'name': from_name, 'email': frm},
+                'to':          [{'email': test_to}],
+                'subject':     'HolzBau 3D - API Test',
+                'htmlContent': '<p>HTTP-API-Test erfolgreich!</p>',
+            }
+            req = urllib.request.Request(
+                'https://api.brevo.com/v3/smtp/email',
+                data=json.dumps(payload).encode('utf-8'),
+                headers={'api-key': cfg['BREVO_API_KEY'],
+                         'Content-Type': 'application/json',
+                         'Accept': 'application/json'},
+                method='POST',
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    rbody = resp.read().decode('utf-8', 'replace')
+                    L.append('HTTP-Status: ' + str(resp.status))
+                    L.append('Brevo-Antwort: ' + rbody[:400])
+                    L.append('')
+                    L.append('==> ERFOLG: Brevo hat die Mail angenommen. Pruefe Posteingang + Spam.')
+            except urllib.error.HTTPError as e:
+                rbody = e.read().decode('utf-8', 'replace')
+                L.append('HTTP-Status: ' + str(e.code))
+                L.append('Brevo-Antwort: ' + rbody[:500])
                 L.append('')
-                L.append('==> ERFOLG: Brevo hat die Mail per API angenommen. Pruefe Posteingang + Spam.')
-            else:
-                L.append('')
-                L.append('==> FEHLER: API-Versand fehlgeschlagen (Details in Railway-Logs).')
-                L.append('   Pruefe: BREVO_API_KEY korrekt (v3-Key, beginnt mit xkeysib-)?')
-                L.append('   Pruefe: Absender ' + frm + ' in Brevo unter "Senders" verifiziert?')
+                if e.code == 401:
+                    L.append('==> 401 UNAUTHORIZED: API-Key falsch ODER IP nicht autorisiert.')
+                    L.append('   - BREVO_API_KEY pruefen (v3, beginnt mit xkeysib-).')
+                    L.append('   - Falls IP-Beschraenkung aktiv: in Brevo 0.0.0.0/0 erlauben')
+                    L.append('     oder die IP oben (' + out_ip + ') eintragen.')
+                elif e.code == 400:
+                    L.append('==> 400 BAD REQUEST: meist Absender nicht verifiziert.')
+                    L.append('   Verifiziere ' + frm + ' in Brevo:')
+                    L.append('   Senders, Domains & Dedicated IPs > Senders > Add a sender.')
+                else:
+                    L.append('==> Fehlercode ' + str(e.code) + ' — siehe Brevo-Antwort oben.')
+            except Exception as e:
+                L.append('==> FEHLER (' + type(e).__name__ + '): ' + str(e))
         else:
             # --- Weg 2: SMTP Schritt-fuer-Schritt (Fallback-Diagnose) ---
             L.append('=== Test via SMTP an ' + test_to + ' ===')
