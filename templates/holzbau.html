@@ -788,7 +788,7 @@ body {
   <div style="position:relative;flex-shrink:0;margin-left:4px;" id="user-menu-wrap">
     <button onclick="toggleUserMenu(event)" class="tb-btn" style="padding:0 10px;color:var(--text);display:flex;align-items:center;gap:5px;font-size:13px;background:none;border:none;cursor:pointer;">
       <span style="font-size:15px;">👤</span>
-      <span style="max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ session.get('username', '') }}</span>
+      <span style="max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ session.get('full_name') or session.get('username', '') }}</span>
       <span style="font-size:9px;opacity:.5;margin-left:1px;">▼</span>
     </button>
     <div id="user-menu" style="display:none;position:fixed;min-width:190px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:99999;overflow:hidden;">
