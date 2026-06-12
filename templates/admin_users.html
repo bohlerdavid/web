@@ -60,6 +60,7 @@
               <th>Name</th>
               <th>E-Mail</th>
               <th>Plan</th>
+              <th>Abo-Laufzeit</th>
               <th>Plan setzen</th>
               <th>Registriert</th>
               <th>Letzter Login</th>
@@ -77,6 +78,17 @@
                 <span class="badge {% if u.plan == 'premium' %}badge-premium{% else %}badge-free{% endif %}">
                   {% if u.plan == 'premium' %}✨ Premium{% else %}Free{% endif %}
                 </span>
+              </td>
+              <td class="small">
+                {% if u.plan == 'premium' %}
+                  <span style="font-weight:600;">{% if u.plan_interval == 'yearly' %}Jährlich{% else %}Monatlich{% endif %}</span><br>
+                  <span class="text-muted" style="white-space:nowrap;">
+                    {{ (u.sub_started|string)[:10] if u.sub_started else '?' }} &rarr; {{ (u.current_period_end|string)[:10] if u.current_period_end else '?' }}
+                  </span>
+                  {% if u.sub_status == 'cancelled' %}<br><span class="text-danger" style="font-size:.72rem;">gekündigt</span>{% endif %}
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
               </td>
               <td>
                 <form method="post" action="{{ url_for('admin_set_plan') }}" class="plan-form d-flex align-items-center gap-1">
@@ -102,7 +114,7 @@
             </tr>
             {% else %}
             <tr>
-              <td colspan="9" class="text-center text-muted py-4">Noch keine Benutzer registriert</td>
+              <td colspan="10" class="text-center text-muted py-4">Noch keine Benutzer registriert</td>
             </tr>
             {% endfor %}
           </tbody>

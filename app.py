@@ -146,6 +146,7 @@ SCHEMA_MIGRATIONS = [
     "ALTER TABLE app_users ADD COLUMN pw_reset_token VARCHAR(64) NULL",
     "ALTER TABLE app_users ADD COLUMN pw_reset_expires DATETIME NULL",
     "ALTER TABLE subscriptions ADD COLUMN plan_interval VARCHAR(10) NOT NULL DEFAULT 'monthly'",
+    "ALTER TABLE subscriptions ADD COLUMN sub_started DATETIME NULL",
 ]
 
 
@@ -833,7 +834,8 @@ def admin_users():
     users = query_db("""
         SELECT u.id, u.username, u.full_name, u.email, u.created_at, u.last_login,
                COALESCE(u.email_verified, 1) as email_verified,
-               COALESCE(s.plan, 'free') as plan, COALESCE(s.status, '') as sub_status
+               COALESCE(s.plan, 'free') as plan, COALESCE(s.status, '') as sub_status,
+               s.plan_interval, s.sub_started, s.current_period_end
         FROM app_users u
         LEFT JOIN subscriptions s ON s.user_id = u.id
         ORDER BY u.created_at DESC
@@ -1398,11 +1400,15 @@ def _activate_premium(user_id, customer_id, sub_id, interval, notify=True):
                    and existing['stripe_sub_id'] == sub_id)
 
     period_end = None
+    started = None
     invoice_url = None
     amount_txt = '99,99 € / Jahr' if interval == 'yearly' else '9,99 € / Monat'
     try:
         if sub_id:
             s = _stripe_api_get('subscriptions/' + sub_id)
+            sd = s.get('start_date') or s.get('created')
+            if sd:
+                started = datetime.fromtimestamp(sd).isoformat()
             cpe = s.get('current_period_end')
             if not cpe:
                 # Neuere Stripe-API-Versionen: Laufzeit liegt am Subscription-Item
@@ -1425,12 +1431,12 @@ def _activate_premium(user_id, customer_id, sub_id, interval, notify=True):
 
     if existing:
         execute_db('UPDATE subscriptions SET stripe_customer_id=?, stripe_sub_id=?, plan=?, status=?, plan_interval=?, '
-                   'current_period_end=COALESCE(?, current_period_end) WHERE user_id=?',
-                   [customer_id, sub_id, 'premium', 'active', interval, period_end, user_id])
+                   'current_period_end=COALESCE(?, current_period_end), sub_started=COALESCE(?, sub_started) WHERE user_id=?',
+                   [customer_id, sub_id, 'premium', 'active', interval, period_end, started, user_id])
     else:
-        execute_db('INSERT INTO subscriptions (user_id, stripe_customer_id, stripe_sub_id, plan, status, plan_interval, current_period_end) '
-                   'VALUES (?,?,?,?,?,?,?)',
-                   [user_id, customer_id, sub_id, 'premium', 'active', interval, period_end])
+        execute_db('INSERT INTO subscriptions (user_id, stripe_customer_id, stripe_sub_id, plan, status, plan_interval, current_period_end, sub_started) '
+                   'VALUES (?,?,?,?,?,?,?,?)',
+                   [user_id, customer_id, sub_id, 'premium', 'active', interval, period_end, started])
 
     if notify and not already:
         u = query_db('SELECT email, full_name, username FROM app_users WHERE id=?', [user_id], one=True)
