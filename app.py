@@ -1164,6 +1164,7 @@ def profile_delete():
             except Exception as e:
                 logger.error('Stripe cancel on self-delete failed user %s: %s', user_id, e)
 
+        _send_delete_email(user_id, sub_info=dict(sub) if sub else None)
         execute_db('DELETE FROM subscriptions WHERE user_id=?', [user_id])
         execute_db('DELETE FROM app_users WHERE id=?', [user_id])
         session.clear()
@@ -2036,6 +2037,97 @@ def _send_cancel_email(user_id):
     end_txt = pe.strftime('%d.%m.%Y') if pe else '—'
     subj = CANCEL_I18N[lang]['subject'].replace('{date}', end_txt)
     send_email(row['email'], subj, _email_cancel_html(row['full_name'] or row['username'], end_txt, lang))
+
+
+def _send_delete_email(user_id, sub_info=None):
+    """Bestätigungs-Mail nach Konto-Löschung — wird VOR dem DB-Delete aufgerufen."""
+    row = query_db('SELECT email, full_name, username, lang FROM app_users WHERE id=?', [user_id], one=True)
+    if not row or not row['email']:
+        return
+    lang     = _norm_lang(row.get('lang') if hasattr(row, 'get') else 'de')
+    name     = row['full_name'] or row['username'] or row['email']
+    email    = row['email']
+    now_str  = datetime.utcnow().strftime('%d.%m.%Y %H:%M UTC')
+
+    had_sub  = sub_info and sub_info.get('stripe_sub_id')
+    pe       = _to_dt(sub_info['current_period_end']) if sub_info and sub_info.get('current_period_end') else None
+    end_str  = pe.strftime('%d.%m.%Y') if pe else None
+
+    SUBJ = {'de': 'Dein HolzBau 3D Konto wurde gelöscht',
+            'en': 'Your HolzBau 3D account has been deleted',
+            'fr': 'Votre compte HolzBau 3D a été supprimé'}
+    HELLO = {'de': 'Hallo', 'en': 'Hello', 'fr': 'Bonjour'}
+    BODY = {
+        'de': (
+            f'<p style="margin:0 0 12px;color:#374151;line-height:1.65;font-size:.95rem;">'
+            f'{HELLO[lang]} <strong>{name}</strong>,</p>'
+            f'<p style="margin:0 0 12px;color:#374151;line-height:1.65;font-size:.95rem;">'
+            f'dein Konto bei HolzBau 3D wurde am <strong>{now_str}</strong> dauerhaft gelöscht.</p>'
+            + (f'<div style="background:#fef2f2;border-left:4px solid #ef4444;padding:14px 18px;border-radius:8px;margin:0 0 16px;">'
+               f'<p style="margin:0 0 6px;color:#991b1b;font-weight:700;font-size:.9rem;">Abonnement gekündigt</p>'
+               f'<p style="margin:0;color:#7f1d1d;font-size:.88rem;line-height:1.5;">'
+               f'Dein aktives Premium-Abonnement{(" (gültig bis " + end_str + ")") if end_str else ""} wurde sofort und unwiderruflich gekündigt.</p>'
+               f'</div>' if had_sub else '')
+            + f'<p style="margin:0 0 6px;color:#374151;font-weight:700;font-size:.92rem;">Folgendes wurde gelöscht:</p>'
+            f'<ul style="margin:0 0 16px;padding-left:20px;color:#4b5563;font-size:.88rem;line-height:1.8;">'
+            f'<li>Login &amp; Zugangsdaten (E-Mail: {email})</li>'
+            f'<li>Alle gespeicherten Projekte und Konstruktionen</li>'
+            + (f'<li>Premium-Abonnement (sofort beendet)</li>' if had_sub else '')
+            + f'<li>Alle persönlichen Daten</li>'
+            f'</ul>'
+            f'<p style="margin:0 0 16px;color:#6b7280;font-size:.88rem;line-height:1.5;">'
+            f'Diese Aktion ist endgültig. Dein Konto kann nicht wiederhergestellt werden.</p>'
+            f'<p style="margin:0;color:#9ca3af;font-size:.8rem;">Bei Fragen: support@holzbau3d.app</p>'
+        ),
+        'en': (
+            f'<p style="margin:0 0 12px;color:#374151;line-height:1.65;font-size:.95rem;">'
+            f'{HELLO[lang]} <strong>{name}</strong>,</p>'
+            f'<p style="margin:0 0 12px;color:#374151;line-height:1.65;font-size:.95rem;">'
+            f'your HolzBau 3D account was permanently deleted on <strong>{now_str}</strong>.</p>'
+            + (f'<div style="background:#fef2f2;border-left:4px solid #ef4444;padding:14px 18px;border-radius:8px;margin:0 0 16px;">'
+               f'<p style="margin:0 0 6px;color:#991b1b;font-weight:700;font-size:.9rem;">Subscription cancelled</p>'
+               f'<p style="margin:0;color:#7f1d1d;font-size:.88rem;line-height:1.5;">'
+               f'Your active Premium subscription{(" (valid until " + end_str + ")") if end_str else ""} was immediately and irrevocably cancelled.</p>'
+               f'</div>' if had_sub else '')
+            + f'<p style="margin:0 0 6px;color:#374151;font-weight:700;font-size:.92rem;">The following was deleted:</p>'
+            f'<ul style="margin:0 0 16px;padding-left:20px;color:#4b5563;font-size:.88rem;line-height:1.8;">'
+            f'<li>Login &amp; credentials (email: {email})</li>'
+            f'<li>All saved projects and constructions</li>'
+            + (f'<li>Premium subscription (terminated immediately)</li>' if had_sub else '')
+            + f'<li>All personal data</li>'
+            f'</ul>'
+            f'<p style="margin:0 0 16px;color:#6b7280;font-size:.88rem;line-height:1.5;">'
+            f'This action is final. Your account cannot be restored.</p>'
+            f'<p style="margin:0;color:#9ca3af;font-size:.8rem;">Questions? support@holzbau3d.app</p>'
+        ),
+        'fr': (
+            f'<p style="margin:0 0 12px;color:#374151;line-height:1.65;font-size:.95rem;">'
+            f'{HELLO[lang]} <strong>{name}</strong>,</p>'
+            f'<p style="margin:0 0 12px;color:#374151;line-height:1.65;font-size:.95rem;">'
+            f'votre compte HolzBau 3D a été définitivement supprimé le <strong>{now_str}</strong>.</p>'
+            + (f'<div style="background:#fef2f2;border-left:4px solid #ef4444;padding:14px 18px;border-radius:8px;margin:0 0 16px;">'
+               f'<p style="margin:0 0 6px;color:#991b1b;font-weight:700;font-size:.9rem;">Abonnement résilié</p>'
+               f'<p style="margin:0;color:#7f1d1d;font-size:.88rem;line-height:1.5;">'
+               f'Votre abonnement Premium actif{(" (valable jusqu\'au " + end_str + ")") if end_str else ""} a été résilié immédiatement et irrévocablement.</p>'
+               f'</div>' if had_sub else '')
+            + f'<p style="margin:0 0 6px;color:#374151;font-weight:700;font-size:.92rem;">Éléments supprimés :</p>'
+            f'<ul style="margin:0 0 16px;padding-left:20px;color:#4b5563;font-size:.88rem;line-height:1.8;">'
+            f'<li>Identifiants &amp; accès (e-mail : {email})</li>'
+            f'<li>Tous les projets et constructions sauvegardés</li>'
+            + (f'<li>Abonnement Premium (résilié immédiatement)</li>' if had_sub else '')
+            + f'<li>Toutes les données personnelles</li>'
+            f'</ul>'
+            f'<p style="margin:0 0 16px;color:#6b7280;font-size:.88rem;line-height:1.5;">'
+            f'Cette action est définitive. Votre compte ne peut pas être restauré.</p>'
+            f'<p style="margin:0;color:#9ca3af;font-size:.8rem;">Questions ? support@holzbau3d.app</p>'
+        ),
+    }
+    html = _email_shell(
+        f'<h2 style="margin:0 0 20px;font-size:1.1rem;color:#dc2626;font-weight:800;">'
+        f'{"Konto gelöscht" if lang=="de" else ("Account deleted" if lang=="en" else "Compte supprimé")}'
+        f'</h2>' + BODY[lang]
+    )
+    send_email(email, SUBJ[lang], html)
 
 
 def _run_subscription_reminders():
