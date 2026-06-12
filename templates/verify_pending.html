@@ -61,6 +61,7 @@
       </div></a>
     </div>
 
+    <div id="pending-view">
     <div class="icon-circle">📧</div>
 
     {% if expired %}
@@ -103,8 +104,48 @@
         <i class="bi bi-arrow-left me-1"></i>Zurück zum Login
       </a>
     </div>
+    </div><!-- /#pending-view -->
+
+    <div id="success-view" style="display:none;text-align:center;">
+      <div class="icon-circle" style="background:linear-gradient(135deg,#d1fae5,#6ee7b7);">✅</div>
+      <h2 style="font-size:1.3rem;font-weight:800;color:#16a34a;margin-bottom:10px;">E-Mail bestätigt!</h2>
+      <p class="text-muted" style="font-size:.92rem;line-height:1.6;margin-bottom:22px;">
+        Perfekt — dein Konto ist jetzt aktiv.<br>Du wirst automatisch weitergeleitet …
+      </p>
+      <div class="spinner-border text-success" role="status" style="width:1.6rem;height:1.6rem;">
+        <span class="visually-hidden">Lädt …</span>
+      </div>
+      <div class="mt-4">
+        <a href="/holzbau" class="btn btn-wood btn-sm">Jetzt zur App &rarr;</a>
+      </div>
+    </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+  (function () {
+    var email = {{ email|tojson }};
+    var expired = {{ 'true' if expired else 'false' }};
+    if (!email || expired) return;
+    var pending = document.getElementById('pending-view');
+    var success = document.getElementById('success-view');
+    var timer = null;
+    function check() {
+      fetch('/verify-status?email=' + encodeURIComponent(email), { headers: { 'Accept': 'application/json' } })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d && d.verified) {
+            if (timer) clearInterval(timer);
+            if (pending) pending.style.display = 'none';
+            if (success) success.style.display = 'block';
+            setTimeout(function () { window.location = '/holzbau'; }, 2200);
+          }
+        })
+        .catch(function () {});
+    }
+    timer = setInterval(check, 3500);
+    check();
+  })();
+  </script>
 </body>
 </html>

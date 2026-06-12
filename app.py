@@ -553,6 +553,7 @@ def register():
         if not sent:
             logger.warning('Verification email not sent (SMTP not configured?)')
 
+        session['pending_verify_email'] = email
         return redirect(url_for('verify_pending', email=email))
 
     return render_template('register.html', csrf_token=generate_csrf())
@@ -570,8 +571,21 @@ def logout():
 
 @app.route('/verify-pending')
 def verify_pending():
-    email = request.args.get('email', '')
+    email = request.args.get('email', '') or session.get('pending_verify_email', '')
     return render_template('verify_pending.html', email=email)
+
+
+@app.route('/verify-status')
+def verify_status():
+    """JSON-Status für das Auto-Polling der verify_pending-Seite."""
+    email = session.get('pending_verify_email') or request.args.get('email', '')
+    if not email:
+        return jsonify(verified=False)
+    row = query_db("SELECT email_verified FROM app_users WHERE email = ?", (email,), one=True)
+    verified = bool(row and row['email_verified'] == 1)
+    if verified:
+        session.pop('pending_verify_email', None)
+    return jsonify(verified=verified)
 
 
 @app.route('/verify-email/<token>')
