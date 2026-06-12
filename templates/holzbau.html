@@ -785,7 +785,7 @@ body {
       <span style="max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ session.get('username', '') }}</span>
       <span style="font-size:9px;opacity:.5;margin-left:1px;">▼</span>
     </button>
-    <div id="user-menu" style="display:none;position:absolute;right:0;top:calc(100% + 6px);min-width:190px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:9999;overflow:hidden;">
+    <div id="user-menu" style="display:none;position:fixed;min-width:190px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:99999;overflow:hidden;">
       <div style="padding:11px 14px 9px;border-bottom:1px solid var(--border-2);">
         <div style="font-weight:700;font-size:.88rem;color:var(--text);">{{ session.get('full_name') or session.get('username','') }}</div>
         <div style="font-size:.72rem;color:var(--text-2);margin-top:2px;">{% if user_plan == 'premium' %}✨ Premium{% else %}Free Plan{% endif %}</div>
@@ -4667,7 +4667,11 @@ function cookieConsent(c){
 function toggleUserMenu(e) {
   e.stopPropagation();
   var m = document.getElementById('user-menu');
-  m.style.display = m.style.display === 'block' ? 'none' : 'block';
+  if (m.style.display === 'block') { m.style.display = 'none'; return; }
+  var btn = e.currentTarget.getBoundingClientRect();
+  m.style.top = (btn.bottom + 6) + 'px';
+  m.style.right = (window.innerWidth - btn.right) + 'px';
+  m.style.display = 'block';
 }
 document.addEventListener('click', function(e) {
   var wrap = document.getElementById('user-menu-wrap');
