@@ -8,8 +8,8 @@ window.HB_I18N = {"en":{"Nadelbaum":"Conifer","Laubbaum":"Deciduous tree","Profi
   function norm(l) { l = (l || 'de').slice(0, 2).toLowerCase(); return SUP.indexOf(l) >= 0 ? l : 'de'; }
 
   var stored = null;
-  try { stored = localStorage.getItem('hb_lang'); } catch (e) {}
-  if (!stored) { var m = document.cookie.match(/(?:^|;\s*)hb_lang=([a-z]{2})/); if (m) stored = m[1]; }
+  var _cm = document.cookie.match(/(?:^|;\s*)hb_lang=([a-z]{2})/); if (_cm) stored = _cm[1];
+  if (!stored) { try { stored = localStorage.getItem('hb_lang'); } catch (e) {} }
   // Server-Sprache (vom SEO-Routing in <html lang> gesetzt) als starker Hinweis vor Browser
   var serverLang = (document.documentElement.getAttribute('lang') || '').slice(0, 2);
   var lang = norm(stored || serverLang || (navigator.language || 'de'));
