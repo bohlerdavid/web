@@ -483,6 +483,7 @@
     <ul class="nav-links d-none d-md-flex">
       <li><a href="#features">Features</a></li>
       <li><a href="#pricing">Preise</a></li>
+      <li><a href="{{ '/ratgeber' if seo_lang|default('de') == 'de' else '/' + seo_lang + '/guides' }}">Ratgeber</a></li>
     </ul>
     <div style="display:flex;align-items:center;gap:10px;">
       <a href="/login" style="color:#92400e;text-decoration:none;font-size:.88rem;font-weight:600;padding:8px 14px;border-radius:8px;transition:background .15s;" onmouseover="this.style.background='rgba(180,100,20,0.08)'" onmouseout="this.style.background='transparent'">Anmelden</a>
@@ -873,7 +874,7 @@
     <div class="footer-links">
       <a href="#features">Features</a>
       <a href="#pricing">Preise</a>
-      <a href="/ratgeber">Ratgeber</a>
+      <a href="{{ '/ratgeber' if seo_lang|default('de') == 'de' else '/' + seo_lang + '/guides' }}">Ratgeber</a>
       <a href="/login">Login</a>
       <a href="/impressum">Impressum</a>
       <a href="/datenschutz">Datenschutz</a>
