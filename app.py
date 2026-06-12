@@ -761,6 +761,49 @@ def admin_users():
     return render_template('admin_users.html', users=users)
 
 
+@app.route('/admin/delete_user', methods=['POST'])
+@admin_required
+def admin_delete_user():
+    if not validate_csrf(request.form.get('csrf_token', '')):
+        flash('Ungültiges CSRF-Token.', 'danger')
+        return redirect(url_for('admin_users'))
+
+    user_id = request.form.get('user_id', type=int)
+    if not user_id:
+        flash('Ungültige Eingabe.', 'danger')
+        return redirect(url_for('admin_users'))
+
+    user = query_db('SELECT * FROM app_users WHERE id=?', [user_id], one=True)
+    if not user:
+        flash('Benutzer nicht gefunden.', 'danger')
+        return redirect(url_for('admin_users'))
+    if user['username'] == 'admin':
+        flash('Der Admin-Account kann nicht gelöscht werden.', 'danger')
+        return redirect(url_for('admin_users'))
+    if user_id == session.get('user_id'):
+        flash('Du kannst deinen eigenen Account nicht löschen.', 'danger')
+        return redirect(url_for('admin_users'))
+
+    # Cancel Stripe subscription if active
+    stripe_key = os.environ.get('STRIPE_SECRET_KEY')
+    sub = query_db('SELECT stripe_sub_id FROM subscriptions WHERE user_id=?', [user_id], one=True)
+    if sub and sub.get('stripe_sub_id') and stripe_key:
+        try:
+            import stripe
+            stripe.api_key = stripe_key
+            stripe.Subscription.cancel(sub['stripe_sub_id'])
+            logger.info('Stripe subscription cancelled for deleted user %s', user_id)
+        except Exception as e:
+            logger.error('Stripe cancel on delete failed for user %s: %s', user_id, e)
+
+    execute_db('DELETE FROM subscriptions WHERE user_id=?', [user_id])
+    username = user['username']
+    execute_db('DELETE FROM app_users WHERE id=?', [user_id])
+
+    flash(f'Benutzer „{username}" wurde gelöscht.', 'success')
+    return redirect(url_for('admin_users'))
+
+
 @app.route('/admin/set_plan', methods=['POST'])
 @admin_required
 def admin_set_plan():

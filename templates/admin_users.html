@@ -15,6 +15,8 @@
     .plan-form select { font-size:.8rem; padding:2px 6px; border-radius:6px; border:1px solid #d1d5db; cursor:pointer; }
     .plan-form button { font-size:.8rem; padding:2px 10px; border-radius:6px; border:none; background:#d97706; color:#fff; cursor:pointer; font-weight:600; }
     .plan-form button:hover { background:#b45309; }
+    .btn-delete { font-size:.78rem; padding:2px 8px; border-radius:6px; border:none; background:#fee2e2; color:#dc2626; cursor:pointer; font-weight:600; }
+    .btn-delete:hover { background:#fca5a5; }
   </style>
 </head>
 <body>
@@ -60,6 +62,7 @@
               <th>Plan setzen</th>
               <th>Registriert</th>
               <th>Letzter Login</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -87,10 +90,18 @@
               </td>
               <td class="text-muted small">{{ u.created_at or '—' }}</td>
               <td class="text-muted small">{{ u.last_login or 'Noch nie' }}</td>
+              <td>
+                {% if u.username != 'admin' %}
+                <button class="btn-delete"
+                  onclick="confirmDelete({{ u.id }}, '{{ u.username }}', {{ 'true' if u.plan == 'premium' else 'false' }})">
+                  <i class="bi bi-trash3"></i> Löschen
+                </button>
+                {% endif %}
+              </td>
             </tr>
             {% else %}
             <tr>
-              <td colspan="8" class="text-center text-muted py-4">Noch keine Benutzer registriert</td>
+              <td colspan="9" class="text-center text-muted py-4">Noch keine Benutzer registriert</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -99,5 +110,45 @@
     </div>
   </div>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Delete confirmation modal -->
+  <div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content border-0 shadow">
+        <div class="modal-header border-0 pb-0">
+          <h5 class="modal-title fw-bold" style="color:#dc2626;">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>Benutzer löschen
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body pt-2">
+          <p class="mb-1">Soll der Benutzer <strong id="del-username"></strong> wirklich gelöscht werden?</p>
+          <p class="text-muted small mb-0">Alle Daten werden permanent entfernt. Diese Aktion kann nicht rückgängig gemacht werden.</p>
+          <div id="del-stripe-hint" class="alert alert-warning py-2 mt-3 mb-0" style="font-size:.85rem;display:none;">
+            <i class="bi bi-credit-card me-1"></i>Das aktive Premium-Abo wird automatisch bei Stripe gekündigt.
+          </div>
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Abbrechen</button>
+          <form method="POST" action="{{ url_for('admin_delete_user') }}" id="del-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="user_id" id="del-user-id">
+            <button type="submit" class="btn btn-danger btn-sm">
+              <i class="bi bi-trash3 me-1"></i>Endgültig löschen
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  function confirmDelete(userId, username, hasPremium) {
+    document.getElementById('del-user-id').value = userId;
+    document.getElementById('del-username').textContent = username;
+    document.getElementById('del-stripe-hint').style.display = hasPremium ? 'block' : 'none';
+    new bootstrap.Modal(document.getElementById('deleteModal')).show();
+  }
+  </script>
 </body>
 </html>
