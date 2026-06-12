@@ -142,6 +142,7 @@ SCHEMA_MIGRATIONS = [
     "ALTER TABLE app_users ADD COLUMN email_verify_expires DATETIME NULL",
     "ALTER TABLE app_users ADD COLUMN pw_reset_token VARCHAR(64) NULL",
     "ALTER TABLE app_users ADD COLUMN pw_reset_expires DATETIME NULL",
+    "ALTER TABLE subscriptions ADD COLUMN plan_interval VARCHAR(10) NOT NULL DEFAULT 'monthly'",
 ]
 
 
@@ -881,8 +882,10 @@ def subscribe():
     user_id = session['user_id']
     plan = get_user_plan(user_id)
     stripe_configured = bool(os.environ.get('STRIPE_SECRET_KEY'))
+    yearly_configured = bool(os.environ.get('STRIPE_YEARLY_PRICE_ID'))
     sub = query_db('SELECT * FROM subscriptions WHERE user_id=?', [user_id], one=True)
-    return render_template('subscribe.html', plan=plan, stripe_configured=stripe_configured,
+    return render_template("subscribe.html", plan=plan, stripe_configured=stripe_configured,
+                           yearly_configured=yearly_configured,
                            sub=row_to_dict(sub) if sub else {}, csrf_token=generate_csrf())
 
 
@@ -895,7 +898,11 @@ def subscribe_create_checkout():
         flash('Zu viele Versuche. Bitte warte kurz.', 'danger')
         return redirect(url_for('subscribe'))
     stripe_key = os.environ.get('STRIPE_SECRET_KEY')
-    price_id = os.environ.get('STRIPE_PRICE_ID')
+    plan_type = request.form.get('plan_type', 'monthly')
+    if plan_type == 'yearly':
+        price_id = os.environ.get('STRIPE_YEARLY_PRICE_ID') or os.environ.get('STRIPE_PRICE_ID')
+    else:
+        price_id = os.environ.get('STRIPE_PRICE_ID')
     if not stripe_key or not price_id:
         flash('Stripe ist nicht konfiguriert.', 'danger')
         return redirect(url_for('subscribe'))
@@ -912,7 +919,7 @@ def subscribe_create_checkout():
             mode='subscription',
             success_url=request.host_url + 'subscribe?success=1',
             cancel_url=request.host_url + 'subscribe?cancelled=1',
-            metadata={'user_id': str(user_id)},
+            metadata={'user_id': str(user_id), 'plan_type': plan_type},
         )
         return redirect(checkout.url, code=303)
     except Exception as e:
@@ -978,13 +985,15 @@ def _handle_stripe_event(event):
             return
         customer_id = data.get('customer')
         sub_id = data.get('subscription')
+        plan_type = data.get('metadata', {}).get('plan_type', 'monthly')
+        interval = 'yearly' if plan_type == 'yearly' else 'monthly'
         existing = query_db('SELECT id FROM subscriptions WHERE user_id=?', [user_id], one=True)
         if existing:
-            execute_db('UPDATE subscriptions SET stripe_customer_id=?, stripe_sub_id=?, plan=?, status=? WHERE user_id=?',
-                       [customer_id, sub_id, 'premium', 'active', user_id])
+            execute_db('UPDATE subscriptions SET stripe_customer_id=?, stripe_sub_id=?, plan=?, status=?, plan_interval=? WHERE user_id=?',
+                       [customer_id, sub_id, 'premium', 'active', interval, user_id])
         else:
-            execute_db('INSERT INTO subscriptions (user_id, stripe_customer_id, stripe_sub_id, plan, status) VALUES (?,?,?,?,?)',
-                       [user_id, customer_id, sub_id, 'premium', 'active'])
+            execute_db('INSERT INTO subscriptions (user_id, stripe_customer_id, stripe_sub_id, plan, status, plan_interval) VALUES (?,?,?,?,?,?)',
+                       [user_id, customer_id, sub_id, 'premium', 'active', interval])
     elif etype in ('customer.subscription.deleted', 'customer.subscription.updated'):
         sub_id = data.get('id')
         status = data.get('status', 'cancelled')
