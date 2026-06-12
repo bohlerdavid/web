@@ -147,6 +147,7 @@ SCHEMA_MIGRATIONS = [
     "ALTER TABLE app_users ADD COLUMN pw_reset_expires DATETIME NULL",
     "ALTER TABLE subscriptions ADD COLUMN plan_interval VARCHAR(10) NOT NULL DEFAULT 'monthly'",
     "ALTER TABLE subscriptions ADD COLUMN sub_started DATETIME NULL",
+    "ALTER TABLE app_users ADD COLUMN lang VARCHAR(5) NOT NULL DEFAULT 'de'",
 ]
 
 
@@ -265,7 +266,97 @@ def _stripe_api_get(path, params=None):
         return json.loads(r.read().decode('utf-8'))
 
 
-def _email_verify_html(display_name, verify_url):
+SUPPORTED_LANGS = ('de', 'en', 'fr')
+
+
+def _norm_lang(value):
+    v = (value or 'de')[:2].lower()
+    return v if v in SUPPORTED_LANGS else 'de'
+
+
+def _request_lang():
+    """Sprache des aktuellen Besuchers: Cookie > Accept-Language > de."""
+    cookie = request.cookies.get('hb_lang')
+    if cookie:
+        return _norm_lang(cookie)
+    accept = request.headers.get('Accept-Language', '')
+    return _norm_lang(accept)
+
+
+EMAIL_I18N = {
+    'de': {
+        'v_subject': 'HolzBau 3D – E-Mail-Adresse bestätigen',
+        'v_title':   'E-Mail-Adresse bestätigen',
+        'hello':     'Hallo',
+        'v_body':    'danke für deine Registrierung bei HolzBau 3D! Bitte bestätige deine E-Mail-Adresse, um dein Konto zu aktivieren:',
+        'v_button':  'E-Mail bestätigen',
+        'v_note':    'Dieser Link ist 48 Stunden gültig. Falls du dich nicht registriert hast, kannst du diese E-Mail ignorieren.',
+        'r_subject': 'HolzBau 3D – Passwort zurücksetzen',
+        'r_title':   'Passwort zurücksetzen',
+        'r_body':    'du hast ein neues Passwort für dein HolzBau 3D Konto angefordert. Klicke auf den Button, um dein Passwort zurückzusetzen:',
+        'r_button':  'Passwort zurücksetzen',
+        'r_note':    'Dieser Link ist 1 Stunde gültig. Falls du kein neues Passwort angefordert hast, kannst du diese E-Mail ignorieren — dein Passwort bleibt unverändert.',
+        'p_subject': 'HolzBau 3D – Premium aktiviert ✨ (Rechnung)',
+        'p_title':   '✨ Premium ist aktiv!',
+        'p_thanks':  'vielen Dank für dein Vertrauen! Dein <strong>{plan}</strong> ({amount}) ist ab sofort aktiv — alle Premium-Features sind freigeschaltet.',
+        'p_plan_y':  'Jahres-Abo',
+        'p_plan_m':  'Monats-Abo',
+        'p_features': '✅ Unbegrenzte Balken &amp; Projekte<br>✅ Vollständig werbefrei<br>✅ PDF Export &amp; Druckpläne<br>✅ Säge-Tool &amp; Schnittplan-Optimierung',
+        'p_invoice': '📄 Rechnung ansehen &amp; herunterladen',
+        'p_manage':  'Du kannst dein Abo jederzeit unter „Mein Abonnement" verwalten oder kündigen.',
+        'per_year':  ' / Jahr',
+        'per_month': ' / Monat',
+    },
+    'en': {
+        'v_subject': 'HolzBau 3D – Confirm your email address',
+        'v_title':   'Confirm your email address',
+        'hello':     'Hello',
+        'v_body':    'thanks for signing up for HolzBau 3D! Please confirm your email address to activate your account:',
+        'v_button':  'Confirm email',
+        'v_note':    'This link is valid for 48 hours. If you did not sign up, you can safely ignore this email.',
+        'r_subject': 'HolzBau 3D – Reset your password',
+        'r_title':   'Reset your password',
+        'r_body':    'you requested a new password for your HolzBau 3D account. Click the button below to reset your password:',
+        'r_button':  'Reset password',
+        'r_note':    'This link is valid for 1 hour. If you did not request a new password, you can ignore this email — your password remains unchanged.',
+        'p_subject': 'HolzBau 3D – Premium activated ✨ (invoice)',
+        'p_title':   '✨ Premium is active!',
+        'p_thanks':  'thank you for your trust! Your <strong>{plan}</strong> ({amount}) is now active — all premium features are unlocked.',
+        'p_plan_y':  'annual plan',
+        'p_plan_m':  'monthly plan',
+        'p_features': '✅ Unlimited beams &amp; projects<br>✅ Completely ad-free<br>✅ PDF export &amp; construction plans<br>✅ Saw tool &amp; cutting plan optimisation',
+        'p_invoice': '📄 View &amp; download invoice',
+        'p_manage':  'You can manage or cancel your subscription at any time under "My subscription".',
+        'per_year':  ' / year',
+        'per_month': ' / month',
+    },
+    'fr': {
+        'v_subject': 'HolzBau 3D – Confirmez votre adresse e-mail',
+        'v_title':   'Confirmez votre adresse e-mail',
+        'hello':     'Bonjour',
+        'v_body':    'merci de votre inscription sur HolzBau 3D ! Veuillez confirmer votre adresse e-mail pour activer votre compte :',
+        'v_button':  'Confirmer l’e-mail',
+        'v_note':    'Ce lien est valable 48 heures. Si vous ne vous êtes pas inscrit, vous pouvez ignorer cet e-mail.',
+        'r_subject': 'HolzBau 3D – Réinitialiser votre mot de passe',
+        'r_title':   'Réinitialiser le mot de passe',
+        'r_body':    'vous avez demandé un nouveau mot de passe pour votre compte HolzBau 3D. Cliquez sur le bouton pour réinitialiser votre mot de passe :',
+        'r_button':  'Réinitialiser le mot de passe',
+        'r_note':    'Ce lien est valable 1 heure. Si vous n’avez pas demandé de nouveau mot de passe, vous pouvez ignorer cet e-mail — votre mot de passe reste inchangé.',
+        'p_subject': 'HolzBau 3D – Premium activé ✨ (facture)',
+        'p_title':   '✨ Premium est actif !',
+        'p_thanks':  'merci de votre confiance ! Votre <strong>{plan}</strong> ({amount}) est désormais actif — toutes les fonctionnalités Premium sont débloquées.',
+        'p_plan_y':  'abonnement annuel',
+        'p_plan_m':  'abonnement mensuel',
+        'p_features': '✅ Poutres &amp; projets illimités<br>✅ Sans aucune publicité<br>✅ Export PDF &amp; plans d’impression<br>✅ Outil scie &amp; optimisation du plan de coupe',
+        'p_invoice': '📄 Voir &amp; télécharger la facture',
+        'p_manage':  'Vous pouvez gérer ou résilier votre abonnement à tout moment sous « Mon abonnement ».',
+        'per_year':  ' / an',
+        'per_month': ' / mois',
+    },
+}
+
+
+def _email_shell(inner):
     return f'''<!DOCTYPE html>
 <html><body style="margin:0;padding:0;background:#faf6f0;font-family:'Segoe UI',Arial,sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#faf6f0;padding:40px 16px;">
@@ -275,14 +366,7 @@ def _email_verify_html(display_name, verify_url):
     <span style="color:#fff;font-size:1.35rem;font-weight:800;letter-spacing:-0.5px;">HolzBAU <span style="font-size:1rem;">3D</span></span>
   </td></tr>
   <tr><td style="padding:40px;">
-    <h2 style="margin:0 0 16px;font-size:1.15rem;color:#1a1a1a;font-weight:700;">E-Mail-Adresse bestätigen</h2>
-    <p style="margin:0 0 10px;color:#374151;line-height:1.65;font-size:.95rem;">Hallo <strong>{display_name}</strong>,</p>
-    <p style="margin:0 0 28px;color:#374151;line-height:1.65;font-size:.95rem;">danke für deine Registrierung bei HolzBau 3D! Bitte bestätige deine E-Mail-Adresse, um dein Konto zu aktivieren:</p>
-    <table cellpadding="0" cellspacing="0"><tr><td>
-      <a href="{verify_url}" style="display:inline-block;background:linear-gradient(135deg,#d97706,#92400e);color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:.95rem;">E-Mail bestätigen</a>
-    </td></tr></table>
-    <p style="margin:28px 0 8px;color:#9ca3af;font-size:.8rem;line-height:1.5;">Dieser Link ist 48 Stunden gültig. Falls du dich nicht registriert hast, kannst du diese E-Mail ignorieren.</p>
-    <p style="margin:0;color:#c4c9d4;font-size:.72rem;word-break:break-all;">Link: {verify_url}</p>
+{inner}
   </td></tr>
   <tr><td style="padding:18px 40px;border-top:1px solid #f3f4f6;">
     <p style="margin:0;color:#d1d5db;font-size:.72rem;">&copy; 2026 HolzBau 3D &middot; <a href="https://holzbau3d.app" style="color:#d97706;text-decoration:none;">holzbau3d.app</a></p>
@@ -293,32 +377,28 @@ def _email_verify_html(display_name, verify_url):
 </body></html>'''
 
 
-def _email_reset_html(display_name, reset_url):
-    return f'''<!DOCTYPE html>
-<html><body style="margin:0;padding:0;background:#faf6f0;font-family:'Segoe UI',Arial,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#faf6f0;padding:40px 16px;">
-<tr><td align="center">
-<table width="540" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.08);max-width:540px;width:100%;">
-  <tr><td style="background:linear-gradient(135deg,#d97706,#92400e);padding:28px 40px;">
-    <span style="color:#fff;font-size:1.35rem;font-weight:800;letter-spacing:-0.5px;">HolzBAU <span style="font-size:1rem;">3D</span></span>
-  </td></tr>
-  <tr><td style="padding:40px;">
-    <h2 style="margin:0 0 16px;font-size:1.15rem;color:#1a1a1a;font-weight:700;">Passwort zurücksetzen</h2>
-    <p style="margin:0 0 10px;color:#374151;line-height:1.65;font-size:.95rem;">Hallo <strong>{display_name}</strong>,</p>
-    <p style="margin:0 0 28px;color:#374151;line-height:1.65;font-size:.95rem;">du hast ein neues Passwort für dein HolzBau 3D Konto angefordert. Klicke auf den Button, um dein Passwort zurückzusetzen:</p>
+def _email_verify_html(display_name, verify_url, lang='de'):
+    T = EMAIL_I18N.get(_norm_lang(lang), EMAIL_I18N['de'])
+    return _email_shell(f'''    <h2 style="margin:0 0 16px;font-size:1.15rem;color:#1a1a1a;font-weight:700;">{T['v_title']}</h2>
+    <p style="margin:0 0 10px;color:#374151;line-height:1.65;font-size:.95rem;">{T['hello']} <strong>{display_name}</strong>,</p>
+    <p style="margin:0 0 28px;color:#374151;line-height:1.65;font-size:.95rem;">{T['v_body']}</p>
     <table cellpadding="0" cellspacing="0"><tr><td>
-      <a href="{reset_url}" style="display:inline-block;background:linear-gradient(135deg,#d97706,#92400e);color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:.95rem;">Passwort zurücksetzen</a>
+      <a href="{verify_url}" style="display:inline-block;background:linear-gradient(135deg,#d97706,#92400e);color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:.95rem;">{T['v_button']}</a>
     </td></tr></table>
-    <p style="margin:28px 0 8px;color:#9ca3af;font-size:.8rem;line-height:1.5;">Dieser Link ist 1 Stunde gültig. Falls du kein neues Passwort angefordert hast, kannst du diese E-Mail ignorieren — dein Passwort bleibt unverändert.</p>
-    <p style="margin:0;color:#c4c9d4;font-size:.72rem;word-break:break-all;">Link: {reset_url}</p>
-  </td></tr>
-  <tr><td style="padding:18px 40px;border-top:1px solid #f3f4f6;">
-    <p style="margin:0;color:#d1d5db;font-size:.72rem;">&copy; 2026 HolzBau 3D &middot; <a href="https://holzbau3d.app" style="color:#d97706;text-decoration:none;">holzbau3d.app</a></p>
-  </td></tr>
-</table>
-</td></tr>
-</table>
-</body></html>'''
+    <p style="margin:28px 0 8px;color:#9ca3af;font-size:.8rem;line-height:1.5;">{T['v_note']}</p>
+    <p style="margin:0;color:#c4c9d4;font-size:.72rem;word-break:break-all;">Link: {verify_url}</p>''')
+
+
+def _email_reset_html(display_name, reset_url, lang='de'):
+    T = EMAIL_I18N.get(_norm_lang(lang), EMAIL_I18N['de'])
+    return _email_shell(f'''    <h2 style="margin:0 0 16px;font-size:1.15rem;color:#1a1a1a;font-weight:700;">{T['r_title']}</h2>
+    <p style="margin:0 0 10px;color:#374151;line-height:1.65;font-size:.95rem;">{T['hello']} <strong>{display_name}</strong>,</p>
+    <p style="margin:0 0 28px;color:#374151;line-height:1.65;font-size:.95rem;">{T['r_body']}</p>
+    <table cellpadding="0" cellspacing="0"><tr><td>
+      <a href="{reset_url}" style="display:inline-block;background:linear-gradient(135deg,#d97706,#92400e);color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:.95rem;">{T['r_button']}</a>
+    </td></tr></table>
+    <p style="margin:28px 0 8px;color:#9ca3af;font-size:.8rem;line-height:1.5;">{T['r_note']}</p>
+    <p style="margin:0;color:#c4c9d4;font-size:.72rem;word-break:break-all;">Link: {reset_url}</p>''')
 
 
 # ---------------------------------------------------------------------------
@@ -552,20 +632,21 @@ def register():
 
         verify_token   = secrets.token_urlsafe(32)
         verify_expires = (datetime.utcnow() + timedelta(hours=48)).strftime('%Y-%m-%d %H:%M:%S')
+        user_lang      = _request_lang()
 
         execute_db(
             "INSERT INTO app_users "
-            "(username, password_hash, full_name, email, email_verified, email_verify_token, email_verify_expires) "
-            "VALUES (?,?,?,?,0,?,?)",
-            (username, generate_password_hash(password), full_name, email, verify_token, verify_expires)
+            "(username, password_hash, full_name, email, email_verified, email_verify_token, email_verify_expires, lang) "
+            "VALUES (?,?,?,?,0,?,?,?)",
+            (username, generate_password_hash(password), full_name, email, verify_token, verify_expires, user_lang)
         )
 
         base_url   = os.environ.get('BASE_URL', 'https://holzbau3d.app')
         verify_url = f"{base_url}/verify-email/{verify_token}"
         sent = send_email(
             email,
-            'HolzBau 3D – E-Mail-Adresse bestätigen',
-            _email_verify_html(full_name or username, verify_url)
+            EMAIL_I18N[user_lang]['v_subject'],
+            _email_verify_html(full_name or username, verify_url, user_lang)
         )
         if not sent:
             logger.warning('Verification email not sent (SMTP not configured?)')
@@ -664,10 +745,11 @@ def resend_verification():
                 )
                 base_url   = os.environ.get('BASE_URL', 'https://holzbau3d.app')
                 verify_url = f"{base_url}/verify-email/{verify_token}"
+                u_lang = _norm_lang(user.get('lang') if hasattr(user, 'get') else 'de')
                 send_email(
                     email,
-                    'HolzBau 3D – E-Mail-Adresse bestätigen',
-                    _email_verify_html(user['full_name'] or user['username'], verify_url)
+                    EMAIL_I18N[u_lang]['v_subject'],
+                    _email_verify_html(user['full_name'] or user['username'], verify_url, u_lang)
                 )
 
         flash('Falls diese E-Mail registriert und noch nicht bestätigt ist, haben wir dir einen neuen Bestätigungslink gesendet.', 'success')
@@ -705,10 +787,11 @@ def forgot_password():
                 )
                 base_url  = os.environ.get('BASE_URL', 'https://holzbau3d.app')
                 reset_url = f"{base_url}/reset-password/{reset_token}"
+                u_lang = _norm_lang(user.get('lang') if hasattr(user, 'get') else 'de')
                 send_email(
                     email,
-                    'HolzBau 3D – Passwort zurücksetzen',
-                    _email_reset_html(user['full_name'] or user['username'], reset_url)
+                    EMAIL_I18N[u_lang]['r_subject'],
+                    _email_reset_html(user['full_name'] or user['username'], reset_url, u_lang)
                 )
 
         # Always show the same message (don't reveal if email exists)
@@ -812,10 +895,11 @@ def profile_send_reset():
     )
     base_url  = os.environ.get('BASE_URL', 'https://holzbau3d.app')
     reset_url = f"{base_url}/reset-password/{reset_token}"
+    u_lang = _norm_lang(user.get('lang') if hasattr(user, 'get') else 'de')
     sent = send_email(
         user['email'],
-        'HolzBau 3D – Passwort zurücksetzen',
-        _email_reset_html(user['full_name'] or user['username'], reset_url)
+        EMAIL_I18N[u_lang]['r_subject'],
+        _email_reset_html(user['full_name'] or user['username'], reset_url, u_lang)
     )
     if sent:
         flash(f'Passwort-Reset E-Mail wurde an {user["email"]} gesendet.', 'success')
@@ -831,6 +915,10 @@ def profile_send_reset():
 @app.route('/admin/users')
 @admin_required
 def admin_users():
+    # Stripe = Source of Truth: alle User mit Stripe-Bezug live aktualisieren
+    for r in query_db("SELECT user_id FROM subscriptions WHERE stripe_sub_id IS NOT NULL OR stripe_customer_id IS NOT NULL", []):
+        _sync_user_from_stripe(r['user_id'])
+
     users = query_db("""
         SELECT u.id, u.username, u.full_name, u.email, u.created_at, u.last_login,
                COALESCE(u.email_verified, 1) as email_verified,
@@ -1227,6 +1315,53 @@ def get_user_plan(user_id):
     return 'free'
 
 
+def _sync_user_from_stripe(user_id):
+    """Stripe ist Source of Truth: holt Plan + Laufzeit live von Stripe und
+    schreibt sie in die DB (Cache). Manuell gesetzte Pläne ohne Stripe-Bezug
+    (z.B. admin) bleiben unangetastet. Gibt die aktualisierte DB-Zeile zurück."""
+    sub = query_db('SELECT * FROM subscriptions WHERE user_id=?', [user_id], one=True)
+    if not sub:
+        return None
+    sub_id = sub['stripe_sub_id']
+    customer_id = sub['stripe_customer_id']
+    if not os.environ.get('STRIPE_SECRET_KEY') or (not sub_id and not customer_id):
+        return sub  # kein Stripe-Bezug -> nichts zu syncen (manueller Plan bleibt)
+    try:
+        s = None
+        if sub_id:
+            s = _stripe_api_get('subscriptions/' + sub_id)
+        elif customer_id:
+            lst = _stripe_api_get('subscriptions', {'customer': customer_id, 'status': 'all', 'limit': 1})
+            data = lst.get('data') or []
+            s = data[0] if data else None
+        if not s or s.get('error'):
+            return sub
+        status = s.get('status')
+        cancel_at_end = bool(s.get('cancel_at_period_end'))
+        items = (s.get('items') or {}).get('data') or [{}]
+        price = items[0].get('price') or {}
+        rec = price.get('recurring') or {}
+        interval = 'yearly' if rec.get('interval') == 'year' else 'monthly'
+        cpe = s.get('current_period_end') or items[0].get('current_period_end')
+        period_end = datetime.fromtimestamp(cpe).isoformat() if cpe else None
+        sd = s.get('start_date') or s.get('created')
+        started = datetime.fromtimestamp(sd).isoformat() if sd else None
+        if status in ('active', 'trialing', 'past_due'):
+            plan = 'premium'
+            db_status = 'cancelled' if cancel_at_end else 'active'
+        else:  # canceled, unpaid, incomplete_expired, paused, incomplete
+            plan = 'free'
+            db_status = 'cancelled'
+        execute_db('UPDATE subscriptions SET plan=?, status=?, plan_interval=?, '
+                   'current_period_end=?, sub_started=COALESCE(sub_started, ?), '
+                   'stripe_sub_id=COALESCE(stripe_sub_id, ?) WHERE user_id=?',
+                   [plan, db_status, interval, period_end, started, s.get('id'), user_id])
+        return query_db('SELECT * FROM subscriptions WHERE user_id=?', [user_id], one=True)
+    except Exception as e:
+        logger.error('sync_user_from_stripe(%s) failed: %s', user_id, type(e).__name__)
+        return sub
+
+
 @app.route('/subscribe')
 @login_required
 def subscribe():
@@ -1253,6 +1388,9 @@ def subscribe():
                     break
         except Exception as e:
             logger.error('Checkout success fallback failed: %s', type(e).__name__)
+
+    # Stripe = Source of Truth: aktuellen Abo-Stand live holen
+    _sync_user_from_stripe(user_id)
 
     plan = get_user_plan(user_id)
     stripe_configured = bool(os.environ.get('STRIPE_SECRET_KEY'))
@@ -1351,43 +1489,26 @@ def stripe_webhook():
         return jsonify(error='Webhook error'), 400
 
 
-def _email_premium_html(display_name, amount_txt, interval, invoice_url):
-    interval_txt = 'Jahres-Abo' if interval == 'yearly' else 'Monats-Abo'
+def _email_premium_html(display_name, amount_txt, interval, invoice_url, lang='de'):
+    T = EMAIL_I18N.get(_norm_lang(lang), EMAIL_I18N['de'])
+    interval_txt = T['p_plan_y'] if interval == 'yearly' else T['p_plan_m']
     invoice_block = ''
     if invoice_url:
         invoice_block = (
             '<table cellpadding="0" cellspacing="0" style="margin:0 0 24px;"><tr><td style="background:linear-gradient(135deg,#d97706,#92400e);border-radius:10px;">'
-            f'<a href="{invoice_url}" style="display:inline-block;padding:13px 30px;color:#ffffff;text-decoration:none;font-weight:700;font-size:.95rem;">📄 Rechnung ansehen &amp; herunterladen</a>'
+            f'<a href="{invoice_url}" style="display:inline-block;padding:13px 30px;color:#ffffff;text-decoration:none;font-weight:700;font-size:.95rem;">{T["p_invoice"]}</a>'
             '</td></tr></table>'
         )
-    return f'''<!DOCTYPE html>
-<html><body style="margin:0;padding:0;background:#faf6f0;font-family:'Segoe UI',Arial,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#faf6f0;padding:40px 16px;">
-<tr><td align="center">
-<table width="540" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.08);max-width:540px;width:100%;">
-  <tr><td style="background:linear-gradient(135deg,#d97706,#92400e);padding:28px 40px;">
-    <span style="color:#fff;font-size:1.35rem;font-weight:800;letter-spacing:-0.5px;">HolzBAU <span style="font-size:1rem;">3D</span></span>
-  </td></tr>
-  <tr><td style="padding:40px;">
-    <h2 style="margin:0 0 16px;font-size:1.15rem;color:#1a1a1a;font-weight:700;">✨ Premium ist aktiv!</h2>
-    <p style="margin:0 0 10px;color:#374151;line-height:1.65;font-size:.95rem;">Hallo <strong>{display_name}</strong>,</p>
-    <p style="margin:0 0 20px;color:#374151;line-height:1.65;font-size:.95rem;">vielen Dank für dein Vertrauen! Dein <strong>{interval_txt}</strong> ({amount_txt}) ist ab sofort aktiv — alle Premium-Features sind freigeschaltet.</p>
+    amount_display = amount_txt + (T['per_year'] if interval == 'yearly' else T['per_month'])
+    thanks = T['p_thanks'].replace('{plan}', interval_txt).replace('{amount}', amount_display)
+    return _email_shell(f'''    <h2 style="margin:0 0 16px;font-size:1.15rem;color:#1a1a1a;font-weight:700;">{T['p_title']}</h2>
+    <p style="margin:0 0 10px;color:#374151;line-height:1.65;font-size:.95rem;">{T['hello']} <strong>{display_name}</strong>,</p>
+    <p style="margin:0 0 20px;color:#374151;line-height:1.65;font-size:.95rem;">{thanks}</p>
     <table cellpadding="0" cellspacing="0" style="width:100%;background:#fef9f0;border:1px solid #fde68a;border-radius:10px;margin:0 0 24px;"><tr><td style="padding:16px 20px;font-size:.88rem;color:#374151;line-height:2;">
-      ✅ Unbegrenzte Balken &amp; Projekte<br>
-      ✅ Vollständig werbefrei<br>
-      ✅ PDF Export &amp; Druckpläne<br>
-      ✅ Säge-Tool &amp; Schnittplan-Optimierung
+      {T['p_features']}
     </td></tr></table>
     {invoice_block}
-    <p style="margin:0;color:#9ca3af;font-size:.8rem;line-height:1.6;">Du kannst dein Abo jederzeit unter „Mein Abonnement" verwalten oder kündigen.</p>
-  </td></tr>
-  <tr><td style="background:#faf6f0;padding:20px 40px;border-top:1px solid #f0e8dc;">
-    <p style="margin:0;color:#9ca3af;font-size:.75rem;">HolzBau 3D · <a href="https://holzbau3d.app" style="color:#d97706;">holzbau3d.app</a></p>
-  </td></tr>
-</table>
-</td></tr>
-</table>
-</body></html>'''
+    <p style="margin:0;color:#9ca3af;font-size:.8rem;line-height:1.6;">{T['p_manage']}</p>''')
 
 
 def _activate_premium(user_id, customer_id, sub_id, interval, notify=True):
@@ -1402,7 +1523,7 @@ def _activate_premium(user_id, customer_id, sub_id, interval, notify=True):
     period_end = None
     started = None
     invoice_url = None
-    amount_txt = '99,99 € / Jahr' if interval == 'yearly' else '9,99 € / Monat'
+    amount_txt = '99,99 €' if interval == 'yearly' else '9,99 €'
     try:
         if sub_id:
             s = _stripe_api_get('subscriptions/' + sub_id)
@@ -1424,8 +1545,7 @@ def _activate_premium(user_id, customer_id, sub_id, interval, notify=True):
                 amt = inv.get('amount_paid')
                 cur = (inv.get('currency') or '').upper()
                 if amt:
-                    amount_txt = ('%.2f' % (amt / 100)).replace('.', ',') + ' ' + cur + \
-                                 (' / Jahr' if interval == 'yearly' else ' / Monat')
+                    amount_txt = ('%.2f' % (amt / 100)).replace('.', ',') + ' ' + cur
     except Exception as e:
         logger.error('activate_premium: Stripe lookup failed: %s', type(e).__name__)
 
@@ -1439,10 +1559,11 @@ def _activate_premium(user_id, customer_id, sub_id, interval, notify=True):
                    [user_id, customer_id, sub_id, 'premium', 'active', interval, period_end, started])
 
     if notify and not already:
-        u = query_db('SELECT email, full_name, username FROM app_users WHERE id=?', [user_id], one=True)
+        u = query_db('SELECT email, full_name, username, lang FROM app_users WHERE id=?', [user_id], one=True)
         if u and u['email']:
-            send_email(u['email'], 'HolzBau 3D – Premium aktiviert ✨ (Rechnung)',
-                       _email_premium_html(u['full_name'] or u['username'], amount_txt, interval, invoice_url))
+            u_lang = _norm_lang(u.get('lang') if hasattr(u, 'get') else 'de')
+            send_email(u['email'], EMAIL_I18N[u_lang]['p_subject'],
+                       _email_premium_html(u['full_name'] or u['username'], amount_txt, interval, invoice_url, u_lang))
     return True
 
 
