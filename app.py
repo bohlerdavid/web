@@ -56,6 +56,17 @@ Talisman(
     session_cookie_secure=True,
 )
 
+
+@app.after_request
+def _no_cache_html(resp):
+    # HTML-Seiten (App, Landing …) nie cachen -> nach Deploys immer frischer Code,
+    # niemand hängt auf einer veralteten Version fest. Statische Assets bleiben cachebar.
+    if resp.headers.get('Content-Type', '').startswith('text/html'):
+        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        resp.headers['Pragma'] = 'no-cache'
+        resp.headers['Expires'] = '0'
+    return resp
+
 # ---------------------------------------------------------------------------
 # Database (MySQL)
 # ---------------------------------------------------------------------------

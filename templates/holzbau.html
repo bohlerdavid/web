@@ -1392,7 +1392,7 @@ Object.assign(window, {
   calcFloorPlan, updateFloorOutline, updateRoofOutline, drawFloorPreview,
   newProject, clearAllBeams,
   rotateSelected, switchAxis, closeCtxMenu, showContextMenu,
-  showTab, setDims, setAngle,
+  showTab, setDims, setAngle, loadTemplate,
   addGroup, renderGroupList, selectGroup, moveBeamToGroup, deleteGroup, toggleGroupVisibility,
   addDeco, deleteDeco, clearAllDecos, moveDecoToGroup,
   deleteDecoSelected, applyDecoEdit, updateDecoSelPanel,
@@ -1815,12 +1815,18 @@ function makeDecoHighlight(mesh, on) {
     mats.forEach(m => {
       if (!m.emissive) return;
       if (on) {
-        // Vorzustand nur EINMAL merken (sonst wird beim 2. Highlight Rot als "Original" gespeichert)
-        if (m.userData._prevEmissive === undefined) m.userData._prevEmissive = m.emissive.getHex();
+        // Vorzustand (Farbe + Intensität) nur EINMAL merken
+        if (m.userData._prevEmissive === undefined) {
+          m.userData._prevEmissive = m.emissive.getHex();
+          m.userData._prevEmissiveInt = (m.emissiveIntensity === undefined ? 1 : m.emissiveIntensity);
+        }
         m.emissive.setHex(0xe94560);
+        m.emissiveIntensity = 0.35;   // dezenter roter Schimmer statt voll-rot
       } else if (m.userData._prevEmissive !== undefined) {
         m.emissive.setHex(m.userData._prevEmissive);
+        m.emissiveIntensity = m.userData._prevEmissiveInt;
         delete m.userData._prevEmissive;
+        delete m.userData._prevEmissiveInt;
       }
     });
   });
