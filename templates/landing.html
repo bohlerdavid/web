@@ -1,35 +1,30 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="{{ seo_lang|default('de') }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HolzBau 3D — Kostenloser 3D Holzkonstruktionsplaner im Browser</title>
-  <meta name="description" content="HolzBau 3D – Plane Holzkonstruktionen in 3D direkt im Browser. Pergola, Carport, Dachstuhl, Wandkonstruktion. Stückliste exportieren, Drucken. Kostenlos starten!">
-  <meta name="keywords" content="Holzbau Planer, 3D Holzkonstruktion, Balkenkonstruktion planen, Zimmererei Software, Holzbau Software kostenlos, Pergola planen, Carport planen, Dachstuhl planen">
-  <meta name="robots" content="index, follow">
-  <link rel="canonical" href="https://holzbau3d.app/">
-  <meta property="og:title" content="HolzBau 3D – 3D Holzkonstruktionsplaner im Browser">
-  <meta property="og:description" content="Plane Holzkonstruktionen in 3D direkt im Browser. Kostenlos mit Werbung oder Premium ab 9,99€/Monat.">
+  <title>{{ seo.title if seo else 'HolzBau 3D — 3D Holzkonstruktionsplaner im Browser' }}</title>
+  <meta name="description" content="{{ seo.desc if seo else 'Plane Holzkonstruktionen in 3D direkt im Browser.' }}">
+  <meta name="keywords" content="{{ seo.keywords if seo else '' }}">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <meta name="author" content="HolzBau 3D">
+  <link rel="canonical" href="{{ canonical|default('https://holzbau3d.app/') }}">
+  {% for hl, url in (alternates or []) %}
+  <link rel="alternate" hreflang="{{ hl }}" href="{{ url }}">
+  {% endfor %}
+  <meta property="og:site_name" content="HolzBau 3D">
+  <meta property="og:title" content="{{ seo.og_title if seo else 'HolzBau 3D' }}">
+  <meta property="og:description" content="{{ seo.og_desc if seo else '' }}">
   <meta property="og:type" content="website">
-  <meta property="og:url" content="https://holzbau3d.app">
+  <meta property="og:url" content="{{ canonical|default('https://holzbau3d.app/') }}">
+  <meta property="og:locale" content="{{ seo.og_locale if seo else 'de_DE' }}">
+  <meta property="og:image" content="https://holzbau3d.app/static/og-image.png">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="HolzBau 3D – 3D Holzkonstruktionsplaner">
-  <meta name="twitter:description" content="Kostenlos Holzkonstruktionen in 3D planen. Stückliste, Draufsicht, PDF-Export.">
-  <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    "name": "HolzBau 3D",
-    "applicationCategory": "DesignApplication",
-    "operatingSystem": "Web Browser",
-    "url": "https://holzbau3d.app",
-    "offers": [
-      {"@type":"Offer","price":"0","priceCurrency":"EUR","name":"Kostenlos"},
-      {"@type":"Offer","price":"9.99","priceCurrency":"EUR","billingDuration":"P1M","name":"Premium"}
-    ],
-    "description": "3D Holzkonstruktionsplaner direkt im Browser – keine Installation nötig."
-  }
-  </script>
+  <meta name="twitter:title" content="{{ seo.og_title if seo else 'HolzBau 3D' }}">
+  <meta name="twitter:description" content="{{ seo.og_desc if seo else '' }}">
+  <meta name="twitter:image" content="https://holzbau3d.app/static/og-image.png">
+  <script type="application/ld+json">{{ jsonld_app|safe if jsonld_app else '{}' }}</script>
+  <script type="application/ld+json">{{ jsonld_faq|safe if jsonld_faq else '{}' }}</script>
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <script src="/static/i18n.js" defer></script>

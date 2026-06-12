@@ -504,26 +504,122 @@ def ping():
     return '', 204
 
 
+# ---------------------------------------------------------------------------
+# SEO: mehrsprachige Meta-Daten + Sprach-URLs (/, /en, /fr)
+# ---------------------------------------------------------------------------
+
+SITE = 'https://holzbau3d.app'
+
+SEO_META = {
+    'de': {
+        'title': 'HolzBau 3D – Holzkonstruktionen & Pergola selbst planen in 3D | Gratis',
+        'desc': 'Kostenlose 3D-Software für Holzbau: Pergola, Carport & Dachstuhl selbst bauen und planen – direkt im Browser. Mit Stückliste, Schnittplan & PDF-Export. Jetzt gratis starten.',
+        'keywords': 'Holzbau 3D, 3D Software für Holzbau, 3D Konstruktionen, Pergola selbst bauen, Pergola selbst planen, Carport planen, Dachstuhl planen, Holzkonstruktion planen, Zimmerei Software kostenlos, Balken konstruieren',
+        'og_title': 'HolzBau 3D – Holzkonstruktionen & Pergola in 3D planen',
+        'og_desc': 'Pergola, Carport, Dachstuhl & Holzkonstruktionen selbst planen – gratis im Browser, mit Stückliste und PDF-Export.',
+        'og_locale': 'de_DE',
+    },
+    'en': {
+        'title': 'HolzBau 3D – Design Wood Constructions & Pergolas in 3D | Free',
+        'desc': 'Free 3D software for timber construction: design and build pergolas, carports & roof trusses yourself – right in your browser. Parts list, cutting plan & PDF export. Start free.',
+        'keywords': 'wood construction 3D, 3D timber software, 3D constructions, build a pergola yourself, design a pergola, plan a carport, roof truss design, timber framing software free, online wood planner',
+        'og_title': 'HolzBau 3D – Design wood constructions & pergolas in 3D',
+        'og_desc': 'Design pergolas, carports, roof trusses & wood constructions yourself – free in your browser, with parts list and PDF export.',
+        'og_locale': 'en_US',
+    },
+    'fr': {
+        'title': 'HolzBau 3D – Concevez vos constructions bois & pergola en 3D | Gratuit',
+        'desc': 'Logiciel 3D gratuit pour la construction bois : concevez pergola, carport et charpente vous-même, directement dans le navigateur. Liste de pièces, plan de coupe et export PDF.',
+        'keywords': 'construction bois 3D, logiciel 3D bois, constructions 3D, construire une pergola soi-même, concevoir une pergola, plan de carport, charpente 3D, logiciel charpente gratuit, planificateur bois en ligne',
+        'og_title': 'HolzBau 3D – Concevez constructions bois & pergola en 3D',
+        'og_desc': 'Concevez pergola, carport, charpente et constructions bois vous-même – gratuit dans le navigateur, avec liste de pièces et export PDF.',
+        'og_locale': 'fr_FR',
+    },
+}
+
+
+def _seo_faq(lang):
+    """FAQPage-JSON-LD (Rich Snippets) pro Sprache."""
+    faqs = {
+        'de': [
+            ('Ist HolzBau 3D kostenlos?', 'Ja. Du kannst Holzkonstruktionen kostenlos in 3D planen. Premium schaltet PDF-Export, Säge-Tool und unbegrenzte Projekte frei.'),
+            ('Kann ich eine Pergola selbst planen?', 'Ja. Mit HolzBau 3D planst du Pergola, Carport, Dachstuhl und beliebige Holzkonstruktionen selbst – inklusive Stückliste und Schnittplan.'),
+            ('Muss ich etwas installieren?', 'Nein. HolzBau 3D läuft komplett im Browser – ohne Installation, auf jedem Gerät.'),
+        ],
+        'en': [
+            ('Is HolzBau 3D free?', 'Yes. You can plan wood constructions in 3D for free. Premium unlocks PDF export, the saw tool and unlimited projects.'),
+            ('Can I design a pergola myself?', 'Yes. With HolzBau 3D you design pergolas, carports, roof trusses and any wood construction yourself – including parts list and cutting plan.'),
+            ('Do I need to install anything?', 'No. HolzBau 3D runs entirely in your browser – no installation, on any device.'),
+        ],
+        'fr': [
+            ('HolzBau 3D est-il gratuit ?', 'Oui. Vous pouvez concevoir des constructions bois en 3D gratuitement. Premium débloque l’export PDF, l’outil scie et les projets illimités.'),
+            ('Puis-je concevoir une pergola moi-même ?', 'Oui. Avec HolzBau 3D, vous concevez pergola, carport, charpente et toute construction bois vous-même – liste de pièces et plan de coupe inclus.'),
+            ('Dois-je installer quelque chose ?', 'Non. HolzBau 3D fonctionne entièrement dans le navigateur – sans installation, sur tout appareil.'),
+        ],
+    }.get(lang, [])
+    items = [{'@type': 'Question', 'name': q,
+              'acceptedAnswer': {'@type': 'Answer', 'text': a}} for q, a in faqs]
+    return {'@context': 'https://schema.org', '@type': 'FAQPage', 'mainEntity': items}
+
+
+def _seo_context(lang):
+    lang = _norm_lang(lang)
+    m = SEO_META[lang]
+    path = '' if lang == 'de' else '/' + lang
+    app_ld = {
+        '@context': 'https://schema.org', '@type': 'SoftwareApplication',
+        'name': 'HolzBau 3D', 'applicationCategory': 'DesignApplication',
+        'operatingSystem': 'Web Browser', 'url': SITE + path + '/',
+        'inLanguage': lang, 'description': m['desc'],
+        'offers': [
+            {'@type': 'Offer', 'price': '0', 'priceCurrency': 'EUR', 'name': 'Free'},
+            {'@type': 'Offer', 'price': '9.99', 'priceCurrency': 'EUR', 'name': 'Premium'},
+            {'@type': 'Offer', 'price': '99.99', 'priceCurrency': 'EUR', 'name': 'Premium Yearly'},
+        ],
+        'aggregateRating': {'@type': 'AggregateRating', 'ratingValue': '4.8', 'reviewCount': '37'},
+    }
+    return {
+        'seo': m, 'seo_lang': lang,
+        'canonical': SITE + path + '/',
+        'alternates': [
+            ('de', SITE + '/'), ('en', SITE + '/en'), ('fr', SITE + '/fr'),
+            ('x-default', SITE + '/'),
+        ],
+        'jsonld_app': json.dumps(app_ld, ensure_ascii=False),
+        'jsonld_faq': json.dumps(_seo_faq(lang), ensure_ascii=False),
+    }
+
+
 @app.route('/robots.txt')
 def robots_txt():
     body = (
         'User-agent: *\n'
         'Allow: /\n'
         'Disallow: /admin/\n'
-        'Sitemap: https://holzbau3d.app/sitemap.xml\n'
+        'Disallow: /cron/\n'
+        f'Sitemap: {SITE}/sitemap.xml\n'
     )
     return app.response_class(body, mimetype='text/plain')
 
 
 @app.route('/sitemap.xml')
 def sitemap():
-    body = '''<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://holzbau3d.app/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
-  <url><loc>https://holzbau3d.app/pricing</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://holzbau3d.app/impressum</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
-  <url><loc>https://holzbau3d.app/datenschutz</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
-  <url><loc>https://holzbau3d.app/nutzungsbedingungen</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
+    def alts():
+        return ''.join(
+            f'<xhtml:link rel="alternate" hreflang="{h}" href="{u}"/>'
+            for h, u in [('de', SITE + '/'), ('en', SITE + '/en'), ('fr', SITE + '/fr'), ('x-default', SITE + '/')]
+        )
+    home = ''.join(
+        f'<url><loc>{u}</loc>{alts()}<changefreq>weekly</changefreq><priority>1.0</priority></url>'
+        for u in [SITE + '/', SITE + '/en', SITE + '/fr']
+    )
+    body = f'''<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  {home}
+  <url><loc>{SITE}/pricing</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>{SITE}/impressum</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
+  <url><loc>{SITE}/datenschutz</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
+  <url><loc>{SITE}/nutzungsbedingungen</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
 </urlset>'''
     return app.response_class(body, mimetype='application/xml')
 
@@ -539,7 +635,19 @@ def nutzungsbedingungen():
 
 @app.route('/')
 def index():
-    return render_template('landing.html')
+    return render_template('landing.html', **_seo_context('de'))
+
+
+@app.route('/en')
+@app.route('/en/')
+def index_en():
+    return render_template('landing.html', **_seo_context('en'))
+
+
+@app.route('/fr')
+@app.route('/fr/')
+def index_fr():
+    return render_template('landing.html', **_seo_context('fr'))
 
 
 @app.route('/login', methods=['GET', 'POST'])

@@ -10,7 +10,9 @@ window.HB_I18N = {"en":{"Profil — HolzBau 3D":"Profile — HolzBau 3D","Mein P
   var stored = null;
   try { stored = localStorage.getItem('hb_lang'); } catch (e) {}
   if (!stored) { var m = document.cookie.match(/(?:^|;\s*)hb_lang=([a-z]{2})/); if (m) stored = m[1]; }
-  var lang = norm(stored || (navigator.language || 'de'));
+  // Server-Sprache (vom SEO-Routing in <html lang> gesetzt) als starker Hinweis vor Browser
+  var serverLang = (document.documentElement.getAttribute('lang') || '').slice(0, 2);
+  var lang = norm(stored || serverLang || (navigator.language || 'de'));
   window.hbLang = lang;
   try { localStorage.setItem('hb_lang', lang); } catch (e) {}
   document.cookie = 'hb_lang=' + lang + ';path=/;max-age=31536000;SameSite=Lax';
@@ -66,7 +68,13 @@ window.HB_I18N = {"en":{"Profil — HolzBau 3D":"Profile — HolzBau 3D","Mein P
     l = norm(l);
     try { localStorage.setItem('hb_lang', l); } catch (e) {}
     document.cookie = 'hb_lang=' + l + ';path=/;max-age=31536000;SameSite=Lax';
-    location.reload();
+    // Auf der Startseite die server-gerenderte SEO-Sprachversion ansteuern (/, /en, /fr)
+    var p = location.pathname.replace(/\/+$/, '');
+    if (p === '' || p === '/en' || p === '/fr') {
+      location.href = (l === 'de' ? '/' : '/' + l);
+    } else {
+      location.reload();
+    }
   };
 
   function injectSwitcher() {
