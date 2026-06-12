@@ -3866,8 +3866,41 @@ const DEKO_DEFS = {
 
   // ─── Pflanzen (Poly Haven CC0, echte Scans) ───
   bush:      makeGLTFDef('Busch',      'https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/shrub_01/shrub_01_2k.gltf',                 600),
-  tree:      makeGLTFDef('Nadelbaum',  'https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/pine_tree_01/pine_tree_01_2k.gltf',         3000),
-  tree_leaf: makeGLTFDef('Laubbaum',   'https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/jacaranda_tree/jacaranda_tree_2k.gltf',     3500),
+  // Bäume bewusst prozedural & leicht: die Poly-Haven-Scans sind ~200–900 MB und laggen den Browser.
+  tree: {
+    label: 'Nadelbaum',
+    defaultParams: { scale: 100 },
+    build() {
+      const grp = new THREE.Group();
+      const bark = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 0.92 });
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(70, 110, 900, 12), bark);
+      trunk.position.y = 450; grp.add(trunk);
+      const greens = [0x1f5f24, 0x276b2b, 0x2f7a30];
+      [[760, 660, 1100], [1250, 540, 950], [1700, 420, 800], [2150, 280, 650]].forEach((l, i) => {
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(l[1], l[2], 12),
+          new THREE.MeshStandardMaterial({ color: greens[i % greens.length], roughness: 0.85, flatShading: true }));
+        cone.position.y = l[0] + l[2] / 2; grp.add(cone);
+      });
+      return grp;
+    }
+  },
+  tree_leaf: {
+    label: 'Laubbaum',
+    defaultParams: { scale: 100 },
+    build() {
+      const grp = new THREE.Group();
+      const bark = new THREE.MeshStandardMaterial({ color: 0x6f4d2e, roughness: 0.92 });
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(75, 120, 1500, 12), bark);
+      trunk.position.y = 750; grp.add(trunk);
+      const greens = [0x2e7d32, 0x357a36, 0x3f8c40, 0x2b6e2f];
+      [[0,2300,0,760],[520,2150,120,560],[-480,2200,-90,600],[120,2650,400,520],[-260,2600,-360,540],[300,2500,-300,500],[-150,2900,120,440]].forEach((b, i) => {
+        const leaf = new THREE.Mesh(new THREE.IcosahedronGeometry(b[3], 1),
+          new THREE.MeshStandardMaterial({ color: greens[i % greens.length], roughness: 0.85, flatShading: true }));
+        leaf.position.set(b[0], b[1], b[2]); grp.add(leaf);
+      });
+      return grp;
+    }
+  },
   pot_small: makeGLTFDef('Topf klein', 'https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/potted_plant_01/potted_plant_01_2k.gltf',   600),
   pot_large: makeGLTFDef('Topf gross', 'https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/potted_plant_04/potted_plant_04_2k.gltf',   1200),
   // Walls — echte PBR-Texturen (Poly Haven CC0)
