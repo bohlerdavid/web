@@ -1131,6 +1131,52 @@ def profile():
     return render_template('profile.html', user=row_to_dict(user), csrf_token=generate_csrf())
 
 
+@app.route('/profile/delete', methods=['GET', 'POST'])
+@login_required
+def profile_delete():
+    user_id = session['user_id']
+    user    = query_db("SELECT * FROM app_users WHERE id = ?", (user_id,), one=True)
+    sub     = query_db(
+        "SELECT plan, status, current_period_end, stripe_sub_id, cancel_at_period_end "
+        "FROM subscriptions WHERE user_id=?", [user_id], one=True)
+    is_premium = get_user_plan(user_id) == 'premium'
+    period_end = None
+    if sub and sub.get('current_period_end'):
+        period_end = _to_dt(sub['current_period_end'])
+
+    if request.method == 'POST':
+        if not validate_csrf(request.form.get('csrf_token', '')):
+            flash('Ungültige Anfrage.', 'danger')
+            return redirect(url_for('profile_delete'))
+        confirm_word = request.form.get('confirm', '').strip().lower()
+        if confirm_word != 'löschen':
+            flash('Bitte tippe genau "löschen" ein, um zu bestätigen.', 'danger')
+            return redirect(url_for('profile_delete'))
+
+        stripe_key = os.environ.get('STRIPE_SECRET_KEY', '')
+        if sub and sub.get('stripe_sub_id') and stripe_key:
+            try:
+                import requests as _r
+                resp = _r.delete(
+                    f'https://api.stripe.com/v1/subscriptions/{sub["stripe_sub_id"]}',
+                    auth=(stripe_key, ''), timeout=10)
+                logger.info('Stripe cancel on self-delete user %s: %s', user_id, resp.status_code)
+            except Exception as e:
+                logger.error('Stripe cancel on self-delete failed user %s: %s', user_id, e)
+
+        execute_db('DELETE FROM subscriptions WHERE user_id=?', [user_id])
+        execute_db('DELETE FROM app_users WHERE id=?', [user_id])
+        session.clear()
+        flash('Dein Konto wurde dauerhaft gelöscht.', 'success')
+        return redirect(url_for('index'))
+
+    return render_template('delete_account.html',
+                           user=row_to_dict(user) if user else {},
+                           is_premium=is_premium,
+                           period_end=period_end,
+                           csrf_token=generate_csrf())
+
+
 @app.route('/profile/set-lang', methods=['POST'])
 @login_required
 def profile_set_lang():

@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+{% block title %}Konto löschen — HolzBau 3D{% endblock %}
+
+{% block extra_head %}
+<style>
+  .del-card { background:#fff; border:1px solid #e8ddd0; border-radius:14px; padding:28px 32px; margin-bottom:20px; }
+  .del-warn { background:#fef2f2; border:2px solid #ef4444; border-radius:12px; padding:20px 24px; margin-bottom:16px; }
+  .del-warn h6 { color:#dc2626; font-weight:800; margin:0 0 8px; font-size:.95rem; }
+  .del-warn p  { color:#7f1d1d; margin:0; font-size:.88rem; line-height:1.5; }
+  .del-warn p + p { margin-top:6px; }
+  .confirm-input { border:2px solid #e5e7eb; border-radius:8px; padding:10px 14px; font-size:1rem; width:100%; transition:border-color .2s; }
+  .confirm-input:focus { outline:none; border-color:#ef4444; box-shadow:0 0 0 3px rgba(239,68,68,.15); }
+  .btn-delete { background:#dc2626; border:none; color:#fff; font-weight:700; padding:10px 28px; border-radius:8px; font-size:.95rem; cursor:pointer; transition:background .2s; }
+  .btn-delete:hover { background:#b91c1c; }
+  .btn-delete:disabled { background:#9ca3af; cursor:not-allowed; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 class="mb-1" style="font-size:1.5rem;font-weight:800;color:#dc2626;">⚠ Konto löschen</h1>
+<p class="text-muted mb-4" style="font-size:.9rem;">Diese Aktion kann nicht rückgängig gemacht werden.</p>
+
+{% if is_premium %}
+<div class="del-warn">
+  <h6>🔴 Achtung: Du hast ein aktives Premium-Abo!</h6>
+  <p><strong>Dein Abo ist aktiv{% if period_end %} bis {{ period_end.strftime('%d.%m.%Y') }}{% endif %}.</strong></p>
+  <p>Wenn du dein Konto löschst, wird dein Abonnement <strong>sofort und unwiderruflich gekündigt</strong>.</p>
+  <p>Du verlierst den Premium-Zugang sofort — eine Rückerstattung der verbleibenden Laufzeit ist nicht möglich.</p>
+</div>
+<div class="del-warn" style="background:#fffbeb;border-color:#f59e0b;">
+  <h6 style="color:#b45309;">⚠ Letzte Warnung zum Abo</h6>
+  <p style="color:#78350f;">Dein bezahlter Zeitraum{% if period_end %} (bis {{ period_end.strftime('%d.%m.%Y') }}){% endif %} verfällt ohne Rückerstattung. Erwäge stattdessen, nur das Abo zu kündigen und das Konto zu behalten.</p>
+  <p style="color:#78350f;margin-top:8px;">
+    <a href="{{ url_for('subscribe') }}" style="color:#b45309;font-weight:700;text-decoration:underline;">→ Nur das Abo kündigen (Konto bleibt erhalten)</a>
+  </p>
+</div>
+{% endif %}
+
+<div class="del-card">
+  <h5 style="color:#374151;font-weight:700;margin-bottom:16px;"><i class="bi bi-trash3 me-2" style="color:#dc2626;"></i>Was wird gelöscht</h5>
+  <ul style="font-size:.9rem;color:#4b5563;line-height:2;padding-left:20px;margin:0;">
+    <li>Dein Login und alle Zugangsdaten</li>
+    <li>Alle gespeicherten Projekte und Konstruktionen</li>
+    {% if is_premium %}<li><strong>Dein aktives Premium-Abonnement (sofortige Kündigung)</strong></li>{% endif %}
+    <li>Alle persönlichen Daten (Name, E-Mail)</li>
+  </ul>
+  <p class="mt-3" style="font-size:.85rem;color:#dc2626;font-weight:600;">Das Konto kann nicht wiederhergestellt werden.</p>
+</div>
+
+<div class="del-card">
+  <h5 style="color:#374151;font-weight:700;margin-bottom:16px;"><i class="bi bi-keyboard me-2" style="color:#dc2626;"></i>Bestätigung</h5>
+  <p style="font-size:.9rem;color:#6b7280;margin-bottom:14px;">
+    Tippe <strong style="color:#dc2626;">löschen</strong> in das Feld und klicke auf „Konto endgültig löschen".
+  </p>
+
+  <form method="POST" action="{{ url_for('profile_delete') }}" id="deleteForm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="text" name="confirm" id="confirmInput" class="confirm-input mb-3"
+           placeholder='Tippe "löschen" zur Bestätigung'
+           autocomplete="off" autocorrect="off" spellcheck="false">
+    <div class="d-flex gap-3 align-items-center flex-wrap mt-3">
+      <button type="submit" id="deleteBtn" class="btn-delete" disabled>
+        <i class="bi bi-trash3 me-1"></i>Konto endgültig löschen
+      </button>
+      <a href="{{ url_for('profile') }}" class="btn btn-outline-secondary btn-sm">Abbrechen</a>
+    </div>
+  </form>
+</div>
+
+<script>
+(function () {
+  var inp = document.getElementById('confirmInput');
+  var btn = document.getElementById('deleteBtn');
+  inp.addEventListener('input', function () {
+    btn.disabled = inp.value.trim().toLowerCase() !== 'löschen';
+  });
+})();
+</script>
+{% endblock %}
