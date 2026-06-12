@@ -1,8 +1,11 @@
 import os
+import json
 import secrets
 import smtplib
 import time
 import logging
+import urllib.request
+import urllib.error
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from functools import wraps
@@ -172,14 +175,60 @@ def init_db():
 # Email helpers
 # ---------------------------------------------------------------------------
 
+def _send_email_brevo_api(to_addr, subject, html_body):
+    """Send via Brevo HTTP API (HTTPS/443) — bypasses SMTP port blocking on Railway."""
+    api_key   = os.environ.get('BREVO_API_KEY', '')
+    mail_from = os.environ.get('MAIL_FROM') or os.environ.get('SMTP_USER', '')
+    from_name = os.environ.get('MAIL_FROM_NAME', 'HolzBau 3D')
+    if not api_key:
+        return None  # API not configured -> caller falls back to SMTP
+    payload = {
+        'sender':      {'name': from_name, 'email': mail_from},
+        'to':          [{'email': to_addr}],
+        'subject':     subject,
+        'htmlContent': html_body,
+    }
+    data = json.dumps(payload).encode('utf-8')
+    req = urllib.request.Request(
+        'https://api.brevo.com/v3/smtp/email',
+        data=data,
+        headers={
+            'api-key':      api_key,
+            'Content-Type': 'application/json',
+            'Accept':       'application/json',
+        },
+        method='POST',
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            if 200 <= resp.status < 300:
+                logger.info('Email sent via Brevo API to %s', to_addr)
+                return True
+            logger.error('Brevo API unexpected status %s', resp.status)
+            return False
+    except urllib.error.HTTPError as e:
+        body = e.read().decode('utf-8', 'replace')[:300]
+        logger.error('Brevo API HTTPError %s: %s', e.code, body)
+        return False
+    except Exception as e:
+        logger.error('Brevo API failed: %s', e)
+        return False
+
+
 def send_email(to_addr, subject, html_body):
+    # 1) Prefer Brevo HTTP API (works on Railway where SMTP ports are blocked)
+    api_result = _send_email_brevo_api(to_addr, subject, html_body)
+    if api_result is not None:
+        return api_result
+
+    # 2) Fallback: classic SMTP
     smtp_host = os.environ.get('SMTP_HOST', '')
     smtp_port = int(os.environ.get('SMTP_PORT', '587'))
     smtp_user = os.environ.get('SMTP_USER', '')
     smtp_pass = os.environ.get('SMTP_PASS', '')
     mail_from = os.environ.get('MAIL_FROM', smtp_user)
     if not smtp_host or not smtp_user:
-        logger.warning('send_email: SMTP_HOST/SMTP_USER not configured')
+        logger.warning('send_email: neither BREVO_API_KEY nor SMTP_HOST/SMTP_USER configured')
         return False
     msg = MIMEMultipart('alternative')
     msg['Subject'] = subject
@@ -192,10 +241,10 @@ def send_email(to_addr, subject, html_body):
             s.starttls()
             s.login(smtp_user, smtp_pass)
             s.sendmail(mail_from, [to_addr], msg.as_string())
-        logger.info('Email sent to %s', to_addr)
+        logger.info('Email sent via SMTP to %s', to_addr)
         return True
     except Exception as e:
-        logger.error('send_email failed: %s', e)
+        logger.error('send_email SMTP failed: %s', e)
         return False
 
 
@@ -835,6 +884,7 @@ def admin_set_plan():
 @admin_required
 def admin_email_test():
     cfg = {
+        'BREVO_API_KEY': os.environ.get('BREVO_API_KEY', ''),
         'SMTP_HOST': os.environ.get('SMTP_HOST', ''),
         'SMTP_PORT': os.environ.get('SMTP_PORT', '587'),
         'SMTP_USER': os.environ.get('SMTP_USER', ''),
@@ -849,58 +899,64 @@ def admin_email_test():
             return v[0] + '***'
         return v[:3] + '***' + v[-2:]
     L = []
-    L.append('=== SMTP-Konfiguration (Railway Env) ===')
-    L.append('SMTP_HOST: ' + (cfg['SMTP_HOST'] or '<<< LEER / NICHT GESETZT >>>'))
+    L.append('=== E-Mail-Konfiguration (Railway Env) ===')
+    L.append('BREVO_API_KEY: ' + (mask(cfg['BREVO_API_KEY']) + '  (Laenge: ' + str(len(cfg['BREVO_API_KEY'])) + ')' if cfg['BREVO_API_KEY'] else '<<< LEER -> nutzt SMTP-Fallback >>>'))
+    L.append('MAIL_FROM:     ' + (cfg['MAIL_FROM'] or '<LEER -> nutzt SMTP_USER>'))
+    L.append('BASE_URL:      ' + (cfg['BASE_URL'] or '<LEER -> default https://holzbau3d.app>'))
+    L.append('')
+    L.append('--- SMTP (nur Fallback) ---')
+    L.append('SMTP_HOST: ' + (cfg['SMTP_HOST'] or '<LEER>'))
     L.append('SMTP_PORT: ' + cfg['SMTP_PORT'])
-    L.append('SMTP_USER: ' + (cfg['SMTP_USER'] or '<<< LEER / NICHT GESETZT >>>'))
+    L.append('SMTP_USER: ' + (cfg['SMTP_USER'] or '<LEER>'))
     L.append('SMTP_PASS: ' + mask(cfg['SMTP_PASS']) + '  (Laenge: ' + str(len(cfg['SMTP_PASS'])) + ')')
-    L.append('MAIL_FROM: ' + (cfg['MAIL_FROM'] or '<LEER -> nutzt SMTP_USER>'))
-    L.append('BASE_URL:  ' + (cfg['BASE_URL'] or '<LEER -> default https://holzbau3d.app>'))
     L.append('')
     test_to = request.values.get('to', '').strip()
     if test_to:
-        L.append('=== Testversand an ' + test_to + ' ===')
-        host = cfg['SMTP_HOST']
-        port = int(cfg['SMTP_PORT'] or '587')
-        user = cfg['SMTP_USER']
-        pw   = cfg['SMTP_PASS']
-        frm  = cfg['MAIL_FROM'] or user
-        if not host or not user:
-            L.append('FEHLER: SMTP_HOST oder SMTP_USER fehlt -> send_email() bricht sofort ab.')
+        frm = cfg['MAIL_FROM'] or cfg['SMTP_USER']
+        # --- Weg 1: Brevo HTTP API (bevorzugt) ---
+        if cfg['BREVO_API_KEY']:
+            L.append('=== Test via Brevo HTTP-API an ' + test_to + ' ===')
+            L.append('POST https://api.brevo.com/v3/smtp/email (Absender: ' + frm + ') ...')
+            ok = _send_email_brevo_api(test_to, 'HolzBau 3D - API Test',
+                                       '<p>HTTP-API-Test erfolgreich. Der Versand funktioniert!</p>')
+            if ok:
+                L.append('')
+                L.append('==> ERFOLG: Brevo hat die Mail per API angenommen. Pruefe Posteingang + Spam.')
+            else:
+                L.append('')
+                L.append('==> FEHLER: API-Versand fehlgeschlagen (Details in Railway-Logs).')
+                L.append('   Pruefe: BREVO_API_KEY korrekt (v3-Key, beginnt mit xkeysib-)?')
+                L.append('   Pruefe: Absender ' + frm + ' in Brevo unter "Senders" verifiziert?')
         else:
-            try:
-                L.append('1) Verbinde TCP zu ' + host + ':' + str(port) + ' ...')
-                s = smtplib.SMTP(host, port, timeout=15)
-                L.append('   OK verbunden')
-                s.ehlo()
-                L.append('2) STARTTLS ...')
-                s.starttls()
-                s.ehlo()
-                L.append('   OK TLS aktiv')
-                L.append('3) LOGIN als ' + user + ' ...')
-                s.login(user, pw)
-                L.append('   OK Login akzeptiert')
-                L.append('4) Sende Mail von ' + frm + ' an ' + test_to + ' ...')
-                m = MIMEMultipart('alternative')
-                m['Subject'] = 'HolzBau 3D - SMTP Test'
-                m['From'] = 'HolzBau 3D <' + frm + '>'
-                m['To'] = test_to
-                m.attach(MIMEText('<p>SMTP-Test erfolgreich. Der Versand funktioniert!</p>', 'html', 'utf-8'))
-                s.sendmail(frm, [test_to], m.as_string())
-                s.quit()
-                L.append('   OK GESENDET')
-                L.append('')
-                L.append('==> ERFOLG: Brevo hat die Mail angenommen. Pruefe Posteingang + Spam.')
-            except Exception as e:
-                L.append('')
-                L.append('==> FEHLER (' + type(e).__name__ + '): ' + str(e))
-                L.append('')
-                L.append('Haeufige Ursachen:')
-                L.append(' - 535 Authentication failed -> SMTP_USER/SMTP_PASS falsch.')
-                L.append('   Brevo: SMTP_USER = Login aus "SMTP & API > SMTP",')
-                L.append('   SMTP_PASS = der dort erzeugte SMTP-Key (NICHT Account-Passwort, NICHT v3-API-Key).')
-                L.append(' - Timeout -> Railway/Netz blockiert Port. Versuche SMTP_PORT=2525.')
-                L.append(' - 553/501 sender -> MAIL_FROM Absender in Brevo nicht verifiziert.')
+            # --- Weg 2: SMTP Schritt-fuer-Schritt (Fallback-Diagnose) ---
+            L.append('=== Test via SMTP an ' + test_to + ' ===')
+            L.append('(Kein BREVO_API_KEY gesetzt -> teste SMTP. Hinweis: Railway blockiert oft SMTP-Ports!)')
+            host = cfg['SMTP_HOST']
+            port = int(cfg['SMTP_PORT'] or '587')
+            user = cfg['SMTP_USER']
+            pw   = cfg['SMTP_PASS']
+            if not host or not user:
+                L.append('FEHLER: SMTP_HOST oder SMTP_USER fehlt.')
+            else:
+                try:
+                    L.append('1) Verbinde TCP zu ' + host + ':' + str(port) + ' ...')
+                    s = smtplib.SMTP(host, port, timeout=15)
+                    L.append('   OK verbunden')
+                    s.ehlo(); L.append('2) STARTTLS ...'); s.starttls(); s.ehlo()
+                    L.append('   OK TLS aktiv')
+                    L.append('3) LOGIN als ' + user + ' ...'); s.login(user, pw)
+                    L.append('   OK Login akzeptiert')
+                    m = MIMEMultipart('alternative')
+                    m['Subject'] = 'HolzBau 3D - SMTP Test'
+                    m['From'] = 'HolzBau 3D <' + (frm or user) + '>'
+                    m['To'] = test_to
+                    m.attach(MIMEText('<p>SMTP-Test erfolgreich!</p>', 'html', 'utf-8'))
+                    s.sendmail(frm or user, [test_to], m.as_string()); s.quit()
+                    L.append('   OK GESENDET')
+                    L.append(''); L.append('==> ERFOLG: Pruefe Posteingang + Spam.')
+                except Exception as e:
+                    L.append(''); L.append('==> FEHLER (' + type(e).__name__ + '): ' + str(e))
+                    L.append(''); L.append('==> Timeout = Railway blockiert SMTP. Loesung: BREVO_API_KEY setzen!')
     else:
         L.append('Tipp: ?to=deine@email.de an die URL anhaengen, um einen Testversand zu starten.')
     html = ('<html><body style="font-family:Consolas,monospace;background:#0e1117;color:#dde5f4;padding:24px;">'
