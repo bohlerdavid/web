@@ -1808,19 +1808,24 @@ def subscribe_cancel():
     if not stripe_key:
         flash('Stripe nicht konfiguriert.', 'danger')
         return redirect(url_for('subscribe'))
+    sub_row = query_db('SELECT stripe_sub_id FROM subscriptions WHERE user_id=?', [user_id], one=True)
+    if not sub_row or not sub_row['stripe_sub_id']:
+        flash('Kein aktives Abo gefunden.', 'warning')
+        return redirect(url_for('subscribe'))
     try:
-        import stripe
-        stripe.api_key = stripe_key
-        sub_row = query_db('SELECT stripe_sub_id FROM subscriptions WHERE user_id=?', [user_id], one=True)
-        if sub_row and sub_row['stripe_sub_id']:
-            stripe.Subscription.modify(sub_row['stripe_sub_id'], cancel_at_period_end=True)
-            _sync_user_from_stripe(user_id)  # holt cancel-Status + Laufzeit-Ende von Stripe
-            _send_cancel_email(user_id)       # Bestätigungs-Mail mit Datum
-            flash('Abo wird zum Ende der Laufzeit gekündigt. Du behältst Premium bis dahin. Eine Bestätigung kommt per E-Mail.', 'success')
-        else:
-            flash('Kein aktives Abo gefunden.', 'warning')
+        import requests as _req
+        r = _req.post(
+            f'https://api.stripe.com/v1/subscriptions/{sub_row["stripe_sub_id"]}',
+            data={'cancel_at_period_end': 'true'},
+            auth=(stripe_key, ''), timeout=10)
+        r.raise_for_status()
     except Exception as e:
-        flash(f'Fehler: {str(e)}', 'danger')
+        logger.error('Stripe cancel_at_period_end failed for user %s: %s', user_id, e)
+        flash(f'Fehler bei Stripe: {str(e)}', 'danger')
+        return redirect(url_for('subscribe'))
+    _sync_user_from_stripe(user_id)
+    _send_cancel_email(user_id)
+    flash('Abo wird zum Ende der Laufzeit gekündigt. Du behältst Premium bis dahin. Eine Bestätigung kommt per E-Mail.', 'success')
     return redirect(url_for('subscribe'))
 
 
