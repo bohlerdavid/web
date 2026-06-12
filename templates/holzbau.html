@@ -121,6 +121,8 @@ body {
   flex-shrink: 0;
 }
 .tb-btn:hover { background: var(--bg-card); border-color: var(--border); color: var(--text); }
+.umenu-item { display:flex;align-items:center;gap:8px;padding:9px 14px;color:var(--text);text-decoration:none;font-size:.85rem;transition:background .12s; }
+.umenu-item:hover { background:var(--bg-hover); }
 .tb-btn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
 .tb-btn.green { color: var(--green); border-color: rgba(56,216,156,.2); background: rgba(56,216,156,.06); }
 .tb-btn.green:hover { background: rgba(56,216,156,.14); border-color: var(--green); }
@@ -777,10 +779,26 @@ body {
   {% else %}
   <a href="/subscribe" style="margin-left:auto;display:flex;align-items:center;gap:5px;background:rgba(78,140,221,.1);border:1px solid rgba(78,140,221,.25);border-radius:var(--r-sm);padding:2px 10px;font-size:11px;color:var(--accent);font-weight:600;text-decoration:none;flex-shrink:0">⬆ Upgrade</a>
   {% endif %}
-  <a href="/profile" class="tb-btn" title="Mein Profil" style="flex-shrink:0;margin-left:4px;padding:0 10px;text-decoration:none;color:var(--text);display:flex;align-items:center;gap:5px;font-size:13px;">
-    <span style="font-size:15px;">👤</span>
-    <span style="max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ session.get('username', '') }}</span>
-  </a>
+  <div style="position:relative;flex-shrink:0;margin-left:4px;" id="user-menu-wrap">
+    <button onclick="toggleUserMenu(event)" class="tb-btn" style="padding:0 10px;color:var(--text);display:flex;align-items:center;gap:5px;font-size:13px;background:none;border:none;cursor:pointer;">
+      <span style="font-size:15px;">👤</span>
+      <span style="max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ session.get('username', '') }}</span>
+      <span style="font-size:9px;opacity:.5;margin-left:1px;">▼</span>
+    </button>
+    <div id="user-menu" style="display:none;position:absolute;right:0;top:calc(100% + 6px);min-width:190px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:9999;overflow:hidden;">
+      <div style="padding:11px 14px 9px;border-bottom:1px solid var(--border-2);">
+        <div style="font-weight:700;font-size:.88rem;color:var(--text);">{{ session.get('full_name') or session.get('username','') }}</div>
+        <div style="font-size:.72rem;color:var(--text-2);margin-top:2px;">{% if user_plan == 'premium' %}✨ Premium{% else %}Free Plan{% endif %}</div>
+      </div>
+      <a href="/profile" class="umenu-item">👤&nbsp; Profil &amp; Passwort</a>
+      <a href="/subscribe" class="umenu-item">⭐&nbsp; Abonnement</a>
+      {% if session.get('role') == 'admin' %}
+      <a href="/admin/users" class="umenu-item">🔧&nbsp; Admin</a>
+      {% endif %}
+      <div style="border-top:1px solid var(--border-2);"></div>
+      <a href="/logout" class="umenu-item" style="color:#f87171;">🚪&nbsp; Abmelden</a>
+    </div>
+  </div>
 
   <div id="saw-panel">
     <span>🪚 Säge aktiv — Balken anklicken</span>
@@ -4645,6 +4663,21 @@ function cookieConsent(c){
   document.getElementById('cookie-banner').style.display='none';
   {% if show_ads %}if(c==='accept')loadAdSense();{% endif %}
 }
+
+function toggleUserMenu(e) {
+  e.stopPropagation();
+  var m = document.getElementById('user-menu');
+  m.style.display = m.style.display === 'block' ? 'none' : 'block';
+}
+document.addEventListener('click', function(e) {
+  var wrap = document.getElementById('user-menu-wrap');
+  if (wrap && !wrap.contains(e.target)) {
+    document.getElementById('user-menu').style.display = 'none';
+  }
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') document.getElementById('user-menu').style.display = 'none';
+});
 </script>
 
 <div id="sw-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999999;align-items:center;justify-content:center;">
