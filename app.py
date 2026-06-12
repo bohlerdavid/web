@@ -148,6 +148,7 @@ SCHEMA_MIGRATIONS = [
     "ALTER TABLE subscriptions ADD COLUMN plan_interval VARCHAR(10) NOT NULL DEFAULT 'monthly'",
     "ALTER TABLE subscriptions ADD COLUMN sub_started DATETIME NULL",
     "ALTER TABLE app_users ADD COLUMN lang VARCHAR(5) NOT NULL DEFAULT 'de'",
+    "ALTER TABLE subscriptions ADD COLUMN reminder_stage VARCHAR(4) NOT NULL DEFAULT ''",
 ]
 
 
@@ -1269,6 +1270,21 @@ def admin_sub_check():
     return html
 
 
+@app.route('/admin/test-reminder', methods=['GET'])
+@admin_required
+def admin_test_reminder():
+    """Schickt eine Beispiel-Ablauferinnerung an die angegebene Adresse (Vorschau)."""
+    to = request.args.get('to', '').strip()
+    stage = request.args.get('stage', '7d')
+    lang = _norm_lang(request.args.get('lang', 'de'))
+    if not to:
+        return ('Tipp: ?to=deine@email.de&stage=7d&lang=de  (stage=7d oder 2d, lang=de/en/fr)', 200)
+    sample_date = (datetime.utcnow() + timedelta(days=7 if stage != '2d' else 2)).strftime('%d.%m.%Y')
+    ok = send_email(to, EXPIRY_I18N[lang]['subject'].replace('{days}', EXPIRY_I18N[lang]['d2'] if stage == '2d' else EXPIRY_I18N[lang]['d7']),
+                    _email_expiry_html('Test', sample_date, stage, lang))
+    return ('OK gesendet an ' + to + ' (' + stage + ', ' + lang + ')') if ok else ('Versand fehlgeschlagen', 500)
+
+
 # ---------------------------------------------------------------------------
 # HolzBau 3D App
 # ---------------------------------------------------------------------------
@@ -1308,10 +1324,33 @@ def pricing_public():
 # Subscription
 # ---------------------------------------------------------------------------
 
+def _to_dt(v):
+    """Robust: DB-DATETIME (datetime ODER ISO-String) -> datetime, sonst None."""
+    if not v:
+        return None
+    if isinstance(v, datetime):
+        return v
+    try:
+        return datetime.fromisoformat(str(v).replace('Z', '').replace('T', ' ').strip())
+    except Exception:
+        return None
+
+
 def get_user_plan(user_id):
-    row = query_db('SELECT plan, status FROM subscriptions WHERE user_id=?', [user_id], one=True)
-    if row and row['plan'] == 'premium' and row['status'] == 'active':
+    row = query_db('SELECT plan, status, current_period_end FROM subscriptions WHERE user_id=?', [user_id], one=True)
+    if not row or row['plan'] != 'premium':
+        return 'free'
+    status = row['status']
+    # 'active'  = laufend / verlängert sich -> Zugang
+    # 'cancelled' = gekündigt, Zugang NUR bis zum bezahlten Periodenende
+    # 'expired'/sonst = kein Zugang
+    if status == 'active':
         return 'premium'
+    if status == 'cancelled':
+        pe = _to_dt(row['current_period_end'])
+        if pe is None or pe > datetime.utcnow():
+            return 'premium'   # noch innerhalb der bezahlten Laufzeit
+        return 'free'          # Laufzeit abgelaufen -> gesperrt
     return 'free'
 
 
@@ -1343,19 +1382,22 @@ def _sync_user_from_stripe(user_id):
         rec = price.get('recurring') or {}
         interval = 'yearly' if rec.get('interval') == 'year' else 'monthly'
         cpe = s.get('current_period_end') or items[0].get('current_period_end')
-        period_end = datetime.fromtimestamp(cpe).isoformat() if cpe else None
+        period_end = datetime.utcfromtimestamp(cpe).strftime('%Y-%m-%d %H:%M:%S') if cpe else None
         sd = s.get('start_date') or s.get('created')
-        started = datetime.fromtimestamp(sd).isoformat() if sd else None
+        started = datetime.utcfromtimestamp(sd).strftime('%Y-%m-%d %H:%M:%S') if sd else None
         if status in ('active', 'trialing', 'past_due'):
             plan = 'premium'
             db_status = 'cancelled' if cancel_at_end else 'active'
         else:  # canceled, unpaid, incomplete_expired, paused, incomplete
             plan = 'free'
-            db_status = 'cancelled'
+            db_status = 'expired'
+        # Reminder-Zähler zurücksetzen, sobald NICHT (mehr) gekündigt
+        reset_reminder = '' if db_status != 'cancelled' else None
         execute_db('UPDATE subscriptions SET plan=?, status=?, plan_interval=?, '
                    'current_period_end=?, sub_started=COALESCE(sub_started, ?), '
-                   'stripe_sub_id=COALESCE(stripe_sub_id, ?) WHERE user_id=?',
-                   [plan, db_status, interval, period_end, started, s.get('id'), user_id])
+                   'stripe_sub_id=COALESCE(stripe_sub_id, ?), '
+                   'reminder_stage=COALESCE(?, reminder_stage) WHERE user_id=?',
+                   [plan, db_status, interval, period_end, started, s.get('id'), reset_reminder, user_id])
         return query_db('SELECT * FROM subscriptions WHERE user_id=?', [user_id], one=True)
     except Exception as e:
         logger.error('sync_user_from_stripe(%s) failed: %s', user_id, type(e).__name__)
@@ -1457,8 +1499,8 @@ def subscribe_cancel():
         sub_row = query_db('SELECT stripe_sub_id FROM subscriptions WHERE user_id=?', [user_id], one=True)
         if sub_row and sub_row['stripe_sub_id']:
             stripe.Subscription.modify(sub_row['stripe_sub_id'], cancel_at_period_end=True)
-            execute_db('UPDATE subscriptions SET status=? WHERE user_id=?', ['cancelled', user_id])
-            flash('Abo wird zum Ende der Laufzeit gekündigt.', 'success')
+            _sync_user_from_stripe(user_id)  # holt cancel-Status + Laufzeit-Ende von Stripe
+            flash('Abo wird zum Ende der Laufzeit gekündigt. Du behältst Premium bis dahin.', 'success')
         else:
             flash('Kein aktives Abo gefunden.', 'warning')
     except Exception as e:
@@ -1487,6 +1529,25 @@ def stripe_webhook():
     except Exception as e:
         logger.error('Stripe webhook error: %s', type(e).__name__)
         return jsonify(error='Webhook error'), 400
+
+
+@app.route('/cron/subscription-reminders', methods=['GET', 'POST'])
+def cron_subscription_reminders():
+    """Täglich von einem Cron aufzurufen. Schützt per CRON_SECRET.
+    1) synct alle Stripe-Abos (sperrt abgelaufene automatisch),
+    2) sendet 7-Tage- und 2-Tage-Ablauf-Erinnerungen."""
+    secret = os.environ.get('CRON_SECRET', '')
+    given = request.args.get('key') or request.headers.get('X-Cron-Key', '')
+    if not secret or given != secret:
+        abort(403)
+    # 1) Stripe = Source of Truth: alle mit Stripe-Bezug aktualisieren
+    synced = 0
+    for r in query_db("SELECT user_id FROM subscriptions WHERE stripe_sub_id IS NOT NULL OR stripe_customer_id IS NOT NULL", []):
+        _sync_user_from_stripe(r['user_id'])
+        synced += 1
+    # 2) Erinnerungen verschicken
+    log = _run_subscription_reminders()
+    return jsonify(ok=True, synced=synced, reminders=log)
 
 
 def _email_premium_html(display_name, amount_txt, interval, invoice_url, lang='de'):
@@ -1529,7 +1590,7 @@ def _activate_premium(user_id, customer_id, sub_id, interval, notify=True):
             s = _stripe_api_get('subscriptions/' + sub_id)
             sd = s.get('start_date') or s.get('created')
             if sd:
-                started = datetime.fromtimestamp(sd).isoformat()
+                started = datetime.utcfromtimestamp(sd).strftime('%Y-%m-%d %H:%M:%S')
             cpe = s.get('current_period_end')
             if not cpe:
                 # Neuere Stripe-API-Versionen: Laufzeit liegt am Subscription-Item
@@ -1537,7 +1598,7 @@ def _activate_premium(user_id, customer_id, sub_id, interval, notify=True):
                 if items:
                     cpe = items[0].get('current_period_end')
             if cpe:
-                period_end = datetime.fromtimestamp(cpe).isoformat()
+                period_end = datetime.utcfromtimestamp(cpe).strftime('%Y-%m-%d %H:%M:%S')
             li = s.get('latest_invoice')
             if li:
                 inv = _stripe_api_get('invoices/' + li)
@@ -1551,7 +1612,7 @@ def _activate_premium(user_id, customer_id, sub_id, interval, notify=True):
 
     if existing:
         execute_db('UPDATE subscriptions SET stripe_customer_id=?, stripe_sub_id=?, plan=?, status=?, plan_interval=?, '
-                   'current_period_end=COALESCE(?, current_period_end), sub_started=COALESCE(?, sub_started) WHERE user_id=?',
+                   "current_period_end=COALESCE(?, current_period_end), sub_started=COALESCE(?, sub_started), reminder_stage='' WHERE user_id=?",
                    [customer_id, sub_id, 'premium', 'active', interval, period_end, started, user_id])
     else:
         execute_db('INSERT INTO subscriptions (user_id, stripe_customer_id, stripe_sub_id, plan, status, plan_interval, current_period_end, sub_started) '
@@ -1567,6 +1628,88 @@ def _activate_premium(user_id, customer_id, sub_id, interval, notify=True):
     return True
 
 
+EXPIRY_I18N = {
+    'de': {
+        'subject': 'HolzBau 3D – Dein Premium-Zugang endet in {days}',
+        'd7': '7 Tagen', 'd2': '2 Tagen',
+        'title': 'Dein Premium-Zugang endet bald',
+        'body': 'dein gekündigtes Premium-Abo läuft am <strong>{date}</strong> aus — also in {days}. Danach hast du keinen Zugang mehr zu den Premium-Funktionen (unbegrenzte Balken, PDF-Export, Säge-Tool, werbefrei).',
+        'button': 'Premium fortsetzen',
+        'note': 'Möchtest du Premium behalten? Du kannst es jederzeit mit einem Klick reaktivieren — bereits erstellte Projekte bleiben dir natürlich erhalten.',
+    },
+    'en': {
+        'subject': 'HolzBau 3D – Your Premium access ends in {days}',
+        'd7': '7 days', 'd2': '2 days',
+        'title': 'Your Premium access is ending soon',
+        'body': 'your cancelled Premium subscription ends on <strong>{date}</strong> — in {days}. After that you will lose access to the Premium features (unlimited beams, PDF export, saw tool, ad-free).',
+        'button': 'Keep Premium',
+        'note': 'Want to keep Premium? You can reactivate it any time with a single click — your existing projects are of course preserved.',
+    },
+    'fr': {
+        'subject': 'HolzBau 3D – Votre accès Premium se termine dans {days}',
+        'd7': '7 jours', 'd2': '2 jours',
+        'title': 'Votre accès Premium se termine bientôt',
+        'body': 'votre abonnement Premium résilié se termine le <strong>{date}</strong> — dans {days}. Vous perdrez alors l’accès aux fonctionnalités Premium (poutres illimitées, export PDF, outil scie, sans publicité).',
+        'button': 'Conserver Premium',
+        'note': 'Vous souhaitez conserver Premium ? Vous pouvez le réactiver à tout moment en un clic — vos projets existants sont bien sûr conservés.',
+    },
+}
+
+
+def _email_expiry_html(display_name, end_date, stage, lang='de'):
+    T = EXPIRY_I18N.get(_norm_lang(lang), EXPIRY_I18N['de'])
+    L = EMAIL_I18N.get(_norm_lang(lang), EMAIL_I18N['de'])
+    days = T['d2'] if stage == '2d' else T['d7']
+    base_url = os.environ.get('BASE_URL', 'https://holzbau3d.app')
+    body = T['body'].replace('{date}', end_date).replace('{days}', days)
+    return _email_shell(f'''    <h2 style="margin:0 0 16px;font-size:1.15rem;color:#1a1a1a;font-weight:700;">{T['title']}</h2>
+    <p style="margin:0 0 10px;color:#374151;line-height:1.65;font-size:.95rem;">{L['hello']} <strong>{display_name}</strong>,</p>
+    <p style="margin:0 0 24px;color:#374151;line-height:1.65;font-size:.95rem;">{body}</p>
+    <table cellpadding="0" cellspacing="0" style="margin:0 0 24px;"><tr><td style="background:linear-gradient(135deg,#d97706,#92400e);border-radius:10px;">
+      <a href="{base_url}/subscribe" style="display:inline-block;padding:13px 32px;color:#ffffff;text-decoration:none;font-weight:700;font-size:.95rem;">{T['button']}</a>
+    </td></tr></table>
+    <p style="margin:0;color:#9ca3af;font-size:.8rem;line-height:1.6;">{T['note']}</p>''')
+
+
+def _run_subscription_reminders():
+    """Sendet Erinnerungen 7 Tage und 2 Tage vor Ablauf gekündigter Abos.
+    Idempotent über reminder_stage (''/'7d'/'2d'). Gibt eine Log-Liste zurück."""
+    out = []
+    rows = query_db(
+        "SELECT s.user_id, s.current_period_end, s.reminder_stage, "
+        "u.email, u.full_name, u.username, u.lang "
+        "FROM subscriptions s JOIN app_users u ON u.id = s.user_id "
+        "WHERE s.plan='premium' AND s.status='cancelled'", []
+    )
+    now = datetime.utcnow()
+    for r in rows:
+        pe = _to_dt(r['current_period_end'])
+        if not pe or not r['email']:
+            continue
+        days_left = (pe - now).total_seconds() / 86400.0
+        if days_left < 0:
+            continue
+        stage = r['reminder_stage'] or ''
+        send_stage = None
+        if days_left <= 2 and stage != '2d':
+            send_stage = '2d'
+        elif days_left <= 7 and stage == '':
+            send_stage = '7d'
+        if not send_stage:
+            continue
+        u_lang = _norm_lang(r['lang'] if not hasattr(r, 'get') else r.get('lang'))
+        subj_days = EXPIRY_I18N[u_lang]['d2'] if send_stage == '2d' else EXPIRY_I18N[u_lang]['d7']
+        subject = EXPIRY_I18N[u_lang]['subject'].replace('{days}', subj_days)
+        ok = send_email(r['email'], subject,
+                        _email_expiry_html(r['full_name'] or r['username'], pe.strftime('%d.%m.%Y'), send_stage, u_lang))
+        if ok:
+            execute_db('UPDATE subscriptions SET reminder_stage=? WHERE user_id=?', [send_stage, r['user_id']])
+            out.append(f"user {r['user_id']}: {send_stage}-Erinnerung gesendet (Ablauf in {days_left:.1f}d)")
+        else:
+            out.append(f"user {r['user_id']}: Mail-Versand fehlgeschlagen")
+    return out
+
+
 def _handle_stripe_event(event):
     data = event['data']['object']
     etype = event['type']
@@ -1577,12 +1720,9 @@ def _handle_stripe_event(event):
         _activate_premium(user_id, data.get('customer'), data.get('subscription'), interval)
     elif etype in ('customer.subscription.deleted', 'customer.subscription.updated'):
         sub_id = data.get('id')
-        status = data.get('status', 'cancelled')
-        plan = 'premium' if status == 'active' else 'free'
-        db_status = 'active' if status == 'active' else 'cancelled'
-        period_end = datetime.fromtimestamp(data.get('current_period_end', 0)).isoformat() if data.get('current_period_end') else None
-        execute_db('UPDATE subscriptions SET plan=?, status=?, current_period_end=? WHERE stripe_sub_id=?',
-                   [plan, db_status, period_end, sub_id])
+        row = query_db('SELECT user_id FROM subscriptions WHERE stripe_sub_id=?', [sub_id], one=True)
+        if row:
+            _sync_user_from_stripe(row['user_id'])
 
 
 # ---------------------------------------------------------------------------
