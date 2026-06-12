@@ -1152,20 +1152,28 @@ def get_user_plan(user_id):
 def subscribe():
     user_id = session['user_id']
 
-    # Fallback: Beim Rücksprung von Stripe das Abo direkt aktivieren,
+    # Fallback/Sync: Beim Rücksprung von Stripe (?success=1) oder manuell (?sync=1)
+    # bezahlte Checkout-Sessions dieses Users suchen und das Abo aktivieren,
     # falls der Webhook (noch) nicht gegriffen hat.
     cs_id = request.args.get('session_id')
-    if request.args.get('success') and cs_id:
+    if (request.args.get('success') or request.args.get('sync')) and get_user_plan(user_id) == 'free':
         try:
             import stripe
             stripe.api_key = os.environ.get('STRIPE_SECRET_KEY', '')
-            cs = stripe.checkout.Session.retrieve(cs_id)
-            if getattr(cs, 'payment_status', '') == 'paid':
+            if cs_id:
+                sessions = [stripe.checkout.Session.retrieve(cs_id)]
+            else:
+                sessions = stripe.checkout.Session.list(limit=100).data
+            for cs in sessions:
                 meta = dict(getattr(cs, 'metadata', None) or {})
-                if int(meta.get('user_id', 0) or 0) == user_id:
+                if (int(meta.get('user_id', 0) or 0) == user_id
+                        and getattr(cs, 'payment_status', '') == 'paid'
+                        and getattr(cs, 'mode', '') == 'subscription'):
                     interval = 'yearly' if meta.get('plan_type') == 'yearly' else 'monthly'
                     _activate_premium(user_id, getattr(cs, 'customer', None),
                                       getattr(cs, 'subscription', None), interval)
+                    flash('Dein Premium-Abo wurde aktiviert. Eine Bestätigung mit Rechnung ist unterwegs per E-Mail. ✨', 'success')
+                    break
         except Exception as e:
             logger.error('Checkout success fallback failed: %s', type(e).__name__)
 
@@ -1209,6 +1217,7 @@ def subscribe_create_checkout():
             success_url=request.host_url + 'subscribe?success=1&session_id={CHECKOUT_SESSION_ID}',
             cancel_url=request.host_url + 'subscribe?cancelled=1',
             metadata={'user_id': str(user_id), 'plan_type': plan_type},
+            subscription_data={'metadata': {'user_id': str(user_id), 'plan_type': plan_type}},
         )
         return redirect(checkout.url, code=303)
     except Exception as e:
@@ -1265,17 +1274,92 @@ def stripe_webhook():
         return jsonify(error='Webhook error'), 400
 
 
-def _activate_premium(user_id, customer_id, sub_id, interval):
-    """Setzt einen User auf Premium. Genutzt von Webhook UND Checkout-Success-Fallback."""
+def _email_premium_html(display_name, amount_txt, interval, invoice_url):
+    interval_txt = 'Jahres-Abo' if interval == 'yearly' else 'Monats-Abo'
+    invoice_block = ''
+    if invoice_url:
+        invoice_block = (
+            '<table cellpadding="0" cellspacing="0" style="margin:0 0 24px;"><tr><td style="background:linear-gradient(135deg,#d97706,#92400e);border-radius:10px;">'
+            f'<a href="{invoice_url}" style="display:inline-block;padding:13px 30px;color:#ffffff;text-decoration:none;font-weight:700;font-size:.95rem;">📄 Rechnung ansehen &amp; herunterladen</a>'
+            '</td></tr></table>'
+        )
+    return f'''<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#faf6f0;font-family:'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#faf6f0;padding:40px 16px;">
+<tr><td align="center">
+<table width="540" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.08);max-width:540px;width:100%;">
+  <tr><td style="background:linear-gradient(135deg,#d97706,#92400e);padding:28px 40px;">
+    <span style="color:#fff;font-size:1.35rem;font-weight:800;letter-spacing:-0.5px;">HolzBAU <span style="font-size:1rem;">3D</span></span>
+  </td></tr>
+  <tr><td style="padding:40px;">
+    <h2 style="margin:0 0 16px;font-size:1.15rem;color:#1a1a1a;font-weight:700;">✨ Premium ist aktiv!</h2>
+    <p style="margin:0 0 10px;color:#374151;line-height:1.65;font-size:.95rem;">Hallo <strong>{display_name}</strong>,</p>
+    <p style="margin:0 0 20px;color:#374151;line-height:1.65;font-size:.95rem;">vielen Dank für dein Vertrauen! Dein <strong>{interval_txt}</strong> ({amount_txt}) ist ab sofort aktiv — alle Premium-Features sind freigeschaltet.</p>
+    <table cellpadding="0" cellspacing="0" style="width:100%;background:#fef9f0;border:1px solid #fde68a;border-radius:10px;margin:0 0 24px;"><tr><td style="padding:16px 20px;font-size:.88rem;color:#374151;line-height:2;">
+      ✅ Unbegrenzte Balken &amp; Projekte<br>
+      ✅ Vollständig werbefrei<br>
+      ✅ PDF Export &amp; Druckpläne<br>
+      ✅ Säge-Tool &amp; Schnittplan-Optimierung
+    </td></tr></table>
+    {invoice_block}
+    <p style="margin:0;color:#9ca3af;font-size:.8rem;line-height:1.6;">Du kannst dein Abo jederzeit unter „Mein Abonnement" verwalten oder kündigen.</p>
+  </td></tr>
+  <tr><td style="background:#faf6f0;padding:20px 40px;border-top:1px solid #f0e8dc;">
+    <p style="margin:0;color:#9ca3af;font-size:.75rem;">HolzBau 3D · <a href="https://holzbau3d.app" style="color:#d97706;">holzbau3d.app</a></p>
+  </td></tr>
+</table>
+</td></tr>
+</table>
+</body></html>'''
+
+
+def _activate_premium(user_id, customer_id, sub_id, interval, notify=True):
+    """Setzt einen User auf Premium. Genutzt von Webhook UND Checkout-Success-Fallback.
+    Holt Laufzeit-Ende + Rechnungslink von Stripe und mailt eine Bestätigung (einmalig)."""
     if not user_id:
-        return
-    existing = query_db('SELECT id FROM subscriptions WHERE user_id=?', [user_id], one=True)
+        return False
+    existing = query_db('SELECT * FROM subscriptions WHERE user_id=?', [user_id], one=True)
+    already = bool(existing and existing['plan'] == 'premium' and existing['status'] == 'active'
+                   and existing['stripe_sub_id'] == sub_id)
+
+    period_end = None
+    invoice_url = None
+    amount_txt = '99,99 € / Jahr' if interval == 'yearly' else '9,99 € / Monat'
+    try:
+        import stripe
+        stripe.api_key = os.environ.get('STRIPE_SECRET_KEY', '')
+        if sub_id and stripe.api_key:
+            s = stripe.Subscription.retrieve(sub_id)
+            cpe = getattr(s, 'current_period_end', None)
+            if cpe:
+                period_end = datetime.fromtimestamp(cpe).isoformat()
+            li = getattr(s, 'latest_invoice', None)
+            if li:
+                inv = stripe.Invoice.retrieve(li)
+                invoice_url = getattr(inv, 'hosted_invoice_url', None)
+                amt = getattr(inv, 'amount_paid', None)
+                cur = (getattr(inv, 'currency', '') or '').upper()
+                if amt:
+                    amount_txt = ('%.2f' % (amt / 100)).replace('.', ',') + ' ' + cur + \
+                                 (' / Jahr' if interval == 'yearly' else ' / Monat')
+    except Exception as e:
+        logger.error('activate_premium: Stripe lookup failed: %s', type(e).__name__)
+
     if existing:
-        execute_db('UPDATE subscriptions SET stripe_customer_id=?, stripe_sub_id=?, plan=?, status=?, plan_interval=? WHERE user_id=?',
-                   [customer_id, sub_id, 'premium', 'active', interval, user_id])
+        execute_db('UPDATE subscriptions SET stripe_customer_id=?, stripe_sub_id=?, plan=?, status=?, plan_interval=?, '
+                   'current_period_end=COALESCE(?, current_period_end) WHERE user_id=?',
+                   [customer_id, sub_id, 'premium', 'active', interval, period_end, user_id])
     else:
-        execute_db('INSERT INTO subscriptions (user_id, stripe_customer_id, stripe_sub_id, plan, status, plan_interval) VALUES (?,?,?,?,?,?)',
-                   [user_id, customer_id, sub_id, 'premium', 'active', interval])
+        execute_db('INSERT INTO subscriptions (user_id, stripe_customer_id, stripe_sub_id, plan, status, plan_interval, current_period_end) '
+                   'VALUES (?,?,?,?,?,?,?)',
+                   [user_id, customer_id, sub_id, 'premium', 'active', interval, period_end])
+
+    if notify and not already:
+        u = query_db('SELECT email, full_name, username FROM app_users WHERE id=?', [user_id], one=True)
+        if u and u['email']:
+            send_email(u['email'], 'HolzBau 3D – Premium aktiviert ✨ (Rechnung)',
+                       _email_premium_html(u['full_name'] or u['username'], amount_txt, interval, invoice_url))
+    return True
 
 
 def _handle_stripe_event(event):
