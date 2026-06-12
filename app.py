@@ -1137,7 +1137,7 @@ def profile_delete():
     user_id = session['user_id']
     user    = query_db("SELECT * FROM app_users WHERE id = ?", (user_id,), one=True)
     sub     = query_db(
-        "SELECT plan, status, current_period_end, stripe_sub_id, cancel_at_period_end "
+        "SELECT plan, status, current_period_end, stripe_sub_id "
         "FROM subscriptions WHERE user_id=?", [user_id], one=True)
     is_premium = get_user_plan(user_id) == 'premium'
     period_end = None
