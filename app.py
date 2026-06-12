@@ -898,7 +898,23 @@ def admin_email_test():
         if len(v) <= 6:
             return v[0] + '***'
         return v[:3] + '***' + v[-2:]
+    # Ausgehende oeffentliche IP dieser App ermitteln (fuer Brevo IP-Whitelist)
+    out_ip = '?'
+    for ip_url in ('https://api.ipify.org', 'https://checkip.amazonaws.com', 'https://ifconfig.me/ip'):
+        try:
+            with urllib.request.urlopen(ip_url, timeout=8) as r:
+                out_ip = r.read().decode('utf-8').strip()
+            if out_ip:
+                break
+        except Exception:
+            continue
     L = []
+    L.append('############################################################')
+    L.append('# AUSGEHENDE IP DIESER APP (Railway): ' + out_ip)
+    L.append('# -> falls Brevo zwingend eine IP verlangt, DIESE eintragen.')
+    L.append('# -> Achtung: kann sich bei Railway-Neustart aendern!')
+    L.append('############################################################')
+    L.append('')
     L.append('=== E-Mail-Konfiguration (Railway Env) ===')
     L.append('BREVO_API_KEY: ' + (mask(cfg['BREVO_API_KEY']) + '  (Laenge: ' + str(len(cfg['BREVO_API_KEY'])) + ')' if cfg['BREVO_API_KEY'] else '<<< LEER -> nutzt SMTP-Fallback >>>'))
     L.append('MAIL_FROM:     ' + (cfg['MAIL_FROM'] or '<LEER -> nutzt SMTP_USER>'))
