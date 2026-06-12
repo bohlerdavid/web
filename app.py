@@ -1072,12 +1072,12 @@ def admin_stripe_check():
                     continue
                 try:
                     p = stripe.Price.retrieve(pid)
-                    amount = (p.get('unit_amount') or 0) / 100.0
-                    cur = (p.get('currency') or '').upper()
-                    rec = p.get('recurring') or {}
-                    interval = rec.get('interval', 'einmalig?')
-                    active = 'aktiv' if p.get('active') else 'INAKTIV!'
-                    livemode = 'LIVE' if p.get('livemode') else 'TEST'
+                    amount = (getattr(p, 'unit_amount', None) or 0) / 100.0
+                    cur = (getattr(p, 'currency', '') or '').upper()
+                    rec = getattr(p, 'recurring', None)
+                    interval = getattr(rec, 'interval', 'einmalig') if rec else 'einmalig'
+                    active = 'aktiv' if getattr(p, 'active', False) else 'INAKTIV!'
+                    livemode = 'LIVE' if getattr(p, 'livemode', False) else 'TEST'
                     L.append(label + ': ' + ('%.2f' % amount) + ' ' + cur + ' / ' + interval +
                              '  [' + active + ', ' + livemode + ']  ' + pid)
                     if livemode != mode and mode in ('TEST', 'LIVE'):
