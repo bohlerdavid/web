@@ -282,8 +282,6 @@ def nutzungsbedingungen():
 
 @app.route('/')
 def index():
-    if 'user_id' in session:
-        return redirect(url_for('holzbau'))
     return render_template('landing.html')
 
 
