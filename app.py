@@ -609,6 +609,8 @@ def _seo_context(lang):
         'jsonld_faq': json.dumps(_seo_faq(lang), ensure_ascii=False),
         'faq_items': FAQ_ITEMS.get(lang, FAQ_ITEMS['de']),
         'faq_heading': FAQ_HEADING.get(lang, FAQ_HEADING['de']),
+        'adsense_client': 'ca-pub-1405082500215735',
+        'adsense_slot': os.environ.get('ADSENSE_SLOT', ''),
     }
 
 

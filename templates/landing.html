@@ -896,6 +896,24 @@
   </div>
 </section>
 
+{% if adsense_slot %}
+<!-- ═══════════ ADSENSE (echte Anzeige) ═══════════ -->
+<div style="background:#faf6f0;padding:30px 24px;border-top:1px solid #f0e4d4;">
+  <div style="max-width:760px;margin:0 auto;text-align:center;">
+    <div style="font-size:.66rem;color:#b3a892;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:8px;">
+      {% if seo_lang == 'en' %}Advertisement{% elif seo_lang == 'fr' %}Publicité{% else %}Anzeige{% endif %}
+    </div>
+    <ins class="adsbygoogle"
+         style="display:block;min-height:120px;"
+         data-ad-client="{{ adsense_client }}"
+         data-ad-slot="{{ adsense_slot }}"
+         data-ad-format="auto"
+         data-full-width-responsive="true"></ins>
+    <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+  </div>
+</div>
+{% endif %}
+
 <!-- ═══════════ FOOTER ═══════════ -->
 <footer>
   <div class="footer-inner">
