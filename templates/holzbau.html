@@ -1029,7 +1029,8 @@ body {
       <div style="font-size:10px;color:var(--text-3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">🌿 Pflanzen</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:10px">
         <button class="deko-btn" onclick="addDeco('bush')"><span class="di">🌿</span><span class="dn">Busch</span><span class="ds">Ø 0.6 m</span></button>
-        <button class="deko-btn" onclick="addDeco('tree')"><span class="di">🌲</span><span class="dn">Baum</span><span class="ds">H 3 m</span></button>
+        <button class="deko-btn" onclick="addDeco('tree')"><span class="di">🌲</span><span class="dn">Nadelbaum</span><span class="ds">H 3 m</span></button>
+        <button class="deko-btn" onclick="addDeco('tree_leaf')"><span class="di">🌳</span><span class="dn">Laubbaum</span><span class="ds">H 3.5 m</span></button>
         <button class="deko-btn" onclick="addDeco('pot_small')"><span class="di">🪴</span><span class="dn">Topf klein</span><span class="ds">H 0.6 m</span></button>
         <button class="deko-btn" onclick="addDeco('pot_large')"><span class="di">🪴</span><span class="dn">Topf gross</span><span class="ds">H 1.2 m</span></button>
       </div>
@@ -1245,6 +1246,7 @@ body {
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader }    from 'three/addons/loaders/GLTFLoader.js';
+import { clone as skeletonClone } from 'three/addons/utils/SkeletonUtils.js';
 
 // ── PLAN (injected by Flask) ──
 const USER_PLAN = '{{ user_plan|default("free") }}';
@@ -3522,7 +3524,8 @@ function normalizeAndBaseModel(gltfScene, targetHeightMM) {
 
 function loadGLTFIntoGroup(url, targetHeightMM, threeGroup) {
   if (_modelCache.has(url)) {
-    const cached = _modelCache.get(url).clone();
+    // SkeletonUtils.clone: korrekt auch für skinned meshes (z.B. Person)
+    const cached = skeletonClone(_modelCache.get(url));
     normalizeAndBaseModel(cached, targetHeightMM);
     threeGroup.add(cached);
     return Promise.resolve();
@@ -3533,7 +3536,7 @@ function loadGLTFIntoGroup(url, targetHeightMM, threeGroup) {
       (gltf) => {
         // Cache the original, clone for use
         _modelCache.set(url, gltf.scene);
-        const model = gltf.scene.clone();
+        const model = skeletonClone(gltf.scene);
         normalizeAndBaseModel(model, targetHeightMM);
         threeGroup.add(model);
         resolve();
@@ -3573,6 +3576,27 @@ function makeGLTFDef(label, url, defaultHeightMM) {
       return grp;
     }
   };
+}
+
+// PBR-Texturen (Poly Haven CC0) für Mauern/Böden — echte Oberflächen statt Flachfarben
+const _texLoader = new THREE.TextureLoader();
+const _texCache = new Map();
+function phTexture(slug, repX = 1, repY = 1) {
+  const key = slug;
+  let tex = _texCache.get(key);
+  if (!tex) {
+    tex = _texLoader.load(`https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/${slug}/${slug}_diff_1k.jpg`);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    _texCache.set(key, tex);
+  }
+  const t = tex.clone();
+  t.needsUpdate = true;
+  t.repeat.set(repX, repY);
+  return t;
+}
+function texturedMat(slug, repX, repY, fallbackColor) {
+  return new THREE.MeshStandardMaterial({ color: 0xffffff, map: phTexture(slug, repX, repY), roughness: 0.9 });
 }
 
 // ══════════════════════════════════════════════
@@ -3783,119 +3807,27 @@ function showSchnittplan() {
 // ══════════════════════════════════════════════
 
 const DEKO_DEFS = {
-  // Scale references
-  person: {
-    label: 'Person', color: 0xf5c5a3,
-    defaultParams: { scale: 100 },
-    build(g) {
-      const grp = new THREE.Group();
-      // body
-      const body = new THREE.Mesh(new THREE.CylinderGeometry(120,120,900,8), new THREE.MeshStandardMaterial({color:0x4488cc}));
-      body.position.y = 900/2 + 750;
-      // head
-      const head = new THREE.Mesh(new THREE.SphereGeometry(150,8,8), new THREE.MeshStandardMaterial({color:0xf5c5a3}));
-      head.position.y = 900 + 750 + 160;
-      // legs
-      [-100,100].forEach(ox => {
-        const leg = new THREE.Mesh(new THREE.CylinderGeometry(60,60,750,8), new THREE.MeshStandardMaterial({color:0x333355}));
-        leg.position.set(ox, 375, 0);
-        grp.add(leg);
-      });
-      grp.add(body, head);
-      return grp;
-    }
-  },
-  car: {
-    label: 'Auto',
-    defaultParams: { scale: 100 },
-    build(g) {
-      const grp = new THREE.Group();
-      const body = new THREE.Mesh(new THREE.BoxGeometry(4500,800,1800), new THREE.MeshStandardMaterial({color:0x3355aa}));
-      body.position.y = 400 + 350;
-      const roof = new THREE.Mesh(new THREE.BoxGeometry(2400,600,1700), new THREE.MeshStandardMaterial({color:0x2244aa}));
-      roof.position.y = 400 + 800 + 300;
-      // wheels
-      [[-1600,-850],[-1600,850],[1300,-850],[1300,850]].forEach(([x,z]) => {
-        const w = new THREE.Mesh(new THREE.CylinderGeometry(350,350,200,16), new THREE.MeshStandardMaterial({color:0x222222}));
-        w.rotation.z = Math.PI/2; w.position.set(x,350,z); grp.add(w);
-      });
-      grp.add(body, roof);
-      return grp;
-    }
-  },
-  // Plants
-  bush: {
-    label: 'Busch',
-    defaultParams: { scale: 100 },
-    build() {
-      const grp = new THREE.Group();
-      [[0,300,0],[150,200,100],[-120,250,50],[50,350,-80]].forEach(([x,y,z]) => {
-        const r = 200 + Math.random()*100;
-        const m = new THREE.Mesh(new THREE.SphereGeometry(r,8,6), new THREE.MeshStandardMaterial({color:0x2d7a2d}));
-        m.position.set(x,y,z); grp.add(m);
-      });
-      return grp;
-    }
-  },
-  tree: {
-    label: 'Baum',
-    defaultParams: { scale: 100 },
-    build() {
-      const grp = new THREE.Group();
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(80,100,1200,8), new THREE.MeshStandardMaterial({color:0x7a4f2e}));
-      trunk.position.y = 600;
-      const c1 = new THREE.Mesh(new THREE.ConeGeometry(700,1400,8), new THREE.MeshStandardMaterial({color:0x1e6b1e}));
-      c1.position.y = 1200+700;
-      const c2 = new THREE.Mesh(new THREE.ConeGeometry(550,1100,8), new THREE.MeshStandardMaterial({color:0x256b25}));
-      c2.position.y = 1200+1100+300;
-      grp.add(trunk, c1, c2);
-      return grp;
-    }
-  },
-  pot_small: {
-    label: 'Topf klein',
-    defaultParams: { scale: 100 },
-    build() {
-      const grp = new THREE.Group();
-      const pot = new THREE.Mesh(new THREE.CylinderGeometry(200,150,350,12), new THREE.MeshStandardMaterial({color:0xc87941}));
-      pot.position.y = 175;
-      const plant = new THREE.Mesh(new THREE.SphereGeometry(220,8,6), new THREE.MeshStandardMaterial({color:0x2d8a2d}));
-      plant.position.y = 350+180;
-      grp.add(pot, plant);
-      return grp;
-    }
-  },
-  pot_large: {
-    label: 'Topf gross',
-    defaultParams: { scale: 100 },
-    build() {
-      const grp = new THREE.Group();
-      const pot = new THREE.Mesh(new THREE.CylinderGeometry(350,250,600,12), new THREE.MeshStandardMaterial({color:0x9b6b3a}));
-      pot.position.y = 300;
-      // small tree in pot
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(40,50,500,8), new THREE.MeshStandardMaterial({color:0x7a4f2e}));
-      trunk.position.y = 600+250;
-      const leaves = new THREE.Mesh(new THREE.SphereGeometry(280,8,6), new THREE.MeshStandardMaterial({color:0x2a7a2a}));
-      leaves.position.y = 600+500+200;
-      grp.add(pot, trunk, leaves);
-      return grp;
-    }
-  },
-  // Walls
+  // ─── Massstab (echte 3D-Modelle) ───
+  // Person: "Cesium Man" © Cesium, CC-BY 4.0 (github.com/KhronosGroup/glTF-Sample-Assets) — selbst gehostet
+  person:    makeGLTFDef('Person', '/static/models/person.glb', 1750),
+  car:       makeGLTFDef('Auto',   'https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/covered_car/covered_car_2k.gltf', 1400),
+
+  // ─── Pflanzen (Poly Haven CC0, echte Scans) ───
+  bush:      makeGLTFDef('Busch',      'https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/shrub_01/shrub_01_2k.gltf',                 600),
+  tree:      makeGLTFDef('Nadelbaum',  'https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/pine_tree_01/pine_tree_01_2k.gltf',         3000),
+  tree_leaf: makeGLTFDef('Laubbaum',   'https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/jacaranda_tree/jacaranda_tree_2k.gltf',     3500),
+  pot_small: makeGLTFDef('Topf klein', 'https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/potted_plant_01/potted_plant_01_2k.gltf',   600),
+  pot_large: makeGLTFDef('Topf gross', 'https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/potted_plant_04/potted_plant_04_2k.gltf',   1200),
+  // Walls — echte PBR-Texturen (Poly Haven CC0)
   wall_brick: {
     label: 'Mauer Backstein',
     defaultParams: { W: 1000, H: 1000, T: 200 },
     build(p = {}) {
       const W = p.W || 1000, H = p.H || 1000, T = p.T || 200;
       const grp = new THREE.Group();
-      const wall = new THREE.Mesh(new THREE.BoxGeometry(W,H,T), new THREE.MeshStandardMaterial({color:0xb5573a}));
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(W,H,T), texturedMat('brick_wall_04', W/1000, H/1000));
       wall.position.y = H/2;
       grp.add(wall);
-      // horizontal mortar lines
-      for (let y=100; y<H; y+=120) {
-        const line = new THREE.Mesh(new THREE.BoxGeometry(W+10,12,T+10), new THREE.MeshStandardMaterial({color:0xccaa88}));
-        line.position.y = y; grp.add(line);
-      }
       return grp;
     }
   },
@@ -3905,7 +3837,7 @@ const DEKO_DEFS = {
     build(p = {}) {
       const W = p.W || 1000, H = p.H || 1000, T = p.T || 200;
       const grp = new THREE.Group();
-      const wall = new THREE.Mesh(new THREE.BoxGeometry(W,H,T), new THREE.MeshStandardMaterial({color:0x999999}));
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(W,H,T), texturedMat('concrete_wall_004', W/1500, H/1500));
       wall.position.y = H/2; grp.add(wall);
       return grp;
     }
@@ -3916,7 +3848,7 @@ const DEKO_DEFS = {
     build(p = {}) {
       const W = p.W || 1000, H = p.H || 800, T = p.T || 400;
       const grp = new THREE.Group();
-      const wall = new THREE.Mesh(new THREE.BoxGeometry(W,H,T), new THREE.MeshStandardMaterial({color:0x887766}));
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(W,H,T), texturedMat('old_stone_wall', W/1200, H/1200));
       wall.position.y = H/2; grp.add(wall);
       return grp;
     }
@@ -3927,16 +3859,18 @@ const DEKO_DEFS = {
     build(p = {}) {
       const W = p.W || 1000, H = p.H || 1800, T = p.T || 80;
       const grp = new THREE.Group();
+      const woodMat = texturedMat('wood_planks', 0.5, 2);
       // posts
       const nPosts = Math.max(2, Math.round(W / 500) + 1);
       for (let i = 0; i < nPosts; i++) {
         const px = -W/2 + i * (W/(nPosts-1));
-        const post = new THREE.Mesh(new THREE.BoxGeometry(T,H,T), new THREE.MeshStandardMaterial({color:0xc8a060}));
+        const post = new THREE.Mesh(new THREE.BoxGeometry(T,H,T), woodMat);
         post.position.set(px, H/2, 0); grp.add(post);
       }
       // rails
+      const railMat = texturedMat('wood_planks', 2, 0.3);
       [H*0.22, H*0.5, H*0.78].forEach(y => {
-        const r = new THREE.Mesh(new THREE.BoxGeometry(W, T*0.75, T*0.75), new THREE.MeshStandardMaterial({color:0xb89050}));
+        const r = new THREE.Mesh(new THREE.BoxGeometry(W, T*0.75, T*0.75), railMat);
         r.position.set(0, y, 0); grp.add(r);
       });
       return grp;
@@ -3947,10 +3881,9 @@ const DEKO_DEFS = {
     defaultParams: { scale: 100 },
     build() {
       const grp = new THREE.Group();
-      const tile = new THREE.Mesh(new THREE.BoxGeometry(1000,20,1000), new THREE.MeshStandardMaterial({color:0xddddcc}));
+      const tile = new THREE.Mesh(new THREE.BoxGeometry(1000,20,1000), texturedMat('patio_tiles', 1, 1));
       tile.position.y = 10;
-      const edge = new THREE.LineSegments(new THREE.EdgesGeometry(tile.geometry), new THREE.LineBasicMaterial({color:0xaaaaaa}));
-      grp.add(tile, edge);
+      grp.add(tile);
       return grp;
     }
   },
@@ -3959,12 +3892,9 @@ const DEKO_DEFS = {
     defaultParams: { scale: 100 },
     build() {
       const grp = new THREE.Group();
-      // 3×3 grid of tiles
-      for (let i=0; i<3; i++) for (let j=0; j<3; j++) {
-        const tile = new THREE.Mesh(new THREE.BoxGeometry(980,20,980), new THREE.MeshStandardMaterial({color: (i+j)%2===0 ? 0xddccaa : 0xccbb99}));
-        tile.position.set(-1000+i*1000, 10, -1000+j*1000);
-        grp.add(tile);
-      }
+      const deck = new THREE.Mesh(new THREE.BoxGeometry(3000,24,3000), texturedMat('wood_planks', 3, 3));
+      deck.position.y = 12;
+      grp.add(deck);
       return grp;
     }
   },
