@@ -33,12 +33,15 @@
     .hero h1 { font-size: clamp(2rem, 5vw, 3.5rem); font-weight: 800; letter-spacing: -1.5px; margin-bottom: 16px; }
     .hero p { color: var(--text-muted); font-size: 1.05rem; max-width: 500px; margin: 0 auto; line-height: 1.7; }
 
-    .pricing-wrap { max-width: 800px; margin: 0 auto; padding: 0 24px 100px; }
+    .pricing-wrap { max-width: 1140px; margin: 0 auto; padding: 0 24px 100px; }
     .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 28px; margin-top: 48px; }
     .pricing-card { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 20px; padding: 40px 32px; position: relative; overflow: hidden; transition: transform .3s, box-shadow .3s; }
     .pricing-card:hover { transform: translateY(-4px); box-shadow: 0 24px 80px rgba(0,0,0,0.5); }
     .pricing-card.featured { border-color: rgba(79,156,249,0.4); background: linear-gradient(160deg, #12122b, #16163a); }
     .pricing-card.featured::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); }
+    .save-badge { position: absolute; top: -13px; left: 50%; transform: translateX(-50%); background: linear-gradient(135deg, #4f9cf9, #7c3aed); color: #fff; font-size: .68rem; font-weight: 800; padding: 3px 13px; border-radius: 999px; white-space: nowrap; letter-spacing: .4px; }
+    .price-old { font-size: .8rem; color: #f87171; text-decoration: line-through; }
+    .price-month-eq { font-size: .78rem; color: #4ade80; font-weight: 600; }
     .pricing-tag { position: absolute; top: 20px; right: 20px; background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple)); color: #fff; font-size: .68rem; font-weight: 700; padding: 4px 10px; border-radius: 999px; text-transform: uppercase; letter-spacing: .5px; }
     .plan-name { font-size: .9rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
     .plan-price { font-size: 2.8rem; font-weight: 800; letter-spacing: -2px; line-height: 1; margin-bottom: 6px; }
@@ -104,15 +107,11 @@
         <li><span class="cross">✗</span> Gruppen &amp; Ebenen</li>
         <li><span class="cross">✗</span> Unbegrenzte Projekte</li>
       </ul>
-      <a href="/login" class="btn-plan btn-free">Kostenlos starten</a>
-    </div>
-
-    <!-- PREMIUM -->
-    <div class="pricing-card featured">
-      <div class="pricing-tag">Empfohlen</div>
+    <!-- PREMIUM MONATLICH -->
+    <div class="pricing-card">
       <div class="plan-name" style="color:var(--accent-blue);">Premium</div>
       <div class="plan-price"><sup>€</sup>9<sub style="font-size:1.2rem;letter-spacing:-1px;">,99<span style="font-size:.72rem;letter-spacing:0;color:var(--text-muted);">/Monat</span></sub></div>
-      <div class="plan-desc">Werbefrei &middot; Alle Features</div>
+      <div class="plan-desc">Werbefrei · Alle Features</div>
       <hr class="plan-divider">
       <ul class="plan-features">
         <li class="included"><span class="check">✓</span> 3D Visualisierung</li>
@@ -123,6 +122,32 @@
         <li class="included"><span class="check">✓</span> Gruppen &amp; Ebenen</li>
         <li class="included"><span class="check">✓</span> Prioritäts-Support</li>
       </ul>
+      <a href="/subscribe" class="btn-plan btn-free">Monatlich starten</a>
+    </div>
+
+    <!-- PREMIUM JÄHRLICH -->
+    <div class="pricing-card featured" style="overflow:visible;">
+      <div class="save-badge">🎉 Spare 19,89 € &mdash; 2 Monate gratis</div>
+      <div class="pricing-tag">Meistgewählt</div>
+      <div class="plan-name" style="color:var(--accent-blue);">Premium Jährlich</div>
+      <div class="plan-price"><sup>€</sup>99<sub style="font-size:1rem;letter-spacing:-1px;">,99<span style="font-size:.72rem;letter-spacing:0;color:var(--text-muted);">/Jahr</span></sub></div>
+      <div class="plan-desc">
+        <span class="price-old">119,88 €/Jahr</span> &nbsp;
+        <span class="price-month-eq">= 8,33 €/Monat</span>
+      </div>
+      <hr class="plan-divider">
+      <ul class="plan-features">
+        <li class="included"><span class="check">✓</span> 3D Visualisierung</li>
+        <li class="included"><span class="check">✓</span> Unbegrenzte Projekte</li>
+        <li class="included"><span class="check">✓</span> Stückliste CSV &amp; PDF</li>
+        <li class="included"><span class="check">✓</span> <strong>Vollständig werbefrei</strong></li>
+        <li class="included"><span class="check">✓</span> PDF Export &amp; Druckpläne</li>
+        <li class="included"><span class="check">✓</span> Gruppen &amp; Ebenen</li>
+        <li class="included"><span class="check">✓</span> Prioritäts-Support</li>
+      </ul>
+      <a href="/subscribe" class="btn-plan btn-premium">Jährlich starten</a>
+    </div>
+
       <a href="/subscribe" class="btn-plan btn-premium">Jetzt upgraden</a>
     </div>
 
