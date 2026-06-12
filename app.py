@@ -1101,6 +1101,71 @@ def admin_stripe_check():
     return html
 
 
+@app.route('/admin/sub-check', methods=['GET'])
+@admin_required
+def admin_sub_check():
+    L = []
+    L.append('=== Benutzer & Abo-Status (Datenbank) ===')
+    try:
+        users = query_db(
+            'SELECT u.id, u.username, u.email, s.plan, s.status, s.plan_interval, s.stripe_sub_id, s.current_period_end '
+            'FROM app_users u LEFT JOIN subscriptions s ON s.user_id = u.id ORDER BY u.id', []
+        )
+        for u in users:
+            L.append('  #' + str(u['id']) + '  ' + str(u['username']) + '  <' + str(u['email'] or '-') + '>'
+                     + '  plan=' + str(u['plan'] or 'free')
+                     + '  status=' + str(u['status'] or '-')
+                     + '  intervall=' + str(u['plan_interval'] or '-')
+                     + '  sub=' + str(u['stripe_sub_id'] or '-')
+                     + '  bis=' + str(u['current_period_end'] or '-'))
+    except Exception as e:
+        L.append('DB-FEHLER: ' + type(e).__name__ + ': ' + str(e)[:200])
+    L.append('')
+    L.append('=== Bezahlte Stripe Checkout-Sessions (letzte 20) ===')
+    sessions_by_user = {}
+    try:
+        import stripe
+        stripe.api_key = os.environ.get('STRIPE_SECRET_KEY', '')
+        for cs in stripe.checkout.Session.list(limit=20).data:
+            meta = dict(getattr(cs, 'metadata', None) or {})
+            uid = int(meta.get('user_id', 0) or 0)
+            paid = getattr(cs, 'payment_status', '')
+            L.append('  user_id=' + str(uid) + '  bezahlt=' + paid
+                     + '  plan=' + str(meta.get('plan_type'))
+                     + '  sub=' + str(getattr(cs, 'subscription', None)))
+            if uid and paid == 'paid' and getattr(cs, 'mode', '') == 'subscription':
+                sessions_by_user.setdefault(uid, cs)
+    except Exception as e:
+        L.append('STRIPE-FEHLER: ' + type(e).__name__ + ': ' + str(e)[:200])
+    L.append('')
+    activate = request.args.get('activate', type=int)
+    if activate:
+        L.append('=== Aktivierung erzwingen fuer User #' + str(activate) + ' ===')
+        cs = sessions_by_user.get(activate)
+        if not cs:
+            L.append('Keine bezahlte Checkout-Session fuer diesen User gefunden.')
+        else:
+            try:
+                meta = dict(getattr(cs, 'metadata', None) or {})
+                interval = 'yearly' if meta.get('plan_type') == 'yearly' else 'monthly'
+                _activate_premium(activate, getattr(cs, 'customer', None),
+                                  getattr(cs, 'subscription', None), interval)
+                row = query_db('SELECT plan, status, plan_interval FROM subscriptions WHERE user_id=?', [activate], one=True)
+                L.append('OK -> DB jetzt: ' + str(row_to_dict(row) if row else None))
+                L.append('Bestaetigungs-Mail mit Rechnung wurde versendet (falls E-Mail hinterlegt).')
+            except Exception as e:
+                L.append('AKTIVIERUNG FEHLGESCHLAGEN (' + type(e).__name__ + '): ' + str(e)[:300])
+    else:
+        L.append('Tipp: ?activate=USER_ID anhaengen, um Premium fuer einen User mit bezahlter Session zu aktivieren.')
+    html = ('<html><body style="font-family:Consolas,monospace;background:#0e1117;color:#dde5f4;padding:24px;">'
+            '<h2 style="color:#4e8cdd;">HolzBau 3D - Abo Diagnose</h2>'
+            '<pre style="white-space:pre-wrap;font-size:13px;line-height:1.7;background:#161b27;'
+            'padding:18px;border-radius:10px;border:1px solid #283755;">'
+            + '\n'.join(L) +
+            '</pre></body></html>')
+    return html
+
+
 # ---------------------------------------------------------------------------
 # HolzBau 3D App
 # ---------------------------------------------------------------------------
