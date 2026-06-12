@@ -546,6 +546,8 @@ FAQ_ITEMS = {
         ('Welche Konstruktionen kann ich bauen?', 'Vom Carport über die Pergola bis zum kompletten Dachstuhl: Du setzt Balken, Pfosten, Pfetten und Sparren maßstabsgetreu in 3D und drehst die Konstruktion frei im Raum.'),
         ('Bekomme ich eine Stückliste?', 'Ja. HolzBau 3D erzeugt automatisch eine Stückliste mit allen Balken, Längen und Querschnitten. Als Premium-Nutzer exportierst du sie als CSV und PDF.'),
         ('In welchen Sprachen ist HolzBau 3D verfügbar?', 'HolzBau 3D gibt es auf Deutsch, Englisch und Französisch – die Sprache wechselst du jederzeit mit einem Klick.'),
+        ('Kann ich Premium kündigen?', 'Ja, jederzeit. Du kündigst dein Premium-Abo mit einem Klick im Bereich „Mein Abonnement". Es gibt keine Mindestlaufzeit und keine Kündigungsfrist.'),
+        ('Bekomme ich mein Geld zurück?', 'Nein, bereits gezahlte Beträge werden nicht erstattet. Stattdessen behältst du nach der Kündigung deinen vollen Premium-Zugang bis zum Ende des bezahlten Zeitraums – danach wird das Abo einfach nicht verlängert.'),
     ],
     'en': [
         ('Is HolzBau 3D free?', 'Yes. You can plan wood constructions in 3D for free. Premium additionally unlocks PDF export, the saw tool, cutting-plan optimisation and unlimited projects.'),
@@ -554,6 +556,8 @@ FAQ_ITEMS = {
         ('What can I build?', 'From a carport and a pergola to a complete roof truss: you place beams, posts, purlins and rafters to scale in 3D and rotate the structure freely in space.'),
         ('Do I get a parts list?', 'Yes. HolzBau 3D automatically generates a parts list with all beams, lengths and sections. As a Premium user you export it as CSV and PDF.'),
         ('Which languages does HolzBau 3D support?', 'HolzBau 3D is available in German, English and French – switch the language any time with one click.'),
+        ('Can I cancel Premium?', 'Yes, any time. You cancel your Premium subscription with one click under "My subscription". There is no minimum term and no notice period.'),
+        ('Do I get a refund?', 'No, amounts already paid are not refunded. Instead, after cancelling you keep full Premium access until the end of the paid period – the subscription is then simply not renewed.'),
     ],
     'fr': [
         ('HolzBau 3D est-il gratuit ?', 'Oui. Vous pouvez concevoir des constructions bois en 3D gratuitement. Premium débloque en plus l’export PDF, l’outil scie, l’optimisation du plan de coupe et les projets illimités.'),
@@ -562,6 +566,8 @@ FAQ_ITEMS = {
         ('Que puis-je construire ?', 'Du carport à la pergola jusqu’à une charpente complète : vous placez poutres, poteaux, pannes et chevrons à l’échelle en 3D et faites pivoter la structure librement.'),
         ('Ai-je une liste de pièces ?', 'Oui. HolzBau 3D génère automatiquement une liste de pièces avec toutes les poutres, longueurs et sections. En tant qu’utilisateur Premium, vous l’exportez en CSV et PDF.'),
         ('Dans quelles langues HolzBau 3D est-il disponible ?', 'HolzBau 3D est disponible en allemand, anglais et français – changez de langue à tout moment en un clic.'),
+        ('Puis-je résilier Premium ?', 'Oui, à tout moment. Vous résiliez votre abonnement Premium en un clic dans « Mon abonnement ». Aucune durée minimale ni préavis.'),
+        ('Suis-je remboursé ?', 'Non, les montants déjà payés ne sont pas remboursés. Après la résiliation, vous conservez l’accès Premium complet jusqu’à la fin de la période payée – l’abonnement n’est ensuite simplement pas renouvelé.'),
     ],
 }
 
