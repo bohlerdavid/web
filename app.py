@@ -803,7 +803,7 @@ def holzbau():
 
 @app.route('/landing')
 def landing():
-    return render_template('landing.html')
+    return redirect(url_for('index'), 301)
 
 
 @app.route('/impressum')
