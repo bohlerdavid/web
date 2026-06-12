@@ -1017,6 +1017,76 @@ def admin_email_test():
     return html
 
 
+@app.route('/admin/stripe-check', methods=['GET'])
+@admin_required
+def admin_stripe_check():
+    sk      = os.environ.get('STRIPE_SECRET_KEY', '')
+    price_m = os.environ.get('STRIPE_PRICE_ID', '')
+    price_y = os.environ.get('STRIPE_YEARLY_PRICE_ID', '')
+    wh      = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
+    def mask(v):
+        if not v:
+            return '<LEER>'
+        if len(v) <= 10:
+            return v[0] + '***'
+        return v[:7] + '***' + v[-3:]
+    mode = '?'
+    if sk.startswith('sk_test_') or sk.startswith('rk_test_'):
+        mode = 'TEST'
+    elif sk.startswith('sk_live_') or sk.startswith('rk_live_'):
+        mode = 'LIVE'
+    L = []
+    L.append('=== Stripe-Konfiguration (Railway Env) ===')
+    L.append('STRIPE_SECRET_KEY:      ' + (mask(sk) + '   [Modus: ' + mode + ']' if sk else '<<< LEER / NICHT GESETZT >>>'))
+    L.append('STRIPE_PRICE_ID (Monat):' + (' ' + price_m if price_m else ' <<< LEER >>>'))
+    L.append('STRIPE_YEARLY_PRICE_ID: ' + (price_y if price_y else '<<< LEER -> Jahres-Abo wird NICHT angezeigt! >>>'))
+    L.append('STRIPE_WEBHOOK_SECRET:  ' + ('gesetzt (' + mask(wh) + ')' if wh else '<<< LEER >>>'))
+    L.append('')
+    L.append('--> yearly_configured = ' + str(bool(price_y)) +
+             '   (' + ('Jahres-Karte SICHTBAR' if price_y else 'nur Monats-Button') + ')')
+    L.append('')
+    L.append('=== Validierung der Price-IDs direkt bei Stripe ===')
+    if not sk:
+        L.append('Kein STRIPE_SECRET_KEY -> keine Validierung moeglich.')
+    else:
+        try:
+            import stripe
+            stripe.api_key = sk
+            for label, pid in (('Monat ', price_m), ('Jahr  ', price_y)):
+                if not pid:
+                    L.append(label + ': (keine Price-ID gesetzt)')
+                    continue
+                try:
+                    p = stripe.Price.retrieve(pid)
+                    amount = (p.get('unit_amount') or 0) / 100.0
+                    cur = (p.get('currency') or '').upper()
+                    rec = p.get('recurring') or {}
+                    interval = rec.get('interval', 'einmalig?')
+                    active = 'aktiv' if p.get('active') else 'INAKTIV!'
+                    livemode = 'LIVE' if p.get('livemode') else 'TEST'
+                    L.append(label + ': ' + ('%.2f' % amount) + ' ' + cur + ' / ' + interval +
+                             '  [' + active + ', ' + livemode + ']  ' + pid)
+                    if livemode != mode and mode in ('TEST', 'LIVE'):
+                        L.append('        !! WARNUNG: Price ist ' + livemode + ', Key ist ' + mode +
+                                 ' -> MISMATCH! Checkout schlaegt fehl.')
+                except Exception as e:
+                    L.append(label + ': FEHLER (' + type(e).__name__ + '): ' + str(e)[:160])
+                    L.append('        -> Price-ID existiert nicht in diesem Modus (' + mode + ')?')
+        except Exception as e:
+            L.append('Stripe-Fehler: ' + type(e).__name__ + ': ' + str(e)[:160])
+    L.append('')
+    if not price_y:
+        L.append('NAECHSTER SCHRITT: STRIPE_YEARLY_PRICE_ID in Railway setzen')
+        L.append('(Stripe > Produkte > Premium > Jahres-Preis > price_... kopieren).')
+    html = ('<html><body style="font-family:Consolas,monospace;background:#0e1117;color:#dde5f4;padding:24px;">'
+            '<h2 style="color:#4e8cdd;">HolzBau 3D - Stripe Diagnose</h2>'
+            '<pre style="white-space:pre-wrap;font-size:13px;line-height:1.7;background:#161b27;'
+            'padding:18px;border-radius:10px;border:1px solid #283755;">'
+            + '\n'.join(L) +
+            '</pre></body></html>')
+    return html
+
+
 # ---------------------------------------------------------------------------
 # HolzBau 3D App
 # ---------------------------------------------------------------------------
