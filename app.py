@@ -1151,6 +1151,24 @@ def get_user_plan(user_id):
 @login_required
 def subscribe():
     user_id = session['user_id']
+
+    # Fallback: Beim Rücksprung von Stripe das Abo direkt aktivieren,
+    # falls der Webhook (noch) nicht gegriffen hat.
+    cs_id = request.args.get('session_id')
+    if request.args.get('success') and cs_id:
+        try:
+            import stripe
+            stripe.api_key = os.environ.get('STRIPE_SECRET_KEY', '')
+            cs = stripe.checkout.Session.retrieve(cs_id)
+            if getattr(cs, 'payment_status', '') == 'paid':
+                meta = dict(getattr(cs, 'metadata', None) or {})
+                if int(meta.get('user_id', 0) or 0) == user_id:
+                    interval = 'yearly' if meta.get('plan_type') == 'yearly' else 'monthly'
+                    _activate_premium(user_id, getattr(cs, 'customer', None),
+                                      getattr(cs, 'subscription', None), interval)
+        except Exception as e:
+            logger.error('Checkout success fallback failed: %s', type(e).__name__)
+
     plan = get_user_plan(user_id)
     stripe_configured = bool(os.environ.get('STRIPE_SECRET_KEY'))
     yearly_configured = bool(os.environ.get('STRIPE_YEARLY_PRICE_ID'))
@@ -1188,7 +1206,7 @@ def subscribe_create_checkout():
             payment_method_types=['card'],
             line_items=[{'price': price_id, 'quantity': 1}],
             mode='subscription',
-            success_url=request.host_url + 'subscribe?success=1',
+            success_url=request.host_url + 'subscribe?success=1&session_id={CHECKOUT_SESSION_ID}',
             cancel_url=request.host_url + 'subscribe?cancelled=1',
             metadata={'user_id': str(user_id), 'plan_type': plan_type},
         )
@@ -1247,24 +1265,27 @@ def stripe_webhook():
         return jsonify(error='Webhook error'), 400
 
 
+def _activate_premium(user_id, customer_id, sub_id, interval):
+    """Setzt einen User auf Premium. Genutzt von Webhook UND Checkout-Success-Fallback."""
+    if not user_id:
+        return
+    existing = query_db('SELECT id FROM subscriptions WHERE user_id=?', [user_id], one=True)
+    if existing:
+        execute_db('UPDATE subscriptions SET stripe_customer_id=?, stripe_sub_id=?, plan=?, status=?, plan_interval=? WHERE user_id=?',
+                   [customer_id, sub_id, 'premium', 'active', interval, user_id])
+    else:
+        execute_db('INSERT INTO subscriptions (user_id, stripe_customer_id, stripe_sub_id, plan, status, plan_interval) VALUES (?,?,?,?,?,?)',
+                   [user_id, customer_id, sub_id, 'premium', 'active', interval])
+
+
 def _handle_stripe_event(event):
     data = event['data']['object']
     etype = event['type']
     if etype == 'checkout.session.completed':
         user_id = int(data.get('metadata', {}).get('user_id', 0))
-        if not user_id:
-            return
-        customer_id = data.get('customer')
-        sub_id = data.get('subscription')
         plan_type = data.get('metadata', {}).get('plan_type', 'monthly')
         interval = 'yearly' if plan_type == 'yearly' else 'monthly'
-        existing = query_db('SELECT id FROM subscriptions WHERE user_id=?', [user_id], one=True)
-        if existing:
-            execute_db('UPDATE subscriptions SET stripe_customer_id=?, stripe_sub_id=?, plan=?, status=?, plan_interval=? WHERE user_id=?',
-                       [customer_id, sub_id, 'premium', 'active', interval, user_id])
-        else:
-            execute_db('INSERT INTO subscriptions (user_id, stripe_customer_id, stripe_sub_id, plan, status, plan_interval) VALUES (?,?,?,?,?,?)',
-                       [user_id, customer_id, sub_id, 'premium', 'active', interval])
+        _activate_premium(user_id, data.get('customer'), data.get('subscription'), interval)
     elif etype in ('customer.subscription.deleted', 'customer.subscription.updated'):
         sub_id = data.get('id')
         status = data.get('status', 'cancelled')
