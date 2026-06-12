@@ -3505,7 +3505,13 @@ function executeSawCut() {
 // GLTF MODEL LOADER SYSTEM
 // ══════════════════════════════════════════════
 
-const gltfLoader = new GLTFLoader();
+// Poly Haven gltf referenziert Texturen unter "textures/<file>", die CDN hostet sie
+// aber unter "Models/jpg/<res>/<slug>/<file>" -> URL hier global umbiegen, sonst laden Modelle ohne Farbe.
+const _phManager = new THREE.LoadingManager();
+_phManager.setURLModifier((url) =>
+  url.replace(/\/Models\/gltf\/(\d+k)\/([^/]+)\/textures\/([^/?#]+)/, '/Models/jpg/$1/$2/$3')
+);
+const gltfLoader = new GLTFLoader(_phManager);
 const _modelCache = new Map();
 
 function normalizeAndBaseModel(gltfScene, targetHeightMM) {
@@ -3806,9 +3812,41 @@ function showSchnittplan() {
 // ══════════════════════════════════════════════
 
 const DEKO_DEFS = {
-  // ─── Massstab (echte 3D-Modelle) ───
-  // Person: "Cesium Man" © Cesium, CC-BY 4.0 (github.com/KhronosGroup/glTF-Sample-Assets) — selbst gehostet
-  person:    makeGLTFDef('Person', '/static/models/person.glb', 1750),
+  // ─── Massstab ───
+  person: {
+    label: 'Person',
+    defaultParams: { scale: 100 },
+    build() {
+      // Saubere, exakt 1,75 m hohe Figur (Fuß bei 0, Scheitel bei 1750) als Maßstabsreferenz
+      const grp = new THREE.Group();
+      const skin  = new THREE.MeshStandardMaterial({ color: 0xd8b08c, roughness: 0.85 });
+      const shirt = new THREE.MeshStandardMaterial({ color: 0x3f6fb0, roughness: 0.85 });
+      const pants = new THREE.MeshStandardMaterial({ color: 0x33384a, roughness: 0.85 });
+      [-120, 120].forEach(ox => {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(72, 58, 880, 14), pants);
+        leg.position.set(ox, 440, 0); grp.add(leg);
+        const shoe = new THREE.Mesh(new THREE.BoxGeometry(140, 70, 250), pants);
+        shoe.position.set(ox, 35, 45); grp.add(shoe);
+      });
+      const hip = new THREE.Mesh(new THREE.CylinderGeometry(160, 150, 220, 16), pants);
+      hip.position.y = 980; grp.add(hip);
+      const torso = new THREE.Mesh(new THREE.CylinderGeometry(220, 165, 470, 18), shirt);
+      torso.position.y = 1290; grp.add(torso);
+      const shoulders = new THREE.Mesh(new THREE.SphereGeometry(220, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2.1), shirt);
+      shoulders.position.y = 1500; grp.add(shoulders);
+      [-258, 258].forEach(ox => {
+        const arm = new THREE.Mesh(new THREE.CylinderGeometry(50, 44, 600, 12), shirt);
+        arm.position.set(ox, 1210, 0); grp.add(arm);
+        const hand = new THREE.Mesh(new THREE.SphereGeometry(55, 10, 8), skin);
+        hand.position.set(ox, 900, 0); grp.add(hand);
+      });
+      const neck = new THREE.Mesh(new THREE.CylinderGeometry(58, 64, 100, 12), skin);
+      neck.position.y = 1565; grp.add(neck);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(122, 18, 16), skin);
+      head.position.y = 1628; grp.add(head);
+      return grp;
+    }
+  },
   car:       makeGLTFDef('Auto',   'https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/covered_car/covered_car_2k.gltf', 1400),
 
   // ─── Pflanzen (Poly Haven CC0, echte Scans) ───
