@@ -1810,16 +1810,19 @@ function makeSelectionHighlight(mesh, on) {
 function makeDecoHighlight(mesh, on) {
   if (!mesh) return;
   mesh.traverse(o => {
-    if (o.isMesh && o.material) {
+    if (!o.isMesh || !o.material) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    mats.forEach(m => {
+      if (!m.emissive) return;
       if (on) {
-        o.userData._prevEmissive = o.material.emissive ? o.material.emissive.getHex() : 0;
-        if (o.material.emissive) o.material.emissive.setHex(0xe94560);
-      } else {
-        if (o.material.emissive && o.userData._prevEmissive !== undefined) {
-          o.material.emissive.setHex(o.userData._prevEmissive);
-        }
+        // Vorzustand nur EINMAL merken (sonst wird beim 2. Highlight Rot als "Original" gespeichert)
+        if (m.userData._prevEmissive === undefined) m.userData._prevEmissive = m.emissive.getHex();
+        m.emissive.setHex(0xe94560);
+      } else if (m.userData._prevEmissive !== undefined) {
+        m.emissive.setHex(m.userData._prevEmissive);
+        delete m.userData._prevEmissive;
       }
-    }
+    });
   });
 }
 
@@ -3527,10 +3530,21 @@ function normalizeAndBaseModel(gltfScene, targetHeightMM) {
   gltfScene.position.y -= box2.min.y;
 }
 
+// Materialien pro Instanz klonen — sonst teilen alle Klone (und der Cache) dasselbe
+// Material, und ein Auswahl-Highlight (emissive) bleibt überall "kleben" (rotes Auto).
+function _cloneInstanceMaterials(obj) {
+  obj.traverse(o => {
+    if (o.isMesh && o.material) {
+      o.material = Array.isArray(o.material) ? o.material.map(m => m.clone()) : o.material.clone();
+    }
+  });
+}
+
 function loadGLTFIntoGroup(url, targetHeightMM, threeGroup) {
   if (_modelCache.has(url)) {
     // SkeletonUtils.clone: korrekt auch für skinned meshes (z.B. Person)
     const cached = skeletonClone(_modelCache.get(url));
+    _cloneInstanceMaterials(cached);
     normalizeAndBaseModel(cached, targetHeightMM);
     threeGroup.add(cached);
     return Promise.resolve();
@@ -3542,6 +3556,7 @@ function loadGLTFIntoGroup(url, targetHeightMM, threeGroup) {
         // Cache the original, clone for use
         _modelCache.set(url, gltf.scene);
         const model = skeletonClone(gltf.scene);
+        _cloneInstanceMaterials(model);
         normalizeAndBaseModel(model, targetHeightMM);
         threeGroup.add(model);
         resolve();
