@@ -248,6 +248,22 @@ def send_email(to_addr, subject, html_body):
         return False
 
 
+def _stripe_api_get(path, params=None):
+    """Direkter Stripe-REST-Aufruf (GET) — unabhaengig von SDK-Versionsunterschieden."""
+    import base64
+    from urllib.parse import urlencode
+    sk = os.environ.get('STRIPE_SECRET_KEY', '')
+    if not sk:
+        raise RuntimeError('STRIPE_SECRET_KEY fehlt')
+    url = 'https://api.stripe.com/v1/' + path
+    if params:
+        url += '?' + urlencode(params)
+    req = urllib.request.Request(url)
+    req.add_header('Authorization', 'Basic ' + base64.b64encode((sk + ':').encode()).decode())
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return json.loads(r.read().decode('utf-8'))
+
+
 def _email_verify_html(display_name, verify_url):
     return f'''<!DOCTYPE html>
 <html><body style="margin:0;padding:0;background:#faf6f0;font-family:'Segoe UI',Arial,sans-serif;">
@@ -1112,7 +1128,7 @@ def admin_sub_check():
             'FROM app_users u LEFT JOIN subscriptions s ON s.user_id = u.id ORDER BY u.id', []
         )
         for u in users:
-            L.append('  #' + str(u['id']) + '  ' + str(u['username']) + '  <' + str(u['email'] or '-') + '>'
+            L.append('  #' + str(u['id']) + '  ' + str(u['username']) + '  (' + str(u['email'] or '-') + ')'
                      + '  plan=' + str(u['plan'] or 'free')
                      + '  status=' + str(u['status'] or '-')
                      + '  intervall=' + str(u['plan_interval'] or '-')
@@ -1124,16 +1140,14 @@ def admin_sub_check():
     L.append('=== Bezahlte Stripe Checkout-Sessions (letzte 20) ===')
     sessions_by_user = {}
     try:
-        import stripe
-        stripe.api_key = os.environ.get('STRIPE_SECRET_KEY', '')
-        for cs in stripe.checkout.Session.list(limit=20).data:
-            meta = dict(getattr(cs, 'metadata', None) or {})
+        for cs in _stripe_api_get('checkout/sessions', {'limit': 20}).get('data', []):
+            meta = cs.get('metadata') or {}
             uid = int(meta.get('user_id', 0) or 0)
-            paid = getattr(cs, 'payment_status', '')
+            paid = cs.get('payment_status', '')
             L.append('  user_id=' + str(uid) + '  bezahlt=' + paid
                      + '  plan=' + str(meta.get('plan_type'))
-                     + '  sub=' + str(getattr(cs, 'subscription', None)))
-            if uid and paid == 'paid' and getattr(cs, 'mode', '') == 'subscription':
+                     + '  sub=' + str(cs.get('subscription')))
+            if uid and paid == 'paid' and cs.get('mode') == 'subscription':
                 sessions_by_user.setdefault(uid, cs)
     except Exception as e:
         L.append('STRIPE-FEHLER: ' + type(e).__name__ + ': ' + str(e)[:200])
@@ -1146,10 +1160,9 @@ def admin_sub_check():
             L.append('Keine bezahlte Checkout-Session fuer diesen User gefunden.')
         else:
             try:
-                meta = dict(getattr(cs, 'metadata', None) or {})
+                meta = cs.get('metadata') or {}
                 interval = 'yearly' if meta.get('plan_type') == 'yearly' else 'monthly'
-                _activate_premium(activate, getattr(cs, 'customer', None),
-                                  getattr(cs, 'subscription', None), interval)
+                _activate_premium(activate, cs.get('customer'), cs.get('subscription'), interval)
                 row = query_db('SELECT plan, status, plan_interval FROM subscriptions WHERE user_id=?', [activate], one=True)
                 L.append('OK -> DB jetzt: ' + str(row_to_dict(row) if row else None))
                 L.append('Bestaetigungs-Mail mit Rechnung wurde versendet (falls E-Mail hinterlegt).')
@@ -1223,20 +1236,17 @@ def subscribe():
     cs_id = request.args.get('session_id')
     if (request.args.get('success') or request.args.get('sync')) and get_user_plan(user_id) == 'free':
         try:
-            import stripe
-            stripe.api_key = os.environ.get('STRIPE_SECRET_KEY', '')
             if cs_id:
-                sessions = [stripe.checkout.Session.retrieve(cs_id)]
+                sessions = [_stripe_api_get('checkout/sessions/' + cs_id)]
             else:
-                sessions = stripe.checkout.Session.list(limit=100).data
+                sessions = _stripe_api_get('checkout/sessions', {'limit': 100}).get('data', [])
             for cs in sessions:
-                meta = dict(getattr(cs, 'metadata', None) or {})
+                meta = cs.get('metadata') or {}
                 if (int(meta.get('user_id', 0) or 0) == user_id
-                        and getattr(cs, 'payment_status', '') == 'paid'
-                        and getattr(cs, 'mode', '') == 'subscription'):
+                        and cs.get('payment_status') == 'paid'
+                        and cs.get('mode') == 'subscription'):
                     interval = 'yearly' if meta.get('plan_type') == 'yearly' else 'monthly'
-                    _activate_premium(user_id, getattr(cs, 'customer', None),
-                                      getattr(cs, 'subscription', None), interval)
+                    _activate_premium(user_id, cs.get('customer'), cs.get('subscription'), interval)
                     flash('Dein Premium-Abo wurde aktiviert. Eine Bestätigung mit Rechnung ist unterwegs per E-Mail. ✨', 'success')
                     break
         except Exception as e:
@@ -1391,19 +1401,17 @@ def _activate_premium(user_id, customer_id, sub_id, interval, notify=True):
     invoice_url = None
     amount_txt = '99,99 € / Jahr' if interval == 'yearly' else '9,99 € / Monat'
     try:
-        import stripe
-        stripe.api_key = os.environ.get('STRIPE_SECRET_KEY', '')
-        if sub_id and stripe.api_key:
-            s = stripe.Subscription.retrieve(sub_id)
-            cpe = getattr(s, 'current_period_end', None)
+        if sub_id:
+            s = _stripe_api_get('subscriptions/' + sub_id)
+            cpe = s.get('current_period_end')
             if cpe:
                 period_end = datetime.fromtimestamp(cpe).isoformat()
-            li = getattr(s, 'latest_invoice', None)
+            li = s.get('latest_invoice')
             if li:
-                inv = stripe.Invoice.retrieve(li)
-                invoice_url = getattr(inv, 'hosted_invoice_url', None)
-                amt = getattr(inv, 'amount_paid', None)
-                cur = (getattr(inv, 'currency', '') or '').upper()
+                inv = _stripe_api_get('invoices/' + li)
+                invoice_url = inv.get('hosted_invoice_url')
+                amt = inv.get('amount_paid')
+                cur = (inv.get('currency') or '').upper()
                 if amt:
                     amount_txt = ('%.2f' % (amt / 100)).replace('.', ',') + ' ' + cur + \
                                  (' / Jahr' if interval == 'yearly' else ' / Monat')
