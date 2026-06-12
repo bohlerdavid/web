@@ -262,7 +262,7 @@ def robots_txt():
 def sitemap():
     body = '''<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://holzbau3d.app/landing</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
+  <url><loc>https://holzbau3d.app/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
   <url><loc>https://holzbau3d.app/pricing</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>https://holzbau3d.app/impressum</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
   <url><loc>https://holzbau3d.app/datenschutz</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
@@ -284,7 +284,7 @@ def nutzungsbedingungen():
 def index():
     if 'user_id' in session:
         return redirect(url_for('holzbau'))
-    return redirect(url_for('landing'))
+    return render_template('landing.html')
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -383,7 +383,7 @@ def register():
 @app.route('/logout')
 def logout():
     session.clear()
-    return redirect(url_for('landing'))
+    return redirect(url_for('index'))
 
 
 # ---------------------------------------------------------------------------
@@ -481,7 +481,7 @@ def holzbau():
 
 @app.route('/landing')
 def landing():
-    return render_template('landing.html')
+    return redirect(url_for('index'), 301)
 
 
 @app.route('/impressum')
