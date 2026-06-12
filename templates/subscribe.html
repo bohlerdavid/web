@@ -3,63 +3,39 @@
 
 {% block extra_head %}
 <style>
-  .plan-hero {
-    border-radius: 16px;
-    padding: 32px;
-    margin-bottom: 24px;
-    position: relative;
-    overflow: hidden;
-  }
-  .plan-hero.premium {
-    background: linear-gradient(135deg, #fef3e0, #fde68a);
-    border: 2px solid #d97706;
-  }
-  .plan-hero.free {
-    background: #fff;
-    border: 1px solid #e8ddd0;
-  }
-  .info-card {
-    background: #fff;
-    border: 1px solid #e8ddd0;
-    border-radius: 14px;
-    padding: 24px 28px;
-    margin-bottom: 20px;
-  }
+  .plan-hero { border-radius: 16px; padding: 32px; margin-bottom: 24px; position: relative; overflow: hidden; }
+  .plan-hero.premium { background: linear-gradient(135deg, #fef3e0, #fde68a); border: 2px solid #d97706; }
+  .plan-hero.free { background: #fff; border: 1px solid #e8ddd0; }
+  .info-card { background: #fff; border: 1px solid #e8ddd0; border-radius: 14px; padding: 24px 28px; margin-bottom: 20px; }
   .info-card h5 { font-size: .95rem; font-weight: 700; margin-bottom: 16px; color: #374151; }
-  .info-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 10px 0;
-    border-bottom: 1px solid #f3ede5;
-    font-size: .9rem;
-  }
+  .info-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #f3ede5; font-size: .9rem; }
   .info-row:last-child { border-bottom: none; }
   .info-row .label { color: #9ca3af; }
   .info-row .value { font-weight: 600; color: #1f2937; }
   .badge-premium { background: #d97706; color: #fff; padding: 3px 10px; border-radius: 999px; font-size: .75rem; font-weight: 700; }
-  .badge-free    { background: #e5e7eb; color: #374151; padding: 3px 10px; border-radius: 999px; font-size: .75rem; font-weight: 700; }
-  .badge-active  { background: #d1fae5; color: #065f46; padding: 3px 10px; border-radius: 999px; font-size: .75rem; font-weight: 700; }
+  .badge-free { background: #e5e7eb; color: #374151; padding: 3px 10px; border-radius: 999px; font-size: .75rem; font-weight: 700; }
+  .badge-active { background: #d1fae5; color: #065f46; padding: 3px 10px; border-radius: 999px; font-size: .75rem; font-weight: 700; }
   .badge-cancelled { background: #fee2e2; color: #991b1b; padding: 3px 10px; border-radius: 999px; font-size: .75rem; font-weight: 700; }
-  .btn-upgrade-big {
-    background: linear-gradient(135deg, #d97706, #92400e);
-    color: #fff; border: none; padding: 14px 32px;
-    border-radius: 12px; font-size: 1rem; font-weight: 700;
-    display: inline-flex; align-items: center; gap: 8px;
-    cursor: pointer; transition: transform .15s, box-shadow .15s;
-    box-shadow: 0 4px 20px rgba(217,119,6,.3);
-  }
+  .btn-upgrade-big { background: linear-gradient(135deg, #d97706, #92400e); color: #fff; border: none; padding: 12px 28px; border-radius: 10px; font-size: .95rem; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; transition: transform .15s, box-shadow .15s; box-shadow: 0 4px 20px rgba(217,119,6,.3); width: 100%; justify-content: center; }
   .btn-upgrade-big:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(217,119,6,.4); color: #fff; }
-  .btn-cancel-sub {
-    background: #fff; color: #dc2626; border: 1px solid #fca5a5;
-    padding: 10px 24px; border-radius: 8px; font-size: .88rem; font-weight: 600;
-    cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
-    transition: background .15s;
-  }
+  .btn-upgrade-outline { background: #fff; color: #d97706; border: 2px solid #d97706; padding: 12px 28px; border-radius: 10px; font-size: .95rem; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; transition: all .15s; width: 100%; justify-content: center; }
+  .btn-upgrade-outline:hover { background: #fff8eb; }
+  .btn-cancel-sub { background: #fff; color: #dc2626; border: 1px solid #fca5a5; padding: 10px 24px; border-radius: 8px; font-size: .88rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: background .15s; }
   .btn-cancel-sub:hover { background: #fef2f2; }
   .feature-list { list-style: none; margin: 0; padding: 0; }
   .feature-list li { display: flex; align-items: center; gap: 10px; padding: 8px 0; font-size: .9rem; color: #374151; border-bottom: 1px solid #f5ede0; }
   .feature-list li:last-child { border-bottom: none; }
+  .plan-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 8px; }
+  @media (max-width: 520px) { .plan-cards { grid-template-columns: 1fr; } }
+  .plan-card { border: 2px solid #e8ddd0; border-radius: 14px; padding: 22px 20px; background: #fff; position: relative; display: flex; flex-direction: column; }
+  .plan-card.featured { border-color: #d97706; background: #fffbeb; }
+  .save-badge { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: linear-gradient(135deg, #d97706, #92400e); color: #fff; font-size: .7rem; font-weight: 800; padding: 3px 12px; border-radius: 999px; white-space: nowrap; letter-spacing: .3px; }
+  .plan-card-title { font-size: .8rem; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: #9ca3af; margin-bottom: 10px; }
+  .plan-card-price { font-size: 2rem; font-weight: 800; color: #1f2937; line-height: 1; margin-bottom: 4px; }
+  .plan-card-price span { font-size: 1rem; font-weight: 600; color: #6b7280; }
+  .plan-card-sub { font-size: .78rem; color: #9ca3af; margin-bottom: 16px; }
+  .plan-card-sub s { color: #fca5a5; }
+  .plan-card-sub strong { color: #16a34a; }
 </style>
 {% endblock %}
 
@@ -91,14 +67,13 @@
   {% else %}
   <div style="font-size:2rem;margin-bottom:4px;">🪵</div>
   <h2 style="font-weight:800;color:#1f2937;margin-bottom:4px;">Free Plan</h2>
-  <p style="color:#6b7280;margin:0;font-size:.95rem;">Upgrade auf Premium und nutze alle Features werbefrei für 9,99&nbsp;€/Monat.</p>
+  <p style="color:#6b7280;margin:0;font-size:.95rem;">Upgrade auf Premium und nutze alle Features werbefrei.</p>
   {% endif %}
 </div>
 
 <!-- Plan Details -->
 <div class="info-card">
   <h5><i class="bi bi-receipt me-2" style="color:#d97706;"></i>Abo-Details</h5>
-
   <div class="info-row">
     <span class="label">Plan</span>
     <span class="value">
@@ -106,7 +81,6 @@
       {% else %}<span class="badge-free">Free</span>{% endif %}
     </span>
   </div>
-
   {% if sub and sub.get('status') %}
   <div class="info-row">
     <span class="label">Status</span>
@@ -117,27 +91,28 @@
     </span>
   </div>
   {% endif %}
-
   {% if sub and sub.get('current_period_end') %}
   <div class="info-row">
-    <span class="label">
-      {% if sub.get('status') == 'cancelled' %}Zugang bis{% else %}Nächste Abrechnung{% endif %}
-    </span>
+    <span class="label">{% if sub.get('status') == 'cancelled' %}Zugang bis{% else %}Nächste Abrechnung{% endif %}</span>
     <span class="value">{{ sub.get('current_period_end')[:10] if sub.get('current_period_end') else '—' }}</span>
   </div>
   {% endif %}
-
   <div class="info-row">
     <span class="label">Preis</span>
-    <span class="value">{% if plan == 'premium' %}9,99 € / Monat{% else %}Kostenlos{% endif %}</span>
+    <span class="value">
+      {% if plan == 'premium' %}
+        {% if sub.get('plan_interval') == 'yearly' %}
+          99,99 € / Jahr <span style="font-size:.78rem;color:#16a34a;font-weight:600;">&nbsp;(= 8,33 €/Monat)</span>
+        {% else %}
+          9,99 € / Monat
+        {% endif %}
+      {% else %}Kostenlos{% endif %}
+    </span>
   </div>
-
   <div class="info-row">
     <span class="label">Zahlung</span>
     <span class="value" style="font-size:.85rem;color:#6b7280;">
-      {% if sub and sub.get('stripe_customer_id') %}
-        <i class="bi bi-credit-card me-1"></i>Kreditkarte via Stripe
-      {% else %}—{% endif %}
+      {% if sub and sub.get('stripe_customer_id') %}<i class="bi bi-credit-card me-1"></i>Kreditkarte via Stripe{% else %}—{% endif %}
     </span>
   </div>
 </div>
@@ -149,11 +124,11 @@
     <li><span style="color:#16a34a;font-size:1rem;">✓</span> 3D Holzkonstruktion im Browser</li>
     <li><span style="color:#16a34a;font-size:1rem;">✓</span> Stückliste als CSV</li>
     {% if plan == 'premium' %}
-    <li><span style="color:#16a34a;font-size:1rem;">✓</span> Unbegrenzte Balken & Projekte</li>
+    <li><span style="color:#16a34a;font-size:1rem;">✓</span> Unbegrenzte Balken &amp; Projekte</li>
     <li><span style="color:#16a34a;font-size:1rem;">✓</span> <strong>Werbefrei</strong></li>
-    <li><span style="color:#16a34a;font-size:1rem;">✓</span> PDF Export & Druckpläne</li>
-    <li><span style="color:#16a34a;font-size:1rem;">✓</span> Säge-Tool & Schnittplan</li>
-    <li><span style="color:#16a34a;font-size:1rem;">✓</span> Gruppen & Ebenen</li>
+    <li><span style="color:#16a34a;font-size:1rem;">✓</span> PDF Export &amp; Druckpläne</li>
+    <li><span style="color:#16a34a;font-size:1rem;">✓</span> Säge-Tool &amp; Schnittplan</li>
+    <li><span style="color:#16a34a;font-size:1rem;">✓</span> Gruppen &amp; Ebenen</li>
     <li><span style="color:#16a34a;font-size:1rem;">✓</span> Dekorationselemente</li>
     {% else %}
     <li><span style="color:#9ca3af;font-size:1rem;">✗</span> <span style="color:#9ca3af;">Max. 15 Balken (Free-Limit)</span></li>
@@ -164,7 +139,7 @@
   </ul>
 </div>
 
-<!-- Action -->
+<!-- Action section -->
 {% if not stripe_configured %}
 <div class="info-card" style="border-color:#fde68a;background:#fffbeb;">
   <h5 style="color:#92400e;"><i class="bi bi-exclamation-triangle me-2"></i>Stripe nicht konfiguriert</h5>
@@ -181,9 +156,7 @@
   <form method="POST" action="{{ url_for('subscribe_cancel') }}"
         onsubmit="return confirm('Abo wirklich kündigen? Du behältst Premium bis zum Ende des Zeitraums.');">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <button type="submit" class="btn-cancel-sub">
-      <i class="bi bi-x-circle"></i> Abo kündigen
-    </button>
+    <button type="submit" class="btn-cancel-sub"><i class="bi bi-x-circle"></i> Abo kündigen</button>
   </form>
 </div>
 
@@ -191,30 +164,77 @@
 <div class="info-card" style="border-color:#fde68a;background:#fffbeb;">
   <h5 style="color:#92400e;"><i class="bi bi-info-circle me-2"></i>Abo läuft aus</h5>
   <p style="color:#b45309;font-size:.88rem;margin-bottom:20px;">
-    Dein Abo wurde gekündigt und läuft zum Ende des Zeitraums aus.
-    Du kannst es jederzeit wieder aktivieren.
+    Dein Abo wurde gekündigt. Du kannst es jederzeit wieder aktivieren.
   </p>
+  {% if yearly_configured %}
+  <div class="plan-cards">
+    <div class="plan-card">
+      <div class="plan-card-title">Monatlich</div>
+      <div class="plan-card-price">9,99 <span>€</span></div>
+      <div class="plan-card-sub">pro Monat</div>
+      <form method="POST" action="{{ url_for('subscribe_create_checkout') }}" style="margin-top:auto;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="plan_type" value="monthly">
+        <button type="submit" class="btn-upgrade-outline"><i class="bi bi-arrow-repeat"></i> Monatlich erneuern</button>
+      </form>
+    </div>
+    <div class="plan-card featured">
+      <div class="save-badge">🎉 Spare 19,89 € — 2 Monate gratis</div>
+      <div class="plan-card-title">Jährlich</div>
+      <div class="plan-card-price">99,99 <span>€</span></div>
+      <div class="plan-card-sub"><s>119,88 €</s> &nbsp;<strong>= 8,33 €/Monat</strong></div>
+      <form method="POST" action="{{ url_for('subscribe_create_checkout') }}" style="margin-top:auto;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="plan_type" value="yearly">
+        <button type="submit" class="btn-upgrade-big"><i class="bi bi-arrow-repeat"></i> Jährlich erneuern</button>
+      </form>
+    </div>
+  </div>
+  {% else %}
   <form method="POST" action="{{ url_for('subscribe_create_checkout') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <button type="submit" class="btn-upgrade-big">
-      <i class="bi bi-arrow-repeat"></i> Abo erneuern — 9,99 €/Monat
-    </button>
+    <input type="hidden" name="plan_type" value="monthly">
+    <button type="submit" class="btn-upgrade-big"><i class="bi bi-arrow-repeat"></i> Abo erneuern — 9,99 €/Monat</button>
   </form>
+  {% endif %}
 </div>
 
 {% else %}
 <div class="info-card" style="border-color:#d97706;background:#fffbeb;">
   <h5 style="color:#92400e;"><i class="bi bi-star me-2"></i>Auf Premium upgraden</h5>
-  <p style="color:#78350f;font-size:.88rem;margin-bottom:20px;">
-    Für <strong>9,99&nbsp;€/Monat</strong> — werbefrei, alle Features freigeschaltet, monatlich kündbar.
-  </p>
+  <p style="color:#78350f;font-size:.88rem;margin-bottom:20px;">Alle Features, werbefrei — wähle dein Abo:</p>
+  {% if yearly_configured %}
+  <div class="plan-cards">
+    <div class="plan-card">
+      <div class="plan-card-title">Monatlich</div>
+      <div class="plan-card-price">9,99 <span>€</span></div>
+      <div class="plan-card-sub">pro Monat · jederzeit kündbar</div>
+      <form method="POST" action="{{ url_for('subscribe_create_checkout') }}" style="margin-top:auto;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="plan_type" value="monthly">
+        <button type="submit" class="btn-upgrade-outline"><i class="bi bi-credit-card"></i> Monatlich starten</button>
+      </form>
+    </div>
+    <div class="plan-card featured">
+      <div class="save-badge">🎉 Spare 19,89 € — 2 Monate gratis</div>
+      <div class="plan-card-title">Jährlich</div>
+      <div class="plan-card-price">99,99 <span>€</span></div>
+      <div class="plan-card-sub"><s>119,88 €/Jahr</s> &nbsp;<strong>= 8,33 €/Monat</strong></div>
+      <form method="POST" action="{{ url_for('subscribe_create_checkout') }}" style="margin-top:auto;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="plan_type" value="yearly">
+        <button type="submit" class="btn-upgrade-big"><i class="bi bi-credit-card"></i> Jährlich starten</button>
+      </form>
+    </div>
+  </div>
+  {% else %}
   <form method="POST" action="{{ url_for('subscribe_create_checkout') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <button type="submit" class="btn-upgrade-big">
-      <i class="bi bi-credit-card"></i> Jetzt upgraden — 9,99 €/Monat
-    </button>
+    <input type="hidden" name="plan_type" value="monthly">
+    <button type="submit" class="btn-upgrade-big"><i class="bi bi-credit-card"></i> Jetzt upgraden — 9,99 €/Monat</button>
   </form>
-  <p style="color:#9ca3af;font-size:.78rem;margin-top:12px;">
+  {% endif %}
+  <p style="color:#9ca3af;font-size:.78rem;margin-top:12px;text-align:center;">
     <i class="bi bi-lock me-1"></i>Sichere Zahlung über Stripe · Jederzeit kündbar
   </p>
 </div>
