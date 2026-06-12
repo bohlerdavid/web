@@ -1120,6 +1120,19 @@ def profile():
     return render_template('profile.html', user=row_to_dict(user), csrf_token=generate_csrf())
 
 
+@app.route('/profile/set-lang', methods=['POST'])
+@login_required
+def profile_set_lang():
+    if not validate_csrf(request.form.get('csrf_token', '')):
+        abort(403)
+    lang = _norm_lang(request.form.get('lang', 'de'))
+    execute_db("UPDATE app_users SET lang=? WHERE id=?", (lang, session['user_id']))
+    flash({'de': 'Sprache gespeichert.', 'en': 'Language saved.', 'fr': 'Langue enregistrée.'}[lang], 'success')
+    resp = redirect(url_for('profile'))
+    resp.set_cookie('hb_lang', lang, max_age=31536000, samesite='Lax')  # UI sofort mitschalten
+    return resp
+
+
 @app.route('/profile/send-reset', methods=['POST'])
 @login_required
 def profile_send_reset():
@@ -1744,7 +1757,8 @@ def subscribe_cancel():
         if sub_row and sub_row['stripe_sub_id']:
             stripe.Subscription.modify(sub_row['stripe_sub_id'], cancel_at_period_end=True)
             _sync_user_from_stripe(user_id)  # holt cancel-Status + Laufzeit-Ende von Stripe
-            flash('Abo wird zum Ende der Laufzeit gekündigt. Du behältst Premium bis dahin.', 'success')
+            _send_cancel_email(user_id)       # Bestätigungs-Mail mit Datum
+            flash('Abo wird zum Ende der Laufzeit gekündigt. Du behältst Premium bis dahin. Eine Bestätigung kommt per E-Mail.', 'success')
         else:
             flash('Kein aktives Abo gefunden.', 'warning')
     except Exception as e:
@@ -1913,6 +1927,58 @@ def _email_expiry_html(display_name, end_date, stage, lang='de'):
       <a href="{base_url}/subscribe" style="display:inline-block;padding:13px 32px;color:#ffffff;text-decoration:none;font-weight:700;font-size:.95rem;">{T['button']}</a>
     </td></tr></table>
     <p style="margin:0;color:#9ca3af;font-size:.8rem;line-height:1.6;">{T['note']}</p>''')
+
+
+CANCEL_I18N = {
+    'de': {
+        'subject': 'HolzBau 3D – Abo gekündigt (Premium bis {date})',
+        'title': 'Abo gekündigt — schade, dass du gehst',
+        'body': 'deine Kündigung ist bestätigt. Du behältst deinen vollen <strong>Premium-Zugang noch bis zum {date}</strong> — danach wird dein Konto automatisch auf Free umgestellt. Es wird nichts weiter abgebucht, und deine bereits erstellten Projekte bleiben dir erhalten.',
+        'button': 'Premium fortsetzen',
+        'note': 'Hast du es dir anders überlegt? Du kannst Premium jederzeit mit einem Klick wieder aktivieren. Über Feedback, warum du gekündigt hast, freuen wir uns sehr.',
+    },
+    'en': {
+        'subject': 'HolzBau 3D – Subscription cancelled (Premium until {date})',
+        'title': 'Subscription cancelled — sorry to see you go',
+        'body': 'your cancellation is confirmed. You keep full <strong>Premium access until {date}</strong> — after that your account automatically switches to Free. Nothing more will be charged, and your existing projects are preserved.',
+        'button': 'Resume Premium',
+        'note': 'Changed your mind? You can reactivate Premium any time with a single click. We’d love to hear why you cancelled.',
+    },
+    'fr': {
+        'subject': 'HolzBau 3D – Abonnement résilié (Premium jusqu’au {date})',
+        'title': 'Abonnement résilié — désolé de vous voir partir',
+        'body': 'votre résiliation est confirmée. Vous conservez un <strong>accès Premium complet jusqu’au {date}</strong> — ensuite votre compte passe automatiquement en Free. Aucun autre prélèvement, et vos projets existants sont conservés.',
+        'button': 'Reprendre Premium',
+        'note': 'Vous avez changé d’avis ? Vous pouvez réactiver Premium à tout moment en un clic. N’hésitez pas à nous dire pourquoi vous avez résilié.',
+    },
+}
+
+
+def _email_cancel_html(display_name, end_date, lang='de'):
+    T = CANCEL_I18N.get(_norm_lang(lang), CANCEL_I18N['de'])
+    L = EMAIL_I18N.get(_norm_lang(lang), EMAIL_I18N['de'])
+    base_url = os.environ.get('BASE_URL', 'https://holzbau3d.app')
+    body = T['body'].replace('{date}', end_date)
+    return _email_shell(f'''    <h2 style="margin:0 0 16px;font-size:1.15rem;color:#1a1a1a;font-weight:700;">{T['title']}</h2>
+    <p style="margin:0 0 10px;color:#374151;line-height:1.65;font-size:.95rem;">{L['hello']} <strong>{display_name}</strong>,</p>
+    <p style="margin:0 0 24px;color:#374151;line-height:1.65;font-size:.95rem;">{body}</p>
+    <table cellpadding="0" cellspacing="0" style="margin:0 0 24px;"><tr><td style="background:linear-gradient(135deg,#d97706,#92400e);border-radius:10px;">
+      <a href="{base_url}/subscribe" style="display:inline-block;padding:13px 32px;color:#ffffff;text-decoration:none;font-weight:700;font-size:.95rem;">{T['button']}</a>
+    </td></tr></table>
+    <p style="margin:0;color:#9ca3af;font-size:.8rem;line-height:1.6;">{T['note']}</p>''')
+
+
+def _send_cancel_email(user_id):
+    """Bestätigungs-Mail nach Kündigung (mit Datum bis wann Premium läuft)."""
+    row = query_db('SELECT s.current_period_end, u.email, u.full_name, u.username, u.lang '
+                   'FROM subscriptions s JOIN app_users u ON u.id = s.user_id WHERE u.id=?', [user_id], one=True)
+    if not row or not row['email']:
+        return
+    lang = _norm_lang(row['lang'] if not hasattr(row, 'get') else row.get('lang'))
+    pe = _to_dt(row['current_period_end'])
+    end_txt = pe.strftime('%d.%m.%Y') if pe else '—'
+    subj = CANCEL_I18N[lang]['subject'].replace('{date}', end_txt)
+    send_email(row['email'], subj, _email_cancel_html(row['full_name'] or row['username'], end_txt, lang))
 
 
 def _run_subscription_reminders():
