@@ -624,6 +624,13 @@ def robots_txt():
     return app.response_class(body, mimetype='text/plain')
 
 
+@app.route('/ads.txt')
+def ads_txt():
+    # Google AdSense Publisher-Autorisierung (Pflicht für Auszahlung, gegen Anzeigenbetrug)
+    body = 'google.com, pub-1405082500215735, DIRECT, f08c47fec0942fa0\n'
+    return app.response_class(body, mimetype='text/plain')
+
+
 @app.route('/sitemap.xml')
 def sitemap():
     def alts():
