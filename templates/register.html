@@ -78,12 +78,15 @@
       </div>
 
       <div class="mb-3">
-        <label class="form-label fw-semibold" for="email">E-Mail <span class="text-muted fw-normal">(optional)</span></label>
+        <label class="form-label fw-semibold" for="email">E-Mail-Adresse</label>
         <div class="input-group">
           <span class="input-group-text bg-light"><i class="bi bi-envelope text-muted"></i></span>
           <input type="email" id="email" name="email" class="form-control"
-                 placeholder="max@beispiel.de" autocomplete="email"
+                 placeholder="max@beispiel.de" autocomplete="email" required
                  value="{{ request.form.get('email', '') }}">
+        </div>
+        <div class="form-text" style="font-size:.78rem;color:#6b7280;">
+          <i class="bi bi-shield-check me-1" style="color:#d97706;"></i>Für die Konto-Aktivierung und Passwort-Reset
         </div>
       </div>
 

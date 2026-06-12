@@ -1,7 +1,10 @@
 import os
 import secrets
+import smtplib
 import time
 import logging
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from functools import wraps
 from datetime import datetime, timedelta
 from urllib.parse import urlparse, urljoin
@@ -32,10 +35,6 @@ app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') != 'development'
 
-# Security headers via Talisman (fixes all 7 Railway warnings)
-# force_https=False: Railway terminates SSL at the proxy; the app always
-# receives plain HTTP internally, so forcing HTTPS here would redirect
-# Railway's own health checks and break deployment.
 Talisman(
     app,
     force_https=False,
@@ -90,7 +89,6 @@ def close_connection(exception):
 
 
 def query_db(query, args=(), one=False):
-    # Convert SQLite ? placeholders to MySQL %s
     query = query.replace('?', '%s')
     db = get_db()
     with db.cursor() as cur:
@@ -137,6 +135,15 @@ SCHEMA_STATEMENTS = [
     )""",
 ]
 
+# Idempotent schema migrations — each is tried individually; existing columns are ignored.
+SCHEMA_MIGRATIONS = [
+    "ALTER TABLE app_users ADD COLUMN email_verified TINYINT NOT NULL DEFAULT 1",
+    "ALTER TABLE app_users ADD COLUMN email_verify_token VARCHAR(64) NULL",
+    "ALTER TABLE app_users ADD COLUMN email_verify_expires DATETIME NULL",
+    "ALTER TABLE app_users ADD COLUMN pw_reset_token VARCHAR(64) NULL",
+    "ALTER TABLE app_users ADD COLUMN pw_reset_expires DATETIME NULL",
+]
+
 
 def init_db():
     with app.app_context():
@@ -144,7 +151,11 @@ def init_db():
         with db.cursor() as cur:
             for stmt in SCHEMA_STATEMENTS:
                 cur.execute(stmt)
-            # Create default admin if no users exist
+            for migration in SCHEMA_MIGRATIONS:
+                try:
+                    cur.execute(migration)
+                except Exception:
+                    pass
             cur.execute("SELECT COUNT(*) as c FROM app_users")
             count = cur.fetchone()['c']
             if count == 0:
@@ -157,20 +168,111 @@ def init_db():
 
 
 # ---------------------------------------------------------------------------
-# Brute-force protection
+# Email helpers
 # ---------------------------------------------------------------------------
 
-_login_attempts = {}
+def send_email(to_addr, subject, html_body):
+    smtp_host = os.environ.get('SMTP_HOST', '')
+    smtp_port = int(os.environ.get('SMTP_PORT', '587'))
+    smtp_user = os.environ.get('SMTP_USER', '')
+    smtp_pass = os.environ.get('SMTP_PASS', '')
+    mail_from = os.environ.get('MAIL_FROM', smtp_user)
+    if not smtp_host or not smtp_user:
+        logger.warning('send_email: SMTP_HOST/SMTP_USER not configured')
+        return False
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = subject
+    msg['From'] = f'HolzBau 3D <{mail_from}>'
+    msg['To'] = to_addr
+    msg.attach(MIMEText(html_body, 'html', 'utf-8'))
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as s:
+            s.ehlo()
+            s.starttls()
+            s.login(smtp_user, smtp_pass)
+            s.sendmail(mail_from, [to_addr], msg.as_string())
+        logger.info('Email sent to %s', to_addr)
+        return True
+    except Exception as e:
+        logger.error('send_email failed: %s', e)
+        return False
+
+
+def _email_verify_html(display_name, verify_url):
+    return f'''<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#faf6f0;font-family:'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#faf6f0;padding:40px 16px;">
+<tr><td align="center">
+<table width="540" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.08);max-width:540px;width:100%;">
+  <tr><td style="background:linear-gradient(135deg,#d97706,#92400e);padding:28px 40px;">
+    <span style="color:#fff;font-size:1.35rem;font-weight:800;letter-spacing:-0.5px;">HolzBAU <span style="font-size:1rem;">3D</span></span>
+  </td></tr>
+  <tr><td style="padding:40px;">
+    <h2 style="margin:0 0 16px;font-size:1.15rem;color:#1a1a1a;font-weight:700;">E-Mail-Adresse bestätigen</h2>
+    <p style="margin:0 0 10px;color:#374151;line-height:1.65;font-size:.95rem;">Hallo <strong>{display_name}</strong>,</p>
+    <p style="margin:0 0 28px;color:#374151;line-height:1.65;font-size:.95rem;">danke für deine Registrierung bei HolzBau 3D! Bitte bestätige deine E-Mail-Adresse, um dein Konto zu aktivieren:</p>
+    <table cellpadding="0" cellspacing="0"><tr><td>
+      <a href="{verify_url}" style="display:inline-block;background:linear-gradient(135deg,#d97706,#92400e);color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:.95rem;">E-Mail bestätigen</a>
+    </td></tr></table>
+    <p style="margin:28px 0 8px;color:#9ca3af;font-size:.8rem;line-height:1.5;">Dieser Link ist 48 Stunden gültig. Falls du dich nicht registriert hast, kannst du diese E-Mail ignorieren.</p>
+    <p style="margin:0;color:#c4c9d4;font-size:.72rem;word-break:break-all;">Link: {verify_url}</p>
+  </td></tr>
+  <tr><td style="padding:18px 40px;border-top:1px solid #f3f4f6;">
+    <p style="margin:0;color:#d1d5db;font-size:.72rem;">&copy; 2026 HolzBau 3D &middot; <a href="https://holzbau3d.app" style="color:#d97706;text-decoration:none;">holzbau3d.app</a></p>
+  </td></tr>
+</table>
+</td></tr>
+</table>
+</body></html>'''
+
+
+def _email_reset_html(display_name, reset_url):
+    return f'''<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#faf6f0;font-family:'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#faf6f0;padding:40px 16px;">
+<tr><td align="center">
+<table width="540" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.08);max-width:540px;width:100%;">
+  <tr><td style="background:linear-gradient(135deg,#d97706,#92400e);padding:28px 40px;">
+    <span style="color:#fff;font-size:1.35rem;font-weight:800;letter-spacing:-0.5px;">HolzBAU <span style="font-size:1rem;">3D</span></span>
+  </td></tr>
+  <tr><td style="padding:40px;">
+    <h2 style="margin:0 0 16px;font-size:1.15rem;color:#1a1a1a;font-weight:700;">Passwort zurücksetzen</h2>
+    <p style="margin:0 0 10px;color:#374151;line-height:1.65;font-size:.95rem;">Hallo <strong>{display_name}</strong>,</p>
+    <p style="margin:0 0 28px;color:#374151;line-height:1.65;font-size:.95rem;">du hast ein neues Passwort für dein HolzBau 3D Konto angefordert. Klicke auf den Button, um dein Passwort zurückzusetzen:</p>
+    <table cellpadding="0" cellspacing="0"><tr><td>
+      <a href="{reset_url}" style="display:inline-block;background:linear-gradient(135deg,#d97706,#92400e);color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:.95rem;">Passwort zurücksetzen</a>
+    </td></tr></table>
+    <p style="margin:28px 0 8px;color:#9ca3af;font-size:.8rem;line-height:1.5;">Dieser Link ist 1 Stunde gültig. Falls du kein neues Passwort angefordert hast, kannst du diese E-Mail ignorieren — dein Passwort bleibt unverändert.</p>
+    <p style="margin:0;color:#c4c9d4;font-size:.72rem;word-break:break-all;">Link: {reset_url}</p>
+  </td></tr>
+  <tr><td style="padding:18px 40px;border-top:1px solid #f3f4f6;">
+    <p style="margin:0;color:#d1d5db;font-size:.72rem;">&copy; 2026 HolzBau 3D &middot; <a href="https://holzbau3d.app" style="color:#d97706;text-decoration:none;">holzbau3d.app</a></p>
+  </td></tr>
+</table>
+</td></tr>
+</table>
+</body></html>'''
+
+
+# ---------------------------------------------------------------------------
+# Brute-force / rate-limit protection
+# ---------------------------------------------------------------------------
+
+_login_attempts    = {}
 _register_attempts = {}
 _checkout_attempts = {}
-LOGIN_MAX_ATTEMPTS = 5
+_resend_attempts   = {}
+_reset_attempts    = {}
+
+LOGIN_MAX_ATTEMPTS    = 5
 LOGIN_LOCKOUT_SECONDS = 300
-REGISTER_MAX_ATTEMPTS = 10   # per 10 min
-CHECKOUT_MAX_ATTEMPTS = 5    # per 10 min
+REGISTER_MAX_ATTEMPTS = 10
+CHECKOUT_MAX_ATTEMPTS = 5
+RESEND_MAX_ATTEMPTS   = 3
+RESET_MAX_ATTEMPTS    = 3
 
 
 def _is_safe_redirect(url):
-    """Only allow redirects to internal paths."""
     if not url:
         return False
     test = urljoin(request.host_url, url)
@@ -178,7 +280,7 @@ def _is_safe_redirect(url):
 
 
 def _check_rate_limit(store, ip, max_attempts, window=600):
-    """Returns True if blocked."""
+    """Returns True if the IP is over the limit (blocked)."""
     now = time.time()
     entry = store.get(ip, {'count': 0, 'since': now})
     if now - entry['since'] > window:
@@ -239,12 +341,13 @@ def inject_globals():
 
 
 # ---------------------------------------------------------------------------
-# Health
+# Health / utility
 # ---------------------------------------------------------------------------
 
 @app.route('/health')
 def health():
     return 'ok', 200
+
 
 @app.route('/ping')
 def ping():
@@ -315,6 +418,11 @@ def login():
         user = query_db("SELECT * FROM app_users WHERE username = ?", (username,), one=True)
 
         if user and check_password_hash(user['password_hash'], password):
+            # Block login if email is set but not verified
+            if not user.get('email_verified', 1) and user.get('email'):
+                flash('Bitte bestätige zuerst deine E-Mail-Adresse.', 'warning')
+                return render_template('login.html', csrf_token=generate_csrf(),
+                                       unverified_email=user['email'])
             _login_attempts.pop(ip, None)
             session.permanent = True
             session['user_id'] = user['id']
@@ -352,10 +460,10 @@ def register():
             flash('Ungültige Anfrage.', 'danger')
             return render_template('register.html', csrf_token=generate_csrf())
 
-        username = request.form.get('username', '').strip()
-        password = request.form.get('password', '')
+        username  = request.form.get('username', '').strip()
+        password  = request.form.get('password', '')
         full_name = request.form.get('full_name', '').strip()
-        email = request.form.get('email', '').strip()
+        email     = request.form.get('email', '').strip().lower()
 
         if len(username) < 3:
             flash('Benutzername muss mindestens 3 Zeichen lang sein.', 'danger')
@@ -363,23 +471,39 @@ def register():
         if len(password) < 8:
             flash('Passwort muss mindestens 8 Zeichen lang sein.', 'danger')
             return render_template('register.html', csrf_token=generate_csrf())
+        if not email or '@' not in email or '.' not in email.split('@')[-1]:
+            flash('Bitte gib eine gültige E-Mail-Adresse ein.', 'danger')
+            return render_template('register.html', csrf_token=generate_csrf())
 
-        existing = query_db("SELECT id FROM app_users WHERE username = ?", (username,), one=True)
-        if existing:
+        if query_db("SELECT id FROM app_users WHERE username = ?", (username,), one=True):
             flash('Benutzername bereits vergeben.', 'danger')
             return render_template('register.html', csrf_token=generate_csrf())
 
-        user_id = execute_db(
-            "INSERT INTO app_users (username, password_hash, full_name, email) VALUES (?,?,?,?)",
-            (username, generate_password_hash(password), full_name, email)
+        if query_db("SELECT id FROM app_users WHERE email = ?", (email,), one=True):
+            flash('Diese E-Mail-Adresse ist bereits registriert.', 'danger')
+            return render_template('register.html', csrf_token=generate_csrf())
+
+        verify_token   = secrets.token_urlsafe(32)
+        verify_expires = (datetime.utcnow() + timedelta(hours=48)).strftime('%Y-%m-%d %H:%M:%S')
+
+        execute_db(
+            "INSERT INTO app_users "
+            "(username, password_hash, full_name, email, email_verified, email_verify_token, email_verify_expires) "
+            "VALUES (?,?,?,?,0,?,?)",
+            (username, generate_password_hash(password), full_name, email, verify_token, verify_expires)
         )
-        session.permanent = True
-        session['user_id'] = user_id
-        session['username'] = username
-        session['full_name'] = full_name or username
-        session['role'] = 'user'
-        flash('Willkommen bei HolzBau 3D!', 'success')
-        return redirect(url_for('holzbau'))
+
+        base_url   = os.environ.get('BASE_URL', 'https://holzbau3d.app')
+        verify_url = f"{base_url}/verify-email/{verify_token}"
+        sent = send_email(
+            email,
+            'HolzBau 3D – E-Mail-Adresse bestätigen',
+            _email_verify_html(full_name or username, verify_url)
+        )
+        if not sent:
+            logger.warning('Verification email not sent (SMTP not configured?)')
+
+        return redirect(url_for('verify_pending', email=email))
 
     return render_template('register.html', csrf_token=generate_csrf())
 
@@ -388,6 +512,167 @@ def register():
 def logout():
     session.clear()
     return redirect(url_for('index'))
+
+
+# ---------------------------------------------------------------------------
+# Email verification
+# ---------------------------------------------------------------------------
+
+@app.route('/verify-pending')
+def verify_pending():
+    email = request.args.get('email', '')
+    return render_template('verify_pending.html', email=email)
+
+
+@app.route('/verify-email/<token>')
+def verify_email(token):
+    if not token or len(token) > 128:
+        flash('Ungültiger Link.', 'danger')
+        return redirect(url_for('login'))
+
+    user = query_db(
+        "SELECT * FROM app_users WHERE email_verify_token = ? AND email_verify_expires > UTC_TIMESTAMP()",
+        (token,), one=True
+    )
+    if not user:
+        expired = query_db("SELECT id FROM app_users WHERE email_verify_token = ?", (token,), one=True)
+        if expired:
+            flash('Dieser Bestätigungslink ist abgelaufen. Bitte fordere einen neuen an.', 'warning')
+            return render_template('verify_pending.html', email='', expired=True)
+        flash('Ungültiger Bestätigungslink.', 'danger')
+        return redirect(url_for('login'))
+
+    execute_db(
+        "UPDATE app_users SET email_verified=1, email_verify_token=NULL, email_verify_expires=NULL WHERE id=?",
+        (user['id'],)
+    )
+    session.permanent = True
+    session['user_id']   = user['id']
+    session['username']  = user['username']
+    session['full_name'] = user['full_name'] or user['username']
+    session['role']      = 'admin' if user['username'] == 'admin' else 'user'
+    execute_db("UPDATE app_users SET last_login = NOW() WHERE id = ?", (user['id'],))
+    flash('E-Mail erfolgreich bestätigt. Willkommen bei HolzBau 3D! 🪵', 'success')
+    return redirect(url_for('holzbau'))
+
+
+@app.route('/resend-verification', methods=['GET', 'POST'])
+def resend_verification():
+    if request.method == 'POST':
+        token = request.form.get('csrf_token', '')
+        if not validate_csrf(token):
+            flash('Ungültige Anfrage.', 'danger')
+            return render_template('verify_pending.html', email='', csrf_token=generate_csrf())
+
+        if _check_rate_limit(_resend_attempts, request.remote_addr, RESEND_MAX_ATTEMPTS):
+            flash('Zu viele Versuche. Bitte warte 10 Minuten.', 'warning')
+            return redirect(url_for('login'))
+
+        email = request.form.get('email', '').strip().lower()
+        if email:
+            user = query_db(
+                "SELECT * FROM app_users WHERE email = ? AND email_verified = 0",
+                (email,), one=True
+            )
+            if user:
+                verify_token   = secrets.token_urlsafe(32)
+                verify_expires = (datetime.utcnow() + timedelta(hours=48)).strftime('%Y-%m-%d %H:%M:%S')
+                execute_db(
+                    "UPDATE app_users SET email_verify_token=?, email_verify_expires=? WHERE id=?",
+                    (verify_token, verify_expires, user['id'])
+                )
+                base_url   = os.environ.get('BASE_URL', 'https://holzbau3d.app')
+                verify_url = f"{base_url}/verify-email/{verify_token}"
+                send_email(
+                    email,
+                    'HolzBau 3D – E-Mail-Adresse bestätigen',
+                    _email_verify_html(user['full_name'] or user['username'], verify_url)
+                )
+
+        flash('Falls diese E-Mail registriert und noch nicht bestätigt ist, haben wir dir einen neuen Bestätigungslink gesendet.', 'success')
+        return redirect(url_for('verify_pending', email=email))
+
+    # GET — redirect to login (the form lives in verify_pending.html)
+    return redirect(url_for('login'))
+
+
+# ---------------------------------------------------------------------------
+# Password reset
+# ---------------------------------------------------------------------------
+
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    if request.method == 'POST':
+        token = request.form.get('csrf_token', '')
+        if not validate_csrf(token):
+            flash('Ungültige Anfrage.', 'danger')
+            return render_template('forgot_password.html', csrf_token=generate_csrf())
+
+        if _check_rate_limit(_reset_attempts, request.remote_addr, RESET_MAX_ATTEMPTS):
+            flash('Zu viele Versuche. Bitte warte 10 Minuten.', 'warning')
+            return render_template('forgot_password.html', csrf_token=generate_csrf(), submitted=True)
+
+        email = request.form.get('email', '').strip().lower()
+        if email:
+            user = query_db("SELECT * FROM app_users WHERE email = ?", (email,), one=True)
+            if user:
+                reset_token   = secrets.token_urlsafe(32)
+                reset_expires = (datetime.utcnow() + timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')
+                execute_db(
+                    "UPDATE app_users SET pw_reset_token=?, pw_reset_expires=? WHERE id=?",
+                    (reset_token, reset_expires, user['id'])
+                )
+                base_url  = os.environ.get('BASE_URL', 'https://holzbau3d.app')
+                reset_url = f"{base_url}/reset-password/{reset_token}"
+                send_email(
+                    email,
+                    'HolzBau 3D – Passwort zurücksetzen',
+                    _email_reset_html(user['full_name'] or user['username'], reset_url)
+                )
+
+        # Always show the same message (don't reveal if email exists)
+        return render_template('forgot_password.html', csrf_token=generate_csrf(), submitted=True)
+
+    return render_template('forgot_password.html', csrf_token=generate_csrf())
+
+
+@app.route('/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    if not token or len(token) > 128:
+        flash('Ungültiger Link.', 'danger')
+        return redirect(url_for('login'))
+
+    user = query_db(
+        "SELECT * FROM app_users WHERE pw_reset_token = ? AND pw_reset_expires > UTC_TIMESTAMP()",
+        (token,), one=True
+    )
+    if not user:
+        flash('Dieser Link ist ungültig oder abgelaufen. Bitte fordere einen neuen an.', 'warning')
+        return redirect(url_for('forgot_password'))
+
+    if request.method == 'POST':
+        if not validate_csrf(request.form.get('csrf_token', '')):
+            flash('Ungültige Anfrage.', 'danger')
+            return redirect(url_for('reset_password', token=token))
+
+        new_pw      = request.form.get('new_password', '')
+        confirm_pw  = request.form.get('confirm_password', '')
+
+        if len(new_pw) < 8:
+            flash('Passwort muss mindestens 8 Zeichen haben.', 'danger')
+            return render_template('reset_password.html', token=token, csrf_token=generate_csrf())
+        if new_pw != confirm_pw:
+            flash('Passwörter stimmen nicht überein.', 'danger')
+            return render_template('reset_password.html', token=token, csrf_token=generate_csrf())
+
+        execute_db(
+            "UPDATE app_users SET password_hash=?, pw_reset_token=NULL, pw_reset_expires=NULL WHERE id=?",
+            (generate_password_hash(new_pw), user['id'])
+        )
+        flash('Passwort erfolgreich geändert. Du kannst dich jetzt anmelden.', 'success')
+        return redirect(url_for('login'))
+
+    return render_template('reset_password.html', token=token, csrf_token=generate_csrf())
 
 
 # ---------------------------------------------------------------------------
@@ -405,7 +690,7 @@ def profile():
             return redirect(url_for('profile'))
 
         current_pw = request.form.get('current_password', '')
-        new_pw = request.form.get('new_password', '')
+        new_pw     = request.form.get('new_password', '')
         confirm_pw = request.form.get('confirm_password', '')
 
         if not check_password_hash(user['password_hash'], current_pw):
@@ -426,6 +711,38 @@ def profile():
     return render_template('profile.html', user=row_to_dict(user), csrf_token=generate_csrf())
 
 
+@app.route('/profile/send-reset', methods=['POST'])
+@login_required
+def profile_send_reset():
+    if not validate_csrf(request.form.get('csrf_token', '')):
+        flash('Ungültige Anfrage.', 'danger')
+        return redirect(url_for('profile'))
+
+    user = query_db("SELECT * FROM app_users WHERE id = ?", (session['user_id'],), one=True)
+    if not user or not user.get('email'):
+        flash('Keine E-Mail-Adresse hinterlegt. Bitte wende dich an den Support.', 'warning')
+        return redirect(url_for('profile'))
+
+    reset_token   = secrets.token_urlsafe(32)
+    reset_expires = (datetime.utcnow() + timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')
+    execute_db(
+        "UPDATE app_users SET pw_reset_token=?, pw_reset_expires=? WHERE id=?",
+        (reset_token, reset_expires, user['id'])
+    )
+    base_url  = os.environ.get('BASE_URL', 'https://holzbau3d.app')
+    reset_url = f"{base_url}/reset-password/{reset_token}"
+    sent = send_email(
+        user['email'],
+        'HolzBau 3D – Passwort zurücksetzen',
+        _email_reset_html(user['full_name'] or user['username'], reset_url)
+    )
+    if sent:
+        flash(f'Passwort-Reset E-Mail wurde an {user["email"]} gesendet.', 'success')
+    else:
+        flash('E-Mail konnte nicht gesendet werden. Bitte ändere das Passwort direkt hier.', 'danger')
+    return redirect(url_for('profile'))
+
+
 # ---------------------------------------------------------------------------
 # Admin
 # ---------------------------------------------------------------------------
@@ -435,6 +752,7 @@ def profile():
 def admin_users():
     users = query_db("""
         SELECT u.id, u.username, u.full_name, u.email, u.created_at, u.last_login,
+               COALESCE(u.email_verified, 1) as email_verified,
                COALESCE(s.plan, 'free') as plan, COALESCE(s.status, '') as sub_status
         FROM app_users u
         LEFT JOIN subscriptions s ON s.user_id = u.id

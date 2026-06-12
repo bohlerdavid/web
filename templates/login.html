@@ -70,7 +70,7 @@
         </div>
       </div>
 
-      <div class="mb-4">
+      <div class="mb-1">
         <label class="form-label fw-semibold" for="password">Passwort</label>
         <div class="input-group">
           <span class="input-group-text bg-light"><i class="bi bi-lock text-muted"></i></span>
@@ -81,6 +81,9 @@
           </button>
         </div>
       </div>
+      <div class="text-end mb-4">
+        <a href="{{ url_for('forgot_password') }}" style="font-size:.8rem;color:#d97706;text-decoration:none;">Passwort vergessen?</a>
+      </div>
 
       <div class="d-grid mb-3">
         <button type="submit" class="btn btn-wood btn-lg">
@@ -88,6 +91,14 @@
         </button>
       </div>
     </form>
+
+    {% if unverified_email %}
+    <div class="alert alert-warning py-2 mt-2" style="font-size:.85rem;border-radius:10px;">
+      <i class="bi bi-envelope-exclamation me-1"></i>
+      E-Mail noch nicht bestätigt.
+      <a href="{{ url_for('verify_pending', email=unverified_email) }}" style="color:#92400e;font-weight:600;">Link erneut senden →</a>
+    </div>
+    {% endif %}
 
     <div class="text-center text-muted" style="font-size:.88rem;">
       Noch kein Konto?
