@@ -464,6 +464,19 @@ body {
 }
 .tab-btn.row2 { grid-row: 2; border-top: 1px solid var(--border-2); }
 .tab-pane { display: flex; flex-direction: column; }
+.tpl-card {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 8px 6px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.tpl-card:hover { border-color: var(--accent); background: rgba(78,140,221,.06); }
+.tpl-ico { font-size: 22px; line-height: 1; margin-bottom: 4px; }
+.tpl-lbl { font-size: 11px; font-weight: 600; color: var(--text); line-height: 1.3; margin-bottom: 3px; }
+.tpl-meta { font-size: 10px; color: var(--text-2); }
 
 /* ── CTX MENU ── */
 .ctx-item {
@@ -791,8 +804,9 @@ body {
       <button class="tab-btn active" id="tab-dach" onclick="showTab('dach')">📐 Grundriss</button>
       <button class="tab-btn" id="tab-balken" onclick="showTab('balken')">🪵 Balken</button>
       <button class="tab-btn" id="tab-sel" onclick="showTab('sel')">✎ Auswahl</button>
-      <button class="tab-btn row2" id="tab-deko" onclick="showTab('deko')" style="grid-column:1/span 1">🌿 Deko</button>
-      <button class="tab-btn row2" id="tab-list" onclick="showTab('list')" style="grid-column:2/span 2">📋 Stückliste</button>
+      <button class="tab-btn row2" id="tab-deko" onclick="showTab('deko')" style="grid-column:1">🌿 Deko</button>
+      <button class="tab-btn row2" id="tab-list" onclick="showTab('list')" style="grid-column:2">📋 Stückliste</button>
+      <button class="tab-btn row2" id="tab-vorlagen" onclick="showTab('vorlagen')" style="grid-column:3">📦 Vorlagen{% if user_plan != 'premium' %} 🔒{% endif %}</button>
     </div>
 
     <!-- TAB: GRUNDRISS -->
@@ -1049,6 +1063,46 @@ body {
         </table>
       </div>
       <div class="parts-total" id="parts-total">Gesamt: <strong>0</strong> Teile</div>
+    </div>
+
+    <!-- TAB: VORLAGEN -->
+    <div id="pane-vorlagen" class="tab-pane" style="display:none;overflow-y:auto;padding:8px">
+      <p style="font-size:11px;color:var(--text-2);margin:0 0 8px;line-height:1.4">
+        Fertige Konstruktion laden &amp; anpassen.
+        {% if user_plan != 'premium' %}<br><strong style="color:#d97706">✨ Premium erforderlich</strong>{% endif %}
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <div class="tpl-card" onclick="loadTemplate('wand')">
+          <div class="tpl-ico">🏠</div>
+          <div class="tpl-lbl">Holzwand&shy;konstruktion</div>
+          <div class="tpl-meta">3,6×2,6m · 10 Teile</div>
+        </div>
+        <div class="tpl-card" onclick="loadTemplate('schraegdach')">
+          <div class="tpl-ico">📐</div>
+          <div class="tpl-lbl">Schräg&shy;dach</div>
+          <div class="tpl-meta">5×4,5m · 11 Teile</div>
+        </div>
+        <div class="tpl-card" onclick="loadTemplate('satteldach')">
+          <div class="tpl-ico">🏛️</div>
+          <div class="tpl-lbl">Sattel&shy;dach</div>
+          <div class="tpl-meta">6×6m · 15 Teile</div>
+        </div>
+        <div class="tpl-card" onclick="loadTemplate('fenster')">
+          <div class="tpl-ico">🪟</div>
+          <div class="tpl-lbl">Fenster&shy;rahmen</div>
+          <div class="tpl-meta">1,2×1,2m · 5 Teile</div>
+        </div>
+        <div class="tpl-card" onclick="loadTemplate('tuer')">
+          <div class="tpl-ico">🚪</div>
+          <div class="tpl-lbl">Tür&shy;rahmen</div>
+          <div class="tpl-meta">0,9×2,1m · 4 Teile</div>
+        </div>
+        <div class="tpl-card" onclick="loadTemplate('grundriss')">
+          <div class="tpl-ico">📦</div>
+          <div class="tpl-lbl">Grundriss&shy;konstruktion</div>
+          <div class="tpl-meta">4×5m · 12 Teile</div>
+        </div>
+      </div>
     </div>
 
   </div>
@@ -1428,12 +1482,129 @@ function createBeamMesh(beam) {
 // ══════════════════════════════════════════════
 
 function showTab(name) {
-  ['dach','balken','sel','deko','list'].forEach(t => {
+  ['dach','balken','sel','deko','list','vorlagen'].forEach(t => {
     document.getElementById('tab-' + t).classList.toggle('active', t === name);
     const pane = document.getElementById('pane-' + t);
-    // list pane uses flex column, others use block scroll
     pane.style.display = t === name ? (t === 'list' ? 'flex' : 'block') : 'none';
   });
+}
+
+// ══════════════════════════════════════════════
+// VORLAGEN (TEMPLATES)
+// ══════════════════════════════════════════════
+
+const TEMPLATES = {
+  wand: {
+    label: 'Holzwandkonstruktion',
+    beams: [
+      {id:1, name:'Schwelle',      woodType:'Fichte', shape:'rect', L:3600, B:120, H:60,  axis:'x', x:0,    y:0,    z:0, rx:0,ry:0,rz:0, group:'Wand', phase:null},
+      {id:2, name:'Rähm',          woodType:'Fichte', shape:'rect', L:3600, B:120, H:60,  axis:'x', x:0,    y:2540, z:0, rx:0,ry:0,rz:0, group:'Wand', phase:null},
+      {id:3, name:'Eckpfosten L',  woodType:'Fichte', shape:'rect', L:2480, B:60,  H:120, axis:'y', x:0,    y:60,   z:0, rx:0,ry:0,rz:0, group:'Wand', phase:null},
+      {id:4, name:'Eckpfosten R',  woodType:'Fichte', shape:'rect', L:2480, B:60,  H:120, axis:'y', x:3540, y:60,   z:0, rx:0,ry:0,rz:0, group:'Wand', phase:null},
+      {id:5, name:'Ständer 1',     woodType:'Fichte', shape:'rect', L:2480, B:60,  H:120, axis:'y', x:640,  y:60,   z:0, rx:0,ry:0,rz:0, group:'Wand', phase:null},
+      {id:6, name:'Ständer 2',     woodType:'Fichte', shape:'rect', L:2480, B:60,  H:120, axis:'y', x:1220, y:60,   z:0, rx:0,ry:0,rz:0, group:'Wand', phase:null},
+      {id:7, name:'Ständer 3',     woodType:'Fichte', shape:'rect', L:2480, B:60,  H:120, axis:'y', x:1800, y:60,   z:0, rx:0,ry:0,rz:0, group:'Wand', phase:null},
+      {id:8, name:'Ständer 4',     woodType:'Fichte', shape:'rect', L:2480, B:60,  H:120, axis:'y', x:2380, y:60,   z:0, rx:0,ry:0,rz:0, group:'Wand', phase:null},
+      {id:9, name:'Ständer 5',     woodType:'Fichte', shape:'rect', L:2480, B:60,  H:120, axis:'y', x:2960, y:60,   z:0, rx:0,ry:0,rz:0, group:'Wand', phase:null},
+      {id:10,name:'Riegel',        woodType:'Fichte', shape:'rect', L:3600, B:120, H:60,  axis:'x', x:0,    y:1250, z:0, rx:0,ry:0,rz:0, group:'Wand', phase:null},
+    ]
+  },
+  schraegdach: {
+    label: 'Schrägdach',
+    beams: [
+      {id:1, name:'Stütze HK-L', woodType:'Fichte', shape:'rect', L:3000, B:120, H:120, axis:'y', x:0,    y:0, z:0,    rx:0, ry:0, rz:0,  group:'Stützen', phase:null},
+      {id:2, name:'Stütze HK-R', woodType:'Fichte', shape:'rect', L:3000, B:120, H:120, axis:'y', x:4880, y:0, z:0,    rx:0, ry:0, rz:0,  group:'Stützen', phase:null},
+      {id:3, name:'Stütze TR-L', woodType:'Fichte', shape:'rect', L:2000, B:120, H:120, axis:'y', x:0,    y:0, z:4500, rx:0, ry:0, rz:0,  group:'Stützen', phase:null},
+      {id:4, name:'Stütze TR-R', woodType:'Fichte', shape:'rect', L:2000, B:120, H:120, axis:'y', x:4880, y:0, z:4500, rx:0, ry:0, rz:0,  group:'Stützen', phase:null},
+      {id:5, name:'Pfette HK',   woodType:'Fichte', shape:'rect', L:5000, B:120, H:120, axis:'x', x:0,    y:2880, z:0,    rx:0, ry:0, rz:0,  group:'Pfetten', phase:null},
+      {id:6, name:'Pfette TR',   woodType:'Fichte', shape:'rect', L:5000, B:120, H:120, axis:'x', x:0,    y:1880, z:4500, rx:0, ry:0, rz:0,  group:'Pfetten', phase:null},
+      {id:7, name:'Sparren 1',   woodType:'Fichte', shape:'rect', L:4620, B:80,  H:160, axis:'z', x:0,    y:2420, z:-55,  rx:13, ry:0, rz:0, group:'Sparren', phase:null},
+      {id:8, name:'Sparren 2',   woodType:'Fichte', shape:'rect', L:4620, B:80,  H:160, axis:'z', x:1000, y:2420, z:-55,  rx:13, ry:0, rz:0, group:'Sparren', phase:null},
+      {id:9, name:'Sparren 3',   woodType:'Fichte', shape:'rect', L:4620, B:80,  H:160, axis:'z', x:2000, y:2420, z:-55,  rx:13, ry:0, rz:0, group:'Sparren', phase:null},
+      {id:10,name:'Sparren 4',   woodType:'Fichte', shape:'rect', L:4620, B:80,  H:160, axis:'z', x:3000, y:2420, z:-55,  rx:13, ry:0, rz:0, group:'Sparren', phase:null},
+      {id:11,name:'Sparren 5',   woodType:'Fichte', shape:'rect', L:4620, B:80,  H:160, axis:'z', x:4000, y:2420, z:-55,  rx:13, ry:0, rz:0, group:'Sparren', phase:null},
+    ]
+  },
+  satteldach: {
+    label: 'Satteldach',
+    beams: [
+      {id:1, name:'Stütze VL',    woodType:'Fichte', shape:'rect', L:3000, B:120, H:120, axis:'y', x:0,    y:0,    z:0,    rx:0, ry:0, rz:0,   group:'Stützen', phase:null},
+      {id:2, name:'Stütze VR',    woodType:'Fichte', shape:'rect', L:3000, B:120, H:120, axis:'y', x:5880, y:0,    z:0,    rx:0, ry:0, rz:0,   group:'Stützen', phase:null},
+      {id:3, name:'Stütze HL',    woodType:'Fichte', shape:'rect', L:3000, B:120, H:120, axis:'y', x:0,    y:0,    z:5880, rx:0, ry:0, rz:0,   group:'Stützen', phase:null},
+      {id:4, name:'Stütze HR',    woodType:'Fichte', shape:'rect', L:3000, B:120, H:120, axis:'y', x:5880, y:0,    z:5880, rx:0, ry:0, rz:0,   group:'Stützen', phase:null},
+      {id:5, name:'Pfette V',     woodType:'Fichte', shape:'rect', L:6000, B:120, H:120, axis:'x', x:0,    y:3000, z:0,    rx:0, ry:0, rz:0,   group:'Pfetten', phase:null},
+      {id:6, name:'Pfette H',     woodType:'Fichte', shape:'rect', L:6000, B:120, H:120, axis:'x', x:0,    y:3000, z:5880, rx:0, ry:0, rz:0,   group:'Pfetten', phase:null},
+      {id:7, name:'Pfette L',     woodType:'Fichte', shape:'rect', L:5760, B:120, H:120, axis:'z', x:0,    y:3000, z:120,  rx:0, ry:0, rz:0,   group:'Pfetten', phase:null},
+      {id:8, name:'Pfette R',     woodType:'Fichte', shape:'rect', L:5760, B:120, H:120, axis:'z', x:5880, y:3000, z:120,  rx:0, ry:0, rz:0,   group:'Pfetten', phase:null},
+      {id:9, name:'Firstpfette',  woodType:'Brettschichtholz (BSH)', shape:'rect', L:6000, B:200, H:200, axis:'z', x:2900, y:5000, z:0, rx:0, ry:0, rz:0, group:'Dach', phase:null},
+      {id:10,name:'Sparren VL',   woodType:'Fichte', shape:'rect', L:3541, B:200, H:80,  axis:'x', x:-270, y:4020, z:-100, rx:0, ry:0, rz:32,  group:'Dach', phase:null},
+      {id:11,name:'Sparren VR',   woodType:'Fichte', shape:'rect', L:3541, B:200, H:80,  axis:'x', x:2730, y:4020, z:-100, rx:0, ry:0, rz:-32, group:'Dach', phase:null},
+      {id:12,name:'Sparren ML',   woodType:'Fichte', shape:'rect', L:3541, B:200, H:80,  axis:'x', x:-270, y:4020, z:2900, rx:0, ry:0, rz:32,  group:'Dach', phase:null},
+      {id:13,name:'Sparren MR',   woodType:'Fichte', shape:'rect', L:3541, B:200, H:80,  axis:'x', x:2730, y:4020, z:2900, rx:0, ry:0, rz:-32, group:'Dach', phase:null},
+      {id:14,name:'Sparren HL',   woodType:'Fichte', shape:'rect', L:3541, B:200, H:80,  axis:'x', x:-270, y:4020, z:5900, rx:0, ry:0, rz:32,  group:'Dach', phase:null},
+      {id:15,name:'Sparren HR',   woodType:'Fichte', shape:'rect', L:3541, B:200, H:80,  axis:'x', x:2730, y:4020, z:5900, rx:0, ry:0, rz:-32, group:'Dach', phase:null},
+    ]
+  },
+  fenster: {
+    label: 'Fensterrahmen',
+    beams: [
+      {id:1, name:'Fensterbank',  woodType:'Fichte', shape:'rect', L:1200, B:80, H:80, axis:'x', x:0,    y:0,    z:0, rx:0,ry:0,rz:0, group:'Fenster', phase:null},
+      {id:2, name:'Sturz',        woodType:'Fichte', shape:'rect', L:1200, B:80, H:80, axis:'x', x:0,    y:1120, z:0, rx:0,ry:0,rz:0, group:'Fenster', phase:null},
+      {id:3, name:'Pfosten L',    woodType:'Fichte', shape:'rect', L:1040, B:80, H:80, axis:'y', x:0,    y:80,   z:0, rx:0,ry:0,rz:0, group:'Fenster', phase:null},
+      {id:4, name:'Pfosten R',    woodType:'Fichte', shape:'rect', L:1040, B:80, H:80, axis:'y', x:1120, y:80,   z:0, rx:0,ry:0,rz:0, group:'Fenster', phase:null},
+      {id:5, name:'Querriegel',   woodType:'Fichte', shape:'rect', L:1040, B:80, H:50, axis:'x', x:80,   y:570,  z:0, rx:0,ry:0,rz:0, group:'Fenster', phase:null},
+    ]
+  },
+  tuer: {
+    label: 'Türrahmen',
+    beams: [
+      {id:1, name:'Türschwelle',  woodType:'Fichte', shape:'rect', L:900,  B:80, H:60, axis:'x', x:0,   y:0,    z:0, rx:0,ry:0,rz:0, group:'Tür', phase:null},
+      {id:2, name:'Türsturz',     woodType:'Fichte', shape:'rect', L:900,  B:80, H:80, axis:'x', x:0,   y:2020, z:0, rx:0,ry:0,rz:0, group:'Tür', phase:null},
+      {id:3, name:'Türpfosten L', woodType:'Fichte', shape:'rect', L:2020, B:80, H:80, axis:'y', x:0,   y:0,    z:0, rx:0,ry:0,rz:0, group:'Tür', phase:null},
+      {id:4, name:'Türpfosten R', woodType:'Fichte', shape:'rect', L:2020, B:80, H:80, axis:'y', x:820, y:0,    z:0, rx:0,ry:0,rz:0, group:'Tür', phase:null},
+    ]
+  },
+  grundriss: {
+    label: 'Grundrisskonstruktion',
+    beams: [
+      {id:1, name:'Stütze VL',  woodType:'Fichte', shape:'rect', L:2640, B:120, H:120, axis:'y', x:0,    y:80,   z:0,    rx:0,ry:0,rz:0, group:'Stützen',  phase:null},
+      {id:2, name:'Stütze VR',  woodType:'Fichte', shape:'rect', L:2640, B:120, H:120, axis:'y', x:3880, y:80,   z:0,    rx:0,ry:0,rz:0, group:'Stützen',  phase:null},
+      {id:3, name:'Stütze HL',  woodType:'Fichte', shape:'rect', L:2640, B:120, H:120, axis:'y', x:0,    y:80,   z:4880, rx:0,ry:0,rz:0, group:'Stützen',  phase:null},
+      {id:4, name:'Stütze HR',  woodType:'Fichte', shape:'rect', L:2640, B:120, H:120, axis:'y', x:3880, y:80,   z:4880, rx:0,ry:0,rz:0, group:'Stützen',  phase:null},
+      {id:5, name:'Schwelle V', woodType:'Fichte', shape:'rect', L:4000, B:120, H:80,  axis:'x', x:0,    y:0,    z:0,    rx:0,ry:0,rz:0, group:'Schwellen', phase:null},
+      {id:6, name:'Schwelle H', woodType:'Fichte', shape:'rect', L:4000, B:120, H:80,  axis:'x', x:0,    y:0,    z:4880, rx:0,ry:0,rz:0, group:'Schwellen', phase:null},
+      {id:7, name:'Schwelle L', woodType:'Fichte', shape:'rect', L:4760, B:120, H:80,  axis:'z', x:0,    y:0,    z:120,  rx:0,ry:0,rz:0, group:'Schwellen', phase:null},
+      {id:8, name:'Schwelle R', woodType:'Fichte', shape:'rect', L:4760, B:120, H:80,  axis:'z', x:3880, y:0,    z:120,  rx:0,ry:0,rz:0, group:'Schwellen', phase:null},
+      {id:9, name:'Rähm V',     woodType:'Fichte', shape:'rect', L:4000, B:120, H:80,  axis:'x', x:0,    y:2720, z:0,    rx:0,ry:0,rz:0, group:'Rähme',    phase:null},
+      {id:10,name:'Rähm H',     woodType:'Fichte', shape:'rect', L:4000, B:120, H:80,  axis:'x', x:0,    y:2720, z:4880, rx:0,ry:0,rz:0, group:'Rähme',    phase:null},
+      {id:11,name:'Rähm L',     woodType:'Fichte', shape:'rect', L:4760, B:120, H:80,  axis:'z', x:0,    y:2720, z:120,  rx:0,ry:0,rz:0, group:'Rähme',    phase:null},
+      {id:12,name:'Rähm R',     woodType:'Fichte', shape:'rect', L:4760, B:120, H:80,  axis:'z', x:3880, y:2720, z:120,  rx:0,ry:0,rz:0, group:'Rähme',    phase:null},
+    ]
+  }
+};
+
+function loadTemplate(key) {
+  if (!requirePremium('Vorlagen', 'Fertige Konstruktionen sind nur im Premium-Abo verfügbar.')) return;
+  if (!confirm('Aktuelle Konstruktion durch die Vorlage ersetzen?')) return;
+  const tpl = TEMPLATES[key];
+  if (!tpl) return;
+  pushHistory();
+  clearAllBeams();
+  groups.length = 0;
+  groups.push('Standard');
+  hiddenGroups.clear();
+  tpl.beams.forEach(s => {
+    const beam = { rx:0, ry:0, rz:0, group:'Standard', phase:null, shape:'rect', ...s, mesh:null };
+    if (!groups.includes(beam.group)) groups.push(beam.group);
+    beam.mesh = createBeamMesh(beam);
+    scene.add(beam.mesh);
+    beams.push(beam);
+  });
+  idCounter = tpl.beams.length + 1;
+  activePhaseFilter = null;
+  resetCamera();
+  updateUI();
+  showTab('balken');
 }
 
 function setDims(b, h) {
