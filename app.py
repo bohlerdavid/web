@@ -8,7 +8,7 @@ from urllib.parse import urlparse, urljoin
 
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    flash, g, abort, jsonify, session
+    flash, g, abort, jsonify, session, Response
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
@@ -420,6 +420,62 @@ def datenschutz():
 @app.route('/pricing')
 def pricing_public():
     return render_template('pricing_public.html')
+
+
+@app.route('/ratgeber')
+def ratgeber():
+    return render_template('ratgeber.html')
+
+
+@app.route('/ratgeber/pergola-bauen')
+def ratgeber_pergola():
+    return render_template('ratgeber_pergola.html')
+
+
+@app.route('/ratgeber/carport-planen')
+def ratgeber_carport():
+    return render_template('ratgeber_carport.html')
+
+
+@app.route('/ratgeber/dachstuhl-grundlagen')
+def ratgeber_dachstuhl():
+    return render_template('ratgeber_dachstuhl.html')
+
+
+@app.route('/ratgeber/stueckliste-berechnen')
+def ratgeber_stueckliste():
+    return render_template('ratgeber_stueckliste.html')
+
+
+@app.route('/faq')
+def faq():
+    return render_template('faq.html')
+
+
+@app.route('/robots.txt')
+def robots_txt():
+    lines = [
+        'User-agent: *',
+        'Allow: /',
+        'Disallow: /admin/',
+        'Disallow: /profile',
+        'Disallow: /subscribe',
+        'Sitemap: https://holzbau3d.up.railway.app/sitemap.xml',
+    ]
+    return Response('\n'.join(lines), mimetype='text/plain')
+
+
+@app.route('/sitemap.xml')
+def sitemap_xml():
+    base = 'https://holzbau3d.up.railway.app'
+    paths = [
+        '/landing', '/pricing', '/ratgeber', '/faq', '/impressum', '/datenschutz',
+        '/ratgeber/pergola-bauen', '/ratgeber/carport-planen',
+        '/ratgeber/dachstuhl-grundlagen', '/ratgeber/stueckliste-berechnen',
+    ]
+    urls = ''.join(f'<url><loc>{base}{p}</loc></url>' for p in paths)
+    xml = f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{urls}</urlset>'
+    return Response(xml, mimetype='application/xml')
 
 
 # ---------------------------------------------------------------------------
