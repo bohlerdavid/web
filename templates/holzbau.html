@@ -2215,10 +2215,10 @@ function renderGroupList() {
     const groupDecos = decos.filter(d => d.group === groupName);
     const totalCount = groupBeams.length + groupDecos.length;
     const isHidden = hiddenGroups.has(groupName);
+    const isCollapsed = collapsedGroups.has(groupName);
     const section = document.createElement('div');
     section.className = 'group-section' + (isHidden ? ' group-hidden' : '') + (isCollapsed ? ' collapsed' : '');
 
-    const isCollapsed = collapsedGroups.has(groupName);
     const header = document.createElement('div');
     header.className = 'group-header';
     header.innerHTML = `
@@ -4093,13 +4093,18 @@ function addDeco(type) {
   const groupSel = document.getElementById('beam-group-sel');
   const grp = groupSel ? groupSel.value : 'Standard';
   const initParams = def.defaultParams ? { ...def.defaultParams } : {};
-  const deco = { id: decoIdCounter++, type, label: def.label, group: grp, x:0, y:0, z:0, ry:0, params: initParams, mesh: null };
+  // Place the new deco where the camera is looking (controls.target), not at the
+  // fixed world origin. Otherwise, when the user has panned away from origin, the
+  // deco spawns off-screen — invisible and impossible to grab/move.
+  const px = Math.round(controls.target.x / 10) * 10;
+  const pz = Math.round(controls.target.z / 10) * 10;
+  const deco = { id: decoIdCounter++, type, label: def.label, group: grp, x:px, y:0, z:pz, ry:0, params: initParams, mesh: null };
   deco.mesh = def.build(initParams);
   if (def.defaultParams && def.defaultParams.scale !== undefined) {
     const s = (initParams.scale || 100) / 100;
     deco.mesh.scale.setScalar(s);
   }
-  deco.mesh.position.set(0, 0, 0);
+  deco.mesh.position.set(px, 0, pz);
   deco.mesh.userData.isDecoId = deco.id;
   if (hiddenGroups.has(deco.group)) deco.mesh.visible = false;
   scene.add(deco.mesh);
