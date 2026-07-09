@@ -603,18 +603,17 @@ def _seo_context(lang):
         'alternateName': ['HolzBau 3D', 'Holzbau 3D Planer', 'Holzkonstruktion 3D', 'Holzbau Konstruktion Software'],
         'applicationCategory': 'DesignApplication',
         'applicationSubCategory': 'CAD',
-        'operatingSystem': 'Web Browser', 'url': SITE + path + '/',
+        'operatingSystem': 'Web Browser', 'url': SITE + (path or '/'),
         'inLanguage': lang, 'description': m['desc'], 'keywords': m['keywords'],
         'offers': [
             {'@type': 'Offer', 'price': '0', 'priceCurrency': 'EUR', 'name': 'Free'},
             {'@type': 'Offer', 'price': '9.99', 'priceCurrency': 'EUR', 'name': 'Premium'},
             {'@type': 'Offer', 'price': '99.99', 'priceCurrency': 'EUR', 'name': 'Premium Yearly'},
         ],
-        'aggregateRating': {'@type': 'AggregateRating', 'ratingValue': '4.8', 'reviewCount': '37'},
     }
     return {
         'seo': m, 'seo_lang': lang,
-        'canonical': SITE + path + '/',
+        'canonical': SITE + (path or '/'),
         'alternates': [
             ('de', SITE + '/'), ('en', SITE + '/en'), ('fr', SITE + '/fr'),
             ('x-default', SITE + '/'),
@@ -678,6 +677,7 @@ def sitemap():
   {guide_idx}
   {guide_arts}
   <url><loc>{SITE}/pricing</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>{SITE}/ueber-uns</loc><changefreq>yearly</changefreq><priority>0.5</priority></url>
   <url><loc>{SITE}/impressum</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
   <url><loc>{SITE}/datenschutz</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
   <url><loc>{SITE}/nutzungsbedingungen</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
@@ -1626,6 +1626,11 @@ def landing():
 @app.route('/impressum')
 def impressum():
     return render_template('impressum.html')
+
+
+@app.route('/ueber-uns')
+def ueber_uns():
+    return render_template('ueber_uns.html')
 
 
 @app.route('/datenschutz')

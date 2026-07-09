@@ -1,0 +1,302 @@
+[
+  {
+    "de": "Dein Abo wird zum Ende des aktuellen Abrechnungszeitraums gekündigt.\n    Bis dahin hast du weiterhin vollen Premium-Zugang.",
+    "en": "Your subscription will be canceled at the end of the current billing period.\n    Until then, you will continue to have full Premium access.",
+    "fr": "Votre abonnement sera résilié à la fin de la période de facturation en cours.\n    D'ici là, vous conservez un accès Premium complet."
+  },
+  {
+    "de": "Abo wirklich kündigen? Du behältst Premium bis zum Ende des Zeitraums.",
+    "en": "Really cancel your subscription? You will keep Premium until the end of the period.",
+    "fr": "Voulez-vous vraiment résilier l'abonnement ? Vous conservez Premium jusqu'à la fin de la période."
+  },
+  {
+    "de": "Abo läuft aus",
+    "en": "Subscription ending",
+    "fr": "L'abonnement expire"
+  },
+  {
+    "de": "Dein Abo wurde gekündigt. Du kannst es jederzeit wieder aktivieren.",
+    "en": "Your subscription has been canceled. You can reactivate it at any time.",
+    "fr": "Votre abonnement a été résilié. Vous pouvez le réactiver à tout moment."
+  },
+  {
+    "de": "Monatlich",
+    "en": "Monthly",
+    "fr": "Mensuel"
+  },
+  {
+    "de": "pro Monat",
+    "en": "per month",
+    "fr": "par mois"
+  },
+  {
+    "de": "Monatlich erneuern",
+    "en": "Renew monthly",
+    "fr": "Renouveler mensuellement"
+  },
+  {
+    "de": "🎉 Spare 19,89 € — 2 Monate gratis",
+    "en": "🎉 Save 19,89 € — 2 months free",
+    "fr": "🎉 Économisez 19,89 € — 2 mois gratuits"
+  },
+  {
+    "de": "Jährlich",
+    "en": "Yearly",
+    "fr": "Annuel"
+  },
+  {
+    "de": "= 8,33 €/Monat",
+    "en": "= 8,33 €/month",
+    "fr": "= 8,33 €/mois"
+  },
+  {
+    "de": "Jährlich erneuern",
+    "en": "Renew yearly",
+    "fr": "Renouveler annuellement"
+  },
+  {
+    "de": "Abo erneuern — 9,99 €/Monat",
+    "en": "Renew subscription — 9,99 €/month",
+    "fr": "Renouveler l'abonnement — 9,99 €/mois"
+  },
+  {
+    "de": "Auf Premium upgraden",
+    "en": "Upgrade to Premium",
+    "fr": "Passer à Premium"
+  },
+  {
+    "de": "Alle Features, werbefrei — wähle dein Abo:",
+    "en": "All features, ad-free — choose your subscription:",
+    "fr": "Toutes les fonctionnalités, sans publicité — choisissez votre abonnement :"
+  },
+  {
+    "de": "pro Monat · jederzeit kündbar",
+    "en": "per month · cancel anytime",
+    "fr": "par mois · résiliable à tout moment"
+  },
+  {
+    "de": "Monatlich starten",
+    "en": "Start monthly",
+    "fr": "Démarrer en mensuel"
+  },
+  {
+    "de": "119,88 €/Jahr",
+    "en": "119,88 €/year",
+    "fr": "119,88 €/an"
+  },
+  {
+    "de": "Jährlich starten",
+    "en": "Start yearly",
+    "fr": "Démarrer en annuel"
+  },
+  {
+    "de": "Jetzt upgraden — 9,99 €/Monat",
+    "en": "Upgrade now — 9,99 €/month",
+    "fr": "Mettre à niveau maintenant — 9,99 €/mois"
+  },
+  {
+    "de": "ℹ️ Admin-Hinweis:",
+    "en": "ℹ️ Admin note:",
+    "fr": "ℹ️ Note admin :"
+  },
+  {
+    "de": "Das Jahres-Abo ist ausgeblendet, weil die Railway-Variable",
+    "en": "The yearly subscription is hidden because the Railway variable",
+    "fr": "L'abonnement annuel est masqué car la variable Railway"
+  },
+  {
+    "de": "nicht gesetzt ist. Sobald du sie mit der Stripe-Price-ID\n    des Jahres-Plans (",
+    "en": "is not set. Once you set it to the Stripe price ID\n    of the yearly plan (",
+    "fr": "n'est pas définie. Dès que vous la définissez avec l'ID de prix Stripe\n    du plan annuel ("
+  },
+  {
+    "de": ") setzt, erscheinen automatisch beide Karten (monatlich + jährlich).",
+    "en": "), both cards (monthly + yearly) will appear automatically.",
+    "fr": "), les deux cartes (mensuel + annuel) apparaîtront automatiquement."
+  },
+  {
+    "de": "Sichere Zahlung über Stripe · Jederzeit kündbar",
+    "en": "Secure payment via Stripe · Cancel anytime",
+    "fr": "Paiement sécurisé via Stripe · Résiliable à tout moment"
+  },
+  {
+    "de": "App",
+    "en": "App",
+    "fr": "App"
+  },
+  {
+    "de": "Upgrade",
+    "en": "Upgrade",
+    "fr": "Mise à niveau"
+  },
+  {
+    "de": "Profil & Passwort",
+    "en": "Profile & Password",
+    "fr": "Profil & mot de passe"
+  },
+  {
+    "de": "Admin: Benutzer",
+    "en": "Admin: Users",
+    "fr": "Admin : utilisateurs"
+  },
+  {
+    "de": "Abmelden",
+    "en": "Log out",
+    "fr": "Déconnexion"
+  },
+  {
+    "de": "Wir verwenden Cookies. Im Free-Plan wird",
+    "en": "We use cookies. On the free plan,",
+    "fr": "Nous utilisons des cookies. Dans le plan gratuit,"
+  },
+  {
+    "de": "geladen, das Tracking-Cookies setzt. Mehr in unserer",
+    "en": "is loaded, which sets tracking cookies. More in our",
+    "fr": "est chargé, ce qui dépose des cookies de suivi. Plus d'infos dans notre"
+  },
+  {
+    "de": "Datenschutzerklärung",
+    "en": "Privacy Policy",
+    "fr": "politique de confidentialité"
+  },
+  {
+    "de": "Nur notwendige",
+    "en": "Essential only",
+    "fr": "Nécessaires uniquement"
+  },
+  {
+    "de": "Alle akzeptieren",
+    "en": "Accept all",
+    "fr": "Tout accepter"
+  },
+  {
+    "de": "Sitzung läuft ab",
+    "en": "Session expiring",
+    "fr": "La session expire"
+  },
+  {
+    "de": "Du wirst in",
+    "en": "You will be logged out automatically in",
+    "fr": "Vous serez automatiquement déconnecté dans"
+  },
+  {
+    "de": "Sekunden automatisch abgemeldet.",
+    "en": "seconds.",
+    "fr": "secondes."
+  },
+  {
+    "de": "Angemeldet bleiben",
+    "en": "Stay logged in",
+    "fr": "Rester connecté"
+  },
+  {
+    "de": "Anmelden — HolzBau 3D",
+    "en": "Log in — HolzBau 3D",
+    "fr": "Connexion — HolzBau 3D"
+  },
+  {
+    "de": "Anmelden und loslegen",
+    "en": "Log in and get started",
+    "fr": "Connectez-vous et lancez-vous"
+  },
+  {
+    "de": "Passwort",
+    "en": "Password",
+    "fr": "Mot de passe"
+  },
+  {
+    "de": "Passwort vergessen?",
+    "en": "Forgot password?",
+    "fr": "Mot de passe oublié ?"
+  },
+  {
+    "de": "Anmelden",
+    "en": "Log in",
+    "fr": "Se connecter"
+  },
+  {
+    "de": "E-Mail noch nicht bestätigt.",
+    "en": "Email not yet confirmed.",
+    "fr": "E-mail pas encore confirmé."
+  },
+  {
+    "de": "Link erneut senden →",
+    "en": "Resend link →",
+    "fr": "Renvoyer le lien →"
+  },
+  {
+    "de": "Noch kein Konto?",
+    "en": "No account yet?",
+    "fr": "Pas encore de compte ?"
+  },
+  {
+    "de": "Jetzt registrieren",
+    "en": "Sign up now",
+    "fr": "S'inscrire maintenant"
+  },
+  {
+    "de": "Zurück zur Startseite",
+    "en": "Back to home page",
+    "fr": "Retour à l'accueil"
+  },
+  {
+    "de": "Registrieren — HolzBau 3D",
+    "en": "Sign up — HolzBau 3D",
+    "fr": "Inscription — HolzBau 3D"
+  },
+  {
+    "de": "Kostenloses Konto erstellen",
+    "en": "Create a free account",
+    "fr": "Créer un compte gratuit"
+  },
+  {
+    "de": "(optional)",
+    "en": "(optional)",
+    "fr": "(facultatif)"
+  },
+  {
+    "de": "Max Mustermann",
+    "en": "John Doe",
+    "fr": "Jean Dupont"
+  },
+  {
+    "de": "min. 3 Zeichen",
+    "en": "min. 3 characters",
+    "fr": "min. 3 caractères"
+  },
+  {
+    "de": "E-Mail-Adresse",
+    "en": "Email address",
+    "fr": "Adresse e-mail"
+  },
+  {
+    "de": "Für die Konto-Aktivierung und Passwort-Reset",
+    "en": "For account activation and password reset",
+    "fr": "Pour l'activation du compte et la réinitialisation du mot de passe"
+  },
+  {
+    "de": "min. 8 Zeichen",
+    "en": "min. 8 characters",
+    "fr": "min. 8 caractères"
+  },
+  {
+    "de": "Konto erstellen",
+    "en": "Create account",
+    "fr": "Créer un compte"
+  },
+  {
+    "de": "Mit der Registrierung stimmst du unseren",
+    "en": "By signing up, you agree to our",
+    "fr": "En vous inscrivant, vous acceptez nos"
+  },
+  {
+    "de": "Nutzungsbedingungen",
+    "en": "Terms of Service",
+    "fr": "conditions d'utilisation"
+  },
+  {
+    "de": "zu.",
+    "en": ".",
+    "fr": "."
+  }
+]
