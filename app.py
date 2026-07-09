@@ -745,7 +745,7 @@ def _blog_article(slug, lang):
         '@context': 'https://schema.org', '@type': 'Article',
         'headline': a['title'], 'description': a['desc'], 'inLanguage': lang,
         'datePublished': a['date'], 'dateModified': a['date'],
-        'author': {'@type': 'Organization', 'name': 'HolzBau 3D'},
+        'author': {'@type': 'Person', 'name': 'David Bohler', 'url': SITE + '/ueber-uns'},
         'publisher': {'@type': 'Organization', 'name': 'HolzBau 3D',
                       'logo': {'@type': 'ImageObject', 'url': SITE + '/static/og-image.png'}},
         'image': SITE + '/static/og-image.png',

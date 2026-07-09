@@ -40,7 +40,18 @@
     article h1{ font-size:2rem; font-weight:800; letter-spacing:-.5px; line-height:1.2; margin-bottom:16px; }
     .lead{ font-size:1.1rem; color:#4b5563; line-height:1.7; margin-bottom:28px; font-weight:500; }
     article h2{ font-size:1.3rem; font-weight:700; color:#1f2937; margin:34px 0 12px; }
+    article h3{ font-size:1.08rem; font-weight:700; color:#374151; margin:24px 0 8px; }
     article p{ color:#374151; font-size:1rem; line-height:1.8; margin-bottom:14px; }
+    article ul, article ol{ color:#374151; font-size:1rem; line-height:1.8; margin-bottom:14px; padding-left:22px; }
+    article table{ width:100%; border-collapse:collapse; margin:16px 0 22px; font-size:.92rem; }
+    article table th{ background:#fef3e0; color:#92400e; text-align:left; padding:9px 12px; border:1px solid #f0e0c8; font-weight:700; }
+    article table td{ padding:8px 12px; border:1px solid #eee3d3; color:#374151; }
+    article table tr:nth-child(even) td{ background:#fdfaf4; }
+    article figure{ margin:18px 0 24px; }
+    article figure svg{ max-width:100%; height:auto; }
+    article figcaption{ font-size:.82rem; color:#9ca3af; margin-top:6px; }
+    .byline{ font-size:.84rem; color:#9ca3af; margin-bottom:26px; display:flex; align-items:center; gap:8px; }
+    .byline .av{ width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#d97706,#92400e);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:.72rem; }
     .cta-note{ background:#fffbeb; border:1px solid #fde68a; border-radius:12px; padding:16px 20px; color:#92400e !important; font-weight:600; margin-top:28px; }
     .cta-box{ background:linear-gradient(160deg,#fff8ee,#fef3e0); border:2px solid rgba(217,119,6,.4); border-radius:16px; padding:28px; text-align:center; margin:40px 0; }
     .cta-box .btn-big{ display:inline-block; background:linear-gradient(135deg,#d97706,#92400e); color:#fff; padding:13px 30px; border-radius:10px; font-weight:700; text-decoration:none; margin-top:8px; }
@@ -70,6 +81,10 @@
 
     <article>
       <h1>{{ art.h1 }}</h1>
+      <div class="byline">
+        <span class="av">DB</span>
+        <span>David Bohler · <time datetime="{{ art.date }}">{{ art.date }}</time></span>
+      </div>
       <p class="lead">{{ art.lead }}</p>
       {{ art.body_html|safe }}
     </article>
