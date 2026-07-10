@@ -1,121 +1,62 @@
 {% extends 'base.html' %}
+{% block title %}Profil — HolzBau 3D{% endblock %}
 
-{% block title %}Mein Profil — IT Geräteverwaltung{% endblock %}
-
-{% block breadcrumb %}
-<li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
-<li class="breadcrumb-item active">Mein Profil</li>
+{% block extra_head %}
+<style>
+  .info-card { background: #fff; border: 1px solid #e8ddd0; border-radius: 14px; padding: 24px 28px; margin-bottom: 20px; }
+  .info-card h5 { font-size: .95rem; font-weight: 700; margin-bottom: 16px; color: #374151; }
+  .info-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #f3ede5; font-size: .9rem; }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .label { color: #9ca3af; }
+  .info-row .value { font-weight: 600; color: #1f2937; }
+  .btn-wood { background: linear-gradient(135deg, #d97706, #92400e); border: none; color: #fff; font-weight: 600; }
+  .btn-wood:hover { background: linear-gradient(135deg, #b45309, #78350f); color: #fff; }
+  .form-control:focus { border-color: #d97706; box-shadow: 0 0 0 .2rem rgba(217,119,6,.2); }
+</style>
 {% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <h1 class="page-title">
-            <i class="bi bi-person-circle me-2 text-accent"></i>Mein Profil
-        </h1>
-    </div>
+<h1 class="mb-1" style="font-size:1.5rem;font-weight:800;color:#1f2937;">Mein Profil</h1>
+<p class="text-muted mb-4" style="font-size:.9rem;">Konto-Informationen und Passwort ändern</p>
+
+<div class="info-card">
+  <h5><i class="bi bi-person-circle me-2" style="color:#d97706;"></i>Konto-Informationen</h5>
+  <div class="info-row"><span class="label">Benutzername</span><span class="value">{{ user.get('username', '—') }}</span></div>
+  <div class="info-row"><span class="label">Name</span><span class="value">{{ user.get('full_name') or '—' }}</span></div>
+  <div class="info-row"><span class="label">E-Mail</span><span class="value">{{ user.get('email') or '—' }}</span></div>
+  <div class="info-row"><span class="label">Registriert</span><span class="value" style="font-size:.85rem;color:#6b7280;">{{ user.get('created_at', '—') }}</span></div>
+  <div class="info-row"><span class="label">Letzter Login</span><span class="value" style="font-size:.85rem;color:#6b7280;">{{ user.get('last_login') or 'Unbekannt' }}</span></div>
+  <div class="info-row">
+    <span class="label">Plan</span>
+    <span class="value">
+      {% if user_plan == 'premium' %}<span style="background:#d97706;color:#fff;padding:3px 10px;border-radius:999px;font-size:.75rem;font-weight:700;">✨ Premium</span>
+      {% else %}<span style="background:#e5e7eb;color:#374151;padding:3px 10px;border-radius:999px;font-size:.75rem;font-weight:700;">Free</span>{% endif %}
+    </span>
+  </div>
 </div>
 
-<div class="row g-4">
-
-    <!-- ===== USER INFO CARD ===== -->
-    <div class="col-12 col-md-5 col-lg-4">
-        <div class="form-card">
-            <div class="form-section-title">Kontoinformationen</div>
-
-            {% if user['must_change_pw'] %}
-            <div class="alert alert-warning d-flex align-items-center gap-2 py-2" style="font-size:.87rem;">
-                <i class="bi bi-exclamation-triangle-fill flex-shrink-0"></i>
-                <div><strong>Bitte ändern Sie Ihr Passwort sofort!</strong><br>Ihr Passwort wurde vom Administrator gesetzt.</div>
-            </div>
-            {% endif %}
-
-            <div class="d-flex align-items-center gap-3 mb-4">
-                <div style="width:60px;height:60px;border-radius:50%;
-                            background:linear-gradient(135deg,#4f9cf9,#3a82e0);
-                            display:flex;align-items:center;justify-content:center;
-                            color:#fff;font-weight:700;font-size:1.5rem;flex-shrink:0;">
-                    {{ (user['full_name'] or user['username'])[0]|upper }}
-                </div>
-                <div>
-                    <div class="fw-bold fs-6">{{ user['full_name'] or user['username'] }}</div>
-                    <div class="text-muted" style="font-size:.85rem;">@{{ user['username'] }}</div>
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <div class="detail-label">Benutzername</div>
-                <div class="detail-value">{{ user['username'] }}</div>
-            </div>
-            <div class="mb-3">
-                <div class="detail-label">Vollständiger Name</div>
-                <div class="detail-value {% if not user['full_name'] %}empty{% endif %}">
-                    {{ user['full_name'] or 'Nicht angegeben' }}
-                </div>
-            </div>
-            <div class="mb-3">
-                <div class="detail-label">Rolle</div>
-                <div class="detail-value">
-                    {% if user['role'] == 'admin' %}
-                    <span class="badge bg-primary">Administrator</span>
-                    {% else %}
-                    <span class="badge bg-secondary">Betrachter</span>
-                    {% endif %}
-                </div>
-            </div>
-            <div class="mb-3">
-                <div class="detail-label">Konto erstellt</div>
-                <div class="detail-value text-muted" style="font-size:.85rem;">
-                    {{ user['created_at'][:10]|de_date if user['created_at'] else '—' }}
-                </div>
-            </div>
-            <div class="mb-3">
-                <div class="detail-label">Letzter Login</div>
-                <div class="detail-value text-muted" style="font-size:.85rem;">
-                    {{ user['last_login'][:16].replace('T',' ') if user['last_login'] else '—' }}
-                </div>
-            </div>
-        </div>
+<div class="info-card">
+  <h5><i class="bi bi-lock me-2" style="color:#d97706;"></i>Passwort ändern</h5>
+  <form method="POST" action="{{ url_for('profile') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="mb-3">
+      <label class="form-label fw-semibold" style="font-size:.88rem;">Aktuelles Passwort</label>
+      <input type="password" name="current_password" class="form-control" required>
     </div>
-
-    <!-- ===== CHANGE PASSWORD CARD ===== -->
-    <div class="col-12 col-md-7 col-lg-6">
-        <div class="form-card">
-            <div class="form-section-title">Passwort ändern</div>
-
-            <form method="post" action="{{ url_for('profile_change_password') }}" autocomplete="off">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-                <div class="mb-3">
-                    <label class="form-label">Aktuelles Passwort <span class="text-danger">*</span></label>
-                    <input type="password" name="current_password" class="form-control"
-                           placeholder="Ihr aktuelles Passwort" autocomplete="current-password" required>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label">Neues Passwort <span class="text-danger">*</span></label>
-                    <input type="password" name="new_password" class="form-control"
-                           placeholder="Mindestens 8 Zeichen" autocomplete="new-password" required>
-                    <div class="form-text text-muted" style="font-size:.78rem;">
-                        <i class="bi bi-info-circle me-1"></i>
-                        Min. 8 Zeichen, mindestens ein Buchstabe und eine Zahl erforderlich.
-                    </div>
-                </div>
-
-                <div class="mb-4">
-                    <label class="form-label">Neues Passwort bestätigen <span class="text-danger">*</span></label>
-                    <input type="password" name="confirm_password" class="form-control"
-                           placeholder="Passwort wiederholen" autocomplete="new-password" required>
-                </div>
-
-                <div class="d-grid">
-                    <button type="submit" class="btn btn-primary">
-                        <i class="bi bi-check-lg me-1"></i>Passwort ändern
-                    </button>
-                </div>
-            </form>
-        </div>
+    <div class="mb-3">
+      <label class="form-label fw-semibold" style="font-size:.88rem;">Neues Passwort <span class="text-muted fw-normal">(min. 8 Zeichen)</span></label>
+      <input type="password" name="new_password" class="form-control" required minlength="8">
     </div>
+    <div class="mb-4">
+      <label class="form-label fw-semibold" style="font-size:.88rem;">Passwort bestätigen</label>
+      <input type="password" name="confirm_password" class="form-control" required>
+    </div>
+    <button type="submit" class="btn btn-wood px-4"><i class="bi bi-check-lg me-1"></i>Passwort ändern</button>
+  </form>
+</div>
 
+<div class="d-flex gap-3">
+  <a href="{{ url_for('subscribe') }}" class="btn btn-outline-warning btn-sm"><i class="bi bi-star me-1"></i>Abonnement</a>
+  <a href="{{ url_for('holzbau') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-box me-1"></i>Zur App</a>
 </div>
 {% endblock %}

@@ -1,0 +1,223 @@
+{% extends 'base.html' %}
+{% block title %}Abonnement — HolzBau 3D{% endblock %}
+
+{% block extra_head %}
+<style>
+  .plan-hero {
+    border-radius: 16px;
+    padding: 32px;
+    margin-bottom: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .plan-hero.premium {
+    background: linear-gradient(135deg, #fef3e0, #fde68a);
+    border: 2px solid #d97706;
+  }
+  .plan-hero.free {
+    background: #fff;
+    border: 1px solid #e8ddd0;
+  }
+  .info-card {
+    background: #fff;
+    border: 1px solid #e8ddd0;
+    border-radius: 14px;
+    padding: 24px 28px;
+    margin-bottom: 20px;
+  }
+  .info-card h5 { font-size: .95rem; font-weight: 700; margin-bottom: 16px; color: #374151; }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid #f3ede5;
+    font-size: .9rem;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .label { color: #9ca3af; }
+  .info-row .value { font-weight: 600; color: #1f2937; }
+  .badge-premium { background: #d97706; color: #fff; padding: 3px 10px; border-radius: 999px; font-size: .75rem; font-weight: 700; }
+  .badge-free    { background: #e5e7eb; color: #374151; padding: 3px 10px; border-radius: 999px; font-size: .75rem; font-weight: 700; }
+  .badge-active  { background: #d1fae5; color: #065f46; padding: 3px 10px; border-radius: 999px; font-size: .75rem; font-weight: 700; }
+  .badge-cancelled { background: #fee2e2; color: #991b1b; padding: 3px 10px; border-radius: 999px; font-size: .75rem; font-weight: 700; }
+  .btn-upgrade-big {
+    background: linear-gradient(135deg, #d97706, #92400e);
+    color: #fff; border: none; padding: 14px 32px;
+    border-radius: 12px; font-size: 1rem; font-weight: 700;
+    display: inline-flex; align-items: center; gap: 8px;
+    cursor: pointer; transition: transform .15s, box-shadow .15s;
+    box-shadow: 0 4px 20px rgba(217,119,6,.3);
+  }
+  .btn-upgrade-big:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(217,119,6,.4); color: #fff; }
+  .btn-cancel-sub {
+    background: #fff; color: #dc2626; border: 1px solid #fca5a5;
+    padding: 10px 24px; border-radius: 8px; font-size: .88rem; font-weight: 600;
+    cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+    transition: background .15s;
+  }
+  .btn-cancel-sub:hover { background: #fef2f2; }
+  .feature-list { list-style: none; margin: 0; padding: 0; }
+  .feature-list li { display: flex; align-items: center; gap: 10px; padding: 8px 0; font-size: .9rem; color: #374151; border-bottom: 1px solid #f5ede0; }
+  .feature-list li:last-child { border-bottom: none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 class="mb-1" style="font-size:1.5rem;font-weight:800;color:#1f2937;">Mein Abonnement</h1>
+<p class="text-muted mb-4" style="font-size:.9rem;">Verwalte deinen Plan und deine Zahlungen</p>
+
+{% if request.args.get('success') %}
+<div class="alert alert-success alert-dismissible fade show mb-4">
+  <i class="bi bi-check-circle-fill me-2"></i>
+  <strong>Willkommen bei Premium!</strong> Dein Abo ist jetzt aktiv — alle Features freigeschaltet.
+  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+{% if request.args.get('cancelled') %}
+<div class="alert alert-warning alert-dismissible fade show mb-4">
+  <i class="bi bi-info-circle-fill me-2"></i>
+  Checkout abgebrochen. Du kannst jederzeit upgraden.
+  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+<!-- Plan Hero -->
+<div class="plan-hero {% if plan == 'premium' %}premium{% else %}free{% endif %}">
+  {% if plan == 'premium' %}
+  <div style="font-size:2rem;margin-bottom:4px;">✨</div>
+  <h2 style="font-weight:800;color:#92400e;margin-bottom:4px;">Premium aktiv</h2>
+  <p style="color:#b45309;margin:0;font-size:.95rem;">Du genießt alle Features ohne Einschränkungen. Danke für deine Unterstützung!</p>
+  {% else %}
+  <div style="font-size:2rem;margin-bottom:4px;">🪵</div>
+  <h2 style="font-weight:800;color:#1f2937;margin-bottom:4px;">Free Plan</h2>
+  <p style="color:#6b7280;margin:0;font-size:.95rem;">Upgrade auf Premium und nutze alle Features werbefrei für 9,99&nbsp;€/Monat.</p>
+  {% endif %}
+</div>
+
+<!-- Plan Details -->
+<div class="info-card">
+  <h5><i class="bi bi-receipt me-2" style="color:#d97706;"></i>Abo-Details</h5>
+
+  <div class="info-row">
+    <span class="label">Plan</span>
+    <span class="value">
+      {% if plan == 'premium' %}<span class="badge-premium">✨ Premium</span>
+      {% else %}<span class="badge-free">Free</span>{% endif %}
+    </span>
+  </div>
+
+  {% if sub and sub.get('status') %}
+  <div class="info-row">
+    <span class="label">Status</span>
+    <span class="value">
+      {% if sub.get('status') == 'active' %}<span class="badge-active">● Aktiv</span>
+      {% elif sub.get('status') == 'cancelled' %}<span class="badge-cancelled">Gekündigt</span>
+      {% else %}{{ sub.get('status') }}{% endif %}
+    </span>
+  </div>
+  {% endif %}
+
+  {% if sub and sub.get('current_period_end') %}
+  <div class="info-row">
+    <span class="label">
+      {% if sub.get('status') == 'cancelled' %}Zugang bis{% else %}Nächste Abrechnung{% endif %}
+    </span>
+    <span class="value">{{ sub.get('current_period_end')[:10] if sub.get('current_period_end') else '—' }}</span>
+  </div>
+  {% endif %}
+
+  <div class="info-row">
+    <span class="label">Preis</span>
+    <span class="value">{% if plan == 'premium' %}9,99 € / Monat{% else %}Kostenlos{% endif %}</span>
+  </div>
+
+  <div class="info-row">
+    <span class="label">Zahlung</span>
+    <span class="value" style="font-size:.85rem;color:#6b7280;">
+      {% if sub and sub.get('stripe_customer_id') %}
+        <i class="bi bi-credit-card me-1"></i>Kreditkarte via Stripe
+      {% else %}—{% endif %}
+    </span>
+  </div>
+</div>
+
+<!-- Features -->
+<div class="info-card">
+  <h5><i class="bi bi-grid me-2" style="color:#d97706;"></i>Dein Plan enthält</h5>
+  <ul class="feature-list">
+    <li><span style="color:#16a34a;font-size:1rem;">✓</span> 3D Holzkonstruktion im Browser</li>
+    <li><span style="color:#16a34a;font-size:1rem;">✓</span> Stückliste als CSV</li>
+    {% if plan == 'premium' %}
+    <li><span style="color:#16a34a;font-size:1rem;">✓</span> Unbegrenzte Balken & Projekte</li>
+    <li><span style="color:#16a34a;font-size:1rem;">✓</span> <strong>Werbefrei</strong></li>
+    <li><span style="color:#16a34a;font-size:1rem;">✓</span> PDF Export & Druckpläne</li>
+    <li><span style="color:#16a34a;font-size:1rem;">✓</span> Säge-Tool & Schnittplan</li>
+    <li><span style="color:#16a34a;font-size:1rem;">✓</span> Gruppen & Ebenen</li>
+    <li><span style="color:#16a34a;font-size:1rem;">✓</span> Dekorationselemente</li>
+    {% else %}
+    <li><span style="color:#9ca3af;font-size:1rem;">✗</span> <span style="color:#9ca3af;">Max. 15 Balken (Free-Limit)</span></li>
+    <li><span style="color:#f59e0b;font-size:.85rem;">⚠</span> <span style="color:#9ca3af;">Mit Werbebannern</span></li>
+    <li><span style="color:#9ca3af;font-size:1rem;">✗</span> <span style="color:#9ca3af;">PDF Export gesperrt</span></li>
+    <li><span style="color:#9ca3af;font-size:1rem;">✗</span> <span style="color:#9ca3af;">Säge-Tool gesperrt</span></li>
+    {% endif %}
+  </ul>
+</div>
+
+<!-- Action -->
+{% if not stripe_configured %}
+<div class="info-card" style="border-color:#fde68a;background:#fffbeb;">
+  <h5 style="color:#92400e;"><i class="bi bi-exclamation-triangle me-2"></i>Stripe nicht konfiguriert</h5>
+  <p style="color:#b45309;font-size:.88rem;margin:0;">Bitte <code>STRIPE_SECRET_KEY</code> und <code>STRIPE_PRICE_ID</code> als Umgebungsvariablen setzen.</p>
+</div>
+
+{% elif plan == 'premium' and sub.get('status') != 'cancelled' %}
+<div class="info-card" style="border-color:#fca5a5;">
+  <h5 style="color:#dc2626;"><i class="bi bi-x-circle me-2"></i>Abo kündigen</h5>
+  <p style="color:#6b7280;font-size:.88rem;margin-bottom:20px;">
+    Dein Abo wird zum Ende des aktuellen Abrechnungszeitraums gekündigt.
+    Bis dahin hast du weiterhin vollen Premium-Zugang.
+  </p>
+  <form method="POST" action="{{ url_for('subscribe_cancel') }}"
+        onsubmit="return confirm('Abo wirklich kündigen? Du behältst Premium bis zum Ende des Zeitraums.');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="btn-cancel-sub">
+      <i class="bi bi-x-circle"></i> Abo kündigen
+    </button>
+  </form>
+</div>
+
+{% elif sub and sub.get('status') == 'cancelled' %}
+<div class="info-card" style="border-color:#fde68a;background:#fffbeb;">
+  <h5 style="color:#92400e;"><i class="bi bi-info-circle me-2"></i>Abo läuft aus</h5>
+  <p style="color:#b45309;font-size:.88rem;margin-bottom:20px;">
+    Dein Abo wurde gekündigt und läuft zum Ende des Zeitraums aus.
+    Du kannst es jederzeit wieder aktivieren.
+  </p>
+  <form method="POST" action="{{ url_for('subscribe_create_checkout') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="btn-upgrade-big">
+      <i class="bi bi-arrow-repeat"></i> Abo erneuern — 9,99 €/Monat
+    </button>
+  </form>
+</div>
+
+{% else %}
+<div class="info-card" style="border-color:#d97706;background:#fffbeb;">
+  <h5 style="color:#92400e;"><i class="bi bi-star me-2"></i>Auf Premium upgraden</h5>
+  <p style="color:#78350f;font-size:.88rem;margin-bottom:20px;">
+    Für <strong>9,99&nbsp;€/Monat</strong> — werbefrei, alle Features freigeschaltet, monatlich kündbar.
+  </p>
+  <form method="POST" action="{{ url_for('subscribe_create_checkout') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="btn-upgrade-big">
+      <i class="bi bi-credit-card"></i> Jetzt upgraden — 9,99 €/Monat
+    </button>
+  </form>
+  <p style="color:#9ca3af;font-size:.78rem;margin-top:12px;">
+    <i class="bi bi-lock me-1"></i>Sichere Zahlung über Stripe · Jederzeit kündbar
+  </p>
+</div>
+{% endif %}
+
+{% endblock %}

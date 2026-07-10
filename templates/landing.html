@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HolzBau 3D — Kostenloser 3D Holzkonstruktionsplaner im Browser</title>
+  <meta name="description" content="HolzBau 3D – Plane Holzkonstruktionen in 3D direkt im Browser. Pergola, Carport, Dachstuhl, Wandkonstruktion. Stückliste exportieren, Drucken. Kostenlos starten!">
+  <meta name="keywords" content="Holzbau Planer, 3D Holzkonstruktion, Balkenkonstruktion planen, Zimmererei Software, Holzbau Software kostenlos, Pergola planen, Carport planen, Dachstuhl planen">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://holzbau3d.up.railway.app/landing">
+  <meta property="og:title" content="HolzBau 3D – 3D Holzkonstruktionsplaner im Browser">
+  <meta property="og:description" content="Plane Holzkonstruktionen in 3D direkt im Browser. Kostenlos mit Werbung oder Premium ab 9,99€/Monat.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://holzbau3d.up.railway.app">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="HolzBau 3D – 3D Holzkonstruktionsplaner">
+  <meta name="twitter:description" content="Kostenlos Holzkonstruktionen in 3D planen. Stückliste, Draufsicht, PDF-Export.">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "HolzBau 3D",
+    "applicationCategory": "DesignApplication",
+    "operatingSystem": "Web Browser",
+    "url": "https://holzbau3d.up.railway.app",
+    "offers": [
+      {"@type":"Offer","price":"0","priceCurrency":"EUR","name":"Kostenlos"},
+      {"@type":"Offer","price":"9.99","priceCurrency":"EUR","billingDuration":"P1M","name":"Premium"},
+      {"@type":"Offer","price":"99.99","priceCurrency":"EUR","billingDuration":"P1Y","name":"Premium Jährlich"}
+    ],
+    "description": "3D Holzkonstruktionsplaner direkt im Browser – keine Installation nötig."
+  }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,72,400;0,72,500;0,72,600;1,72,500&family=Work+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: oklch(0.965 0.01 65);
+      font-family: 'Work Sans', system-ui, sans-serif;
+      color: oklch(0.24 0.02 50);
+    }
+
+    /* ── NAV ── */
+    .nav {
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+      padding: 18px 48px;
+      border-bottom: 1px solid oklch(0.88 0.015 60);
+      background: oklch(0.965 0.01 65);
+      position: sticky; top: 0; z-index: 100;
+    }
+    .nav-logo {
+      display: flex; align-items: center; gap: 10px;
+      font-family: 'Newsreader', serif; font-size: 20px; font-weight: 600;
+      color: oklch(0.24 0.02 50); text-decoration: none;
+    }
+    .nav-logo-icon {
+      width: 28px; height: 28px; border-radius: 6px;
+      background: oklch(0.48 0.1 40); position: relative; flex-shrink: 0;
+    }
+    .nav-logo-icon::before {
+      content: ''; position: absolute; left: 6px; top: 8px;
+      width: 16px; height: 4px; background: oklch(0.97 0.01 60); border-radius: 1px;
+    }
+    .nav-logo-icon::after {
+      content: ''; position: absolute; left: 6px; top: 16px;
+      width: 10px; height: 4px; background: oklch(0.97 0.01 60); border-radius: 1px;
+    }
+    .nav-links {
+      display: flex; gap: 28px; list-style: none; margin: 0; padding: 0;
+      font-size: 14px; color: oklch(0.45 0.02 50); font-weight: 500;
+    }
+    .nav-links a { color: inherit; text-decoration: none; transition: color .15s; }
+    .nav-links a:hover { color: oklch(0.48 0.1 40); }
+    .nav-actions { display: flex; gap: 12px; align-items: center; }
+    .nav-login { font-size: 14px; color: oklch(0.45 0.02 50); font-weight: 500; text-decoration: none; transition: color .15s; }
+    .nav-login:hover { color: oklch(0.48 0.1 40); }
+    .btn-primary {
+      padding: 10px 18px; background: oklch(0.48 0.1 40);
+      color: oklch(0.98 0.005 60); font-size: 14px; font-weight: 600;
+      border-radius: 6px; text-decoration: none; border: none; cursor: pointer;
+      display: inline-block; transition: opacity .15s;
+    }
+    .btn-primary:hover { opacity: .88; color: oklch(0.98 0.005 60); }
+    .btn-outline {
+      padding: 10px 18px; background: transparent;
+      border: 1.5px solid oklch(0.7 0.02 50); color: oklch(0.3 0.02 50);
+      font-size: 14px; font-weight: 600; border-radius: 6px;
+      text-decoration: none; cursor: pointer; display: inline-block;
+      transition: border-color .15s, color .15s;
+    }
+    .btn-outline:hover { border-color: oklch(0.48 0.1 40); color: oklch(0.48 0.1 40); }
+
+    /* ── HERO ── */
+    .hero {
+      position: relative; overflow: hidden;
+      padding: 72px 48px 88px;
+      background: oklch(0.965 0.01 65);
+    }
+    .hero-deco-1 {
+      position: absolute; top: -60px; right: -120px;
+      width: 520px; height: 180px;
+      background: linear-gradient(100deg, oklch(0.62 0.07 45), oklch(0.7 0.06 55) 35%, oklch(0.62 0.07 45) 70%, oklch(0.7 0.06 55));
+      transform: rotate(28deg); opacity: .22; border-radius: 6px;
+    }
+    .hero-deco-2 {
+      position: absolute; top: 120px; right: -40px;
+      width: 460px; height: 120px;
+      background: linear-gradient(100deg, oklch(0.5 0.08 40), oklch(0.6 0.07 50) 40%, oklch(0.5 0.08 40) 80%);
+      transform: rotate(-18deg); opacity: .18; border-radius: 6px;
+    }
+    .hero-deco-3 {
+      position: absolute; bottom: -100px; left: -80px;
+      width: 400px; height: 140px;
+      background: linear-gradient(100deg, oklch(0.55 0.08 130), oklch(0.65 0.06 130) 50%, oklch(0.55 0.08 130));
+      transform: rotate(12deg); opacity: .15; border-radius: 6px;
+    }
+    .hero-inner {
+      position: relative;
+      display: grid; grid-template-columns: 1fr 460px; gap: 56px; align-items: center;
+      max-width: 1144px; margin: 0 auto;
+    }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 14px; background: oklch(0.94 0.012 60);
+      border-radius: 20px; font-size: 13px; font-weight: 600;
+      color: oklch(0.45 0.02 50); margin-bottom: 22px;
+    }
+    .hero h1 {
+      font-family: 'Newsreader', serif; font-weight: 500;
+      font-size: clamp(2.4rem, 4.5vw, 3.75rem);
+      line-height: 1.04; letter-spacing: -0.015em;
+      color: oklch(0.22 0.02 50); margin: 0 0 26px;
+    }
+    .hero h1 em { font-style: italic; color: oklch(0.48 0.1 40); }
+    .hero-sub {
+      font-size: 17px; line-height: 1.6; color: oklch(0.45 0.02 50);
+      max-width: 480px; margin: 0 0 32px;
+    }
+    .hero-ctas { display: flex; gap: 14px; flex-wrap: wrap; }
+
+    /* editor mockup */
+    .mockup {
+      background: oklch(0.24 0.02 50); border-radius: 14px;
+      box-shadow: 0 20px 50px rgba(0,0,0,.25); overflow: hidden;
+    }
+    .mockup-bar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 12px 16px; background: oklch(0.2 0.02 50);
+    }
+    .mockup-dot { width: 9px; height: 9px; border-radius: 50%; }
+    .mockup-dot.red   { background: oklch(0.6 0.06 40); }
+    .mockup-dot.gray  { background: oklch(0.55 0.02 50); }
+    .mockup-url {
+      margin-left: 8px; font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px; color: oklch(0.65 0.01 50);
+    }
+    .mockup-canvas {
+      height: 260px;
+      background: linear-gradient(160deg, oklch(0.28 0.02 50), oklch(0.22 0.02 50));
+      display: flex; align-items: center; justify-content: center; position: relative;
+    }
+    .beam-scene { position: relative; width: 220px; height: 130px; }
+    .beam { position: absolute; border-radius: 2px; }
+    .beam-h1 { left:20px;top:20px;width:180px;height:14px; background:linear-gradient(90deg,oklch(0.58 0.09 45),oklch(0.68 0.08 55)); transform:skewX(-18deg); }
+    .beam-h2 { left:20px;top:96px;width:180px;height:14px; background:linear-gradient(90deg,oklch(0.58 0.09 45),oklch(0.68 0.08 55)); transform:skewX(-18deg); }
+    .beam-v1 { left:34px;top:20px;width:14px;height:76px; background:linear-gradient(180deg,oklch(0.5 0.09 40),oklch(0.6 0.08 45)); }
+    .beam-v2 { left:172px;top:20px;width:14px;height:76px; background:linear-gradient(180deg,oklch(0.5 0.09 40),oklch(0.6 0.08 45)); }
+    .beam-diag { left:60px;top:30px;width:120px;height:10px; background:oklch(0.62 0.08 50); opacity:.7; transform:rotate(24deg); }
+    .dim-label {
+      position: absolute; font-family: 'IBM Plex Mono', monospace; font-size: 10px;
+      color: oklch(0.7 0.02 55); background: oklch(0.24 0.02 50 / .8);
+      padding: 2px 6px; border-radius: 3px;
+    }
+    .dim-top  { left: -6px; top: 8px; }
+    .dim-bot  { left: 8px; top: 100px; }
+    .mockup-footer {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      padding: 14px 16px; background: oklch(0.2 0.02 50);
+    }
+    .mockup-list {
+      font-family: 'IBM Plex Mono', monospace; font-size: 10.5px;
+      color: oklch(0.7 0.02 55); line-height: 1.7;
+    }
+    .mockup-tools { display: flex; flex-direction: column; gap: 6px; }
+    .tool-btn {
+      padding: 6px 10px; font-size: 10.5px; font-weight: 600;
+      border-radius: 5px; text-align: center;
+    }
+    .tool-active { background: oklch(0.48 0.1 40); color: oklch(0.97 0.01 60); }
+    .tool-inactive { background: oklch(0.3 0.02 50); color: oklch(0.8 0.01 55); }
+
+    /* ── SECTIONS ── */
+    .section { padding: 88px 48px; }
+    .section-inner { max-width: 1144px; margin: 0 auto; }
+    .section-eyebrow {
+      font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+      color: oklch(0.48 0.1 40); margin-bottom: 12px;
+    }
+    .section-h2 {
+      font-family: 'Newsreader', serif; font-weight: 500; font-size: clamp(1.8rem, 3vw, 2.25rem);
+      color: oklch(0.22 0.02 50); margin: 0 0 14px;
+    }
+    .section-lead { font-size: 16px; color: oklch(0.45 0.02 50); margin: 0; }
+    .section-header { text-align: center; max-width: 640px; margin: 0 auto 56px; }
+
+    /* ── FEATURES ── */
+    .features-bg { background: oklch(0.99 0.005 65); }
+    .features-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px;
+    }
+    .feature-card {
+      padding: 28px; background: oklch(0.965 0.01 65);
+      border-radius: 10px; border: 1px solid oklch(0.9 0.012 60);
+    }
+    .feature-icon { margin-bottom: 18px; }
+    .feature-icon-3d {
+      position: relative; width: 40px; height: 40px;
+    }
+    .feature-icon-3d::before {
+      content:''; position:absolute; width:26px;height:26px;
+      border:2px solid oklch(0.48 0.1 40);border-radius:3px;top:0;left:0;transform:rotate(-6deg);
+    }
+    .feature-icon-3d::after {
+      content:''; position:absolute; width:26px;height:26px;
+      border:2px solid oklch(0.48 0.1 40);border-radius:3px;top:8px;left:8px;
+      transform:rotate(6deg);background:oklch(0.99 0.005 65);
+    }
+    .feature-icon-bom { display:flex;flex-direction:column;gap:5px;width:32px; }
+    .feature-icon-bom span { height:4px; background:oklch(0.48 0.1 40); border-radius:2px; display:block; }
+    .feature-icon-layers {
+      position:relative;width:34px;height:30px;
+    }
+    .feature-icon-layers::before {
+      content:'';position:absolute;width:28px;height:16px;
+      border:2px solid oklch(0.48 0.1 140);border-radius:3px;top:0;left:2px;
+    }
+    .feature-icon-layers::after {
+      content:'';position:absolute;width:28px;height:16px;
+      border:2px solid oklch(0.48 0.1 140);border-radius:3px;top:10px;left:2px;
+      background:oklch(0.99 0.005 65);
+    }
+    .feature-icon-pdf {
+      position:relative;width:26px;height:32px;
+      border:2px solid oklch(0.48 0.1 40);border-radius:2px;
+    }
+    .feature-icon-pdf::after {
+      content:'';position:absolute;right:-2px;top:-2px;
+      width:8px;height:8px;background:oklch(0.99 0.005 65);
+      border-left:2px solid oklch(0.48 0.1 40);border-bottom:2px solid oklch(0.48 0.1 40);
+    }
+    .feature-card h3 { font-size:17px;font-weight:600;color:oklch(0.24 0.02 50);margin:0 0 8px; }
+    .feature-card p  { font-size:14px;line-height:1.55;color:oklch(0.45 0.02 50);margin:0; }
+
+    /* ── EXAMPLES ── */
+    .examples-bg { background: oklch(0.94 0.012 60); }
+    .examples-grid { display:grid;grid-template-columns:repeat(4,1fr);gap:24px; }
+    .example-card { background:oklch(0.99 0.005 65);border-radius:10px;overflow:hidden;border:1px solid oklch(0.88 0.015 60); }
+    .example-img { height:130px;position:relative; }
+    .example-dim {
+      position:absolute;font-family:'IBM Plex Mono',monospace;font-size:10px;
+      padding:2px 5px;border-radius:3px;
+    }
+    .example-body { padding:20px; }
+    .example-body h3 { font-size:15px;font-weight:600;color:oklch(0.24 0.02 50);margin:0 0 6px; }
+    .example-body p  { font-size:13px;color:oklch(0.45 0.02 50);margin:0 0 10px;line-height:1.5; }
+    .example-spec { font-family:'IBM Plex Mono',monospace;font-size:11px;color:oklch(0.48 0.1 40); }
+    .examples-cta { text-align:center;margin-top:44px; }
+
+    /* ── PRICING ── */
+    .pricing-bg { background: oklch(0.99 0.005 65); }
+    .pricing-grid { display:grid;grid-template-columns:repeat(3,1fr);gap:24px;align-items:start; }
+    .price-card { padding:32px;border-radius:12px;border:1px solid oklch(0.88 0.015 60); }
+    .price-card.dark { background:oklch(0.24 0.02 50);border-color:transparent;box-shadow:0 12px 32px rgba(0,0,0,.18); }
+    .price-card.featured { border:2px solid oklch(0.48 0.1 40);position:relative; }
+    .price-badge {
+      position:absolute;top:-13px;right:24px;
+      background:oklch(0.48 0.1 40);color:oklch(0.98 0.005 60);
+      font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;
+    }
+    .price-name { font-size:16px;font-weight:600;margin-bottom:6px; }
+    .price-amount {
+      font-family:'Newsreader',serif;font-size:34px;font-weight:600;margin-bottom:6px;
+    }
+    .price-amount sub { font-size:15px;font-weight:400;letter-spacing:0; }
+    .price-desc { font-size:13px;margin-bottom:24px; }
+    .price-features { font-size:13.5px;line-height:2.1;margin-bottom:24px; }
+    .price-card:not(.dark) .price-name    { color:oklch(0.24 0.02 50); }
+    .price-card:not(.dark) .price-amount  { color:oklch(0.24 0.02 50); }
+    .price-card:not(.dark) .price-desc    { color:oklch(0.45 0.02 50); }
+    .price-card:not(.dark) .price-features{ color:oklch(0.35 0.02 50); }
+    .price-card.dark .price-name    { color:oklch(0.97 0.01 60); }
+    .price-card.dark .price-amount  { color:oklch(0.97 0.01 60); }
+    .price-card.dark .price-desc    { color:oklch(0.7 0.02 55); }
+    .price-card.dark .price-features{ color:oklch(0.9 0.01 55); }
+    .price-card.dark .price-amount sub { color:oklch(0.7 0.02 55); }
+    .price-card:not(.dark) .price-amount sub { color:oklch(0.45 0.02 50); }
+    .price-muted { color:oklch(0.6 0.02 50) !important; }
+    .btn-plan {
+      display:block;width:100%;text-align:center;
+      padding:12px;font-size:14px;font-weight:600;border-radius:8px;
+      text-decoration:none;border:none;cursor:pointer;transition:opacity .15s;
+    }
+    .btn-plan-outline { border:1.5px solid oklch(0.48 0.1 40);color:oklch(0.48 0.1 40);background:transparent; }
+    .btn-plan-outline:hover { opacity:.8; }
+    .btn-plan-solid  { background:oklch(0.48 0.1 40);color:oklch(0.98 0.005 60); }
+    .btn-plan-solid:hover { opacity:.88;color:oklch(0.98 0.005 60); }
+
+    /* ── FAQ ── */
+    .faq-bg { background: oklch(0.94 0.012 60); }
+    .faq-list { max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:12px; }
+    details.faq-item {
+      background:oklch(0.99 0.005 65);border-radius:10px;
+      padding:18px 22px;border:1px solid oklch(0.88 0.015 60);
+    }
+    details.faq-item summary {
+      font-size:15.5px;font-weight:600;color:oklch(0.24 0.02 50);
+      cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:12px;
+    }
+    details.faq-item summary::-webkit-details-marker { display:none; }
+    details.faq-item summary::after {
+      content:'+';font-size:20px;font-weight:400;color:oklch(0.48 0.1 40);flex-shrink:0;
+    }
+    details.faq-item[open] summary::after { content:'−'; }
+    details.faq-item p {
+      font-size:14px;line-height:1.6;color:oklch(0.45 0.02 50);margin:10px 0 0;
+    }
+
+    /* ── SEO TEXT ── */
+    .seo-bg { background:oklch(0.99 0.005 65);border-top:1px solid oklch(0.88 0.015 60); }
+    .seo-inner { max-width:760px;margin:0 auto; }
+    .seo-inner h2 {
+      font-family:'Newsreader',serif;font-weight:500;font-size:24px;
+      color:oklch(0.24 0.02 50);margin:0 0 16px;
+    }
+    .seo-inner p { font-size:14.5px;line-height:1.75;color:oklch(0.45 0.02 50);margin:0; }
+
+    /* ── FOOTER ── */
+    footer {
+      padding:44px 48px;background:oklch(0.22 0.02 50);
+      display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;
+    }
+    .footer-logo {
+      font-family:'Newsreader',serif;font-size:16px;font-weight:600;
+      color:oklch(0.97 0.01 60);text-decoration:none;
+    }
+    .footer-links {
+      display:flex;gap:20px;flex-wrap:wrap;
+      font-size:12.5px;color:oklch(0.6 0.02 55);
+    }
+    .footer-links a { color:inherit;text-decoration:none;transition:color .15s; }
+    .footer-links a:hover { color:oklch(0.48 0.1 40); }
+    .footer-copy { font-size:12px;color:oklch(0.5 0.02 55); }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 960px) {
+      .nav { padding: 14px 24px; }
+      .hero { padding: 56px 24px 72px; }
+      .hero-inner { grid-template-columns: 1fr; }
+      .mockup { display: none; }
+      .section { padding: 64px 24px; }
+      .features-grid  { grid-template-columns: repeat(2, 1fr); }
+      .examples-grid  { grid-template-columns: repeat(2, 1fr); }
+      .pricing-grid   { grid-template-columns: 1fr; max-width: 420px; margin: 0 auto; }
+    }
+    @media (max-width: 540px) {
+      .nav-links { display: none; }
+      .hero { padding: 48px 20px 60px; }
+      .features-grid  { grid-template-columns: 1fr; }
+      .examples-grid  { grid-template-columns: 1fr; }
+      .section { padding: 48px 20px; }
+      footer { padding: 32px 20px; flex-direction: column; text-align: center; }
+      .footer-links { justify-content: center; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══ NAV ═══ -->
+<nav class="nav">
+  <a href="/landing" class="nav-logo">
+    <div class="nav-logo-icon"></div>
+    HolzBau 3D
+  </a>
+  <ul class="nav-links">
+    <li><a href="#features">Features</a></li>
+    <li><a href="#pricing">Preise</a></li>
+    <li><a href="/ratgeber">Ratgeber</a></li>
+    <li><a href="#faq">FAQ</a></li>
+  </ul>
+  <div class="nav-actions">
+    <a href="/login" class="nav-login">Anmelden</a>
+    <a href="/register" class="btn-primary">Kostenlos starten</a>
+  </div>
+</nav>
+
+<!-- ═══ HERO ═══ -->
+<section class="hero">
+  <div class="hero-deco-1"></div>
+  <div class="hero-deco-2"></div>
+  <div class="hero-deco-3"></div>
+  <div class="hero-inner">
+    <div>
+      <div class="hero-badge">🪵 Browser-basiert · Keine Installation</div>
+      <h1>Holzbau in <em>3D</em>:<br>Holzkonstruktion&nbsp;<span style="position:relative;white-space:nowrap">online<svg style="position:absolute;left:0;bottom:-6px;width:100%;height:10px" viewBox="0 0 100 10" preserveAspectRatio="none"><path d="M0,6 Q50,-2 100,6" stroke="oklch(0.68 0.08 55)" stroke-width="3" fill="none" stroke-linecap="round"/></svg></span> planen</h1>
+      <p class="hero-sub">Mit HolzBau 3D planst und konstruierst du deine Holzkonstruktion direkt im Browser – Pergola, Carport, Dachstuhl oder jede andere Konstruktion aus Holz. Stückliste auf Knopfdruck, präzise 3D-Ansicht, sofort bereit ohne Installation.</p>
+      <div class="hero-ctas">
+        <a href="/register" class="btn-primary" style="padding:14px 26px;font-size:15px;">Kostenlos testen</a>
+        <a href="#pricing" class="btn-outline" style="padding:14px 26px;font-size:15px;">Preise &amp; Abos ansehen</a>
+      </div>
+    </div>
+
+    <div class="mockup">
+      <div class="mockup-bar">
+        <div class="mockup-dot red"></div>
+        <div class="mockup-dot gray"></div>
+        <div class="mockup-dot gray"></div>
+        <span class="mockup-url">holzbau3d.app/editor</span>
+      </div>
+      <div class="mockup-canvas">
+        <div class="beam-scene">
+          <div class="beam beam-h1"></div>
+          <div class="beam beam-h2"></div>
+          <div class="beam beam-v1"></div>
+          <div class="beam beam-v2"></div>
+          <div class="beam beam-diag"></div>
+          <span class="dim-label dim-top">240 cm</span>
+          <span class="dim-label dim-bot">146 cm</span>
+        </div>
+      </div>
+      <div class="mockup-footer">
+        <div class="mockup-list">
+          <div>Balken 100×100 · 2 Stk — 2.92 m</div>
+          <div>Diele 240×18 · 3 Stk — 7.20 m</div>
+          <div>Gesamt: 12.27 lfm</div>
+        </div>
+        <div class="mockup-tools">
+          <div class="tool-btn tool-active">Auswählen</div>
+          <div class="tool-btn tool-inactive">Verschieben</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ FEATURES ═══ -->
+<section id="features" class="section features-bg">
+  <div class="section-inner">
+    <div class="section-header">
+      <div class="section-eyebrow">Features</div>
+      <h2 class="section-h2">Alles was du brauchst</h2>
+      <p class="section-lead">Von der ersten Idee bis zur fertigen Stückliste — HolzBau 3D begleitet dein gesamtes Projekt.</p>
+    </div>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon"><div class="feature-icon-3d"></div></div>
+        <h3>3D Visualisierung</h3>
+        <p>Interaktive 3D-Ansicht deiner Holzkonstruktion direkt im Browser. Drehen, zoomen, inspizieren — ohne Plugin oder Installation.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">
+          <div class="feature-icon-bom">
+            <span style="width:100%"></span>
+            <span style="width:70%"></span>
+            <span style="width:85%"></span>
+          </div>
+        </div>
+        <h3>Stückliste / BOM Export</h3>
+        <p>Automatische Stücklisten-Generierung als CSV. Materialmengen und Längen auf Knopfdruck — bereit für Baumarkt oder Werkstatt.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon"><div class="feature-icon-layers"></div></div>
+        <h3>Gruppen &amp; Ebenen</h3>
+        <p>Organisiere komplexe Konstruktionen mit Gruppen und Ebenen. Behalte den Überblick auch bei anspruchsvollen Projekten.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon"><div class="feature-icon-pdf"></div></div>
+        <h3>Druck &amp; PDF Export</h3>
+        <p>Druckfertige Pläne und PDF-Exporte für Bauantrag oder Werkstatt. Professionelle Ausgabe mit einem Klick.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ BEISPIELE ═══ -->
+<section id="beispiele" class="section examples-bg">
+  <div class="section-inner">
+    <div class="section-header">
+      <div class="section-eyebrow">Beispiele</div>
+      <h2 class="section-h2">Was du bauen kannst</h2>
+      <p class="section-lead">Von der Pergola bis zum Dachstuhl — HolzBau 3D deckt alle gängigen Holzkonstruktionen ab.</p>
+    </div>
+    <div class="examples-grid">
+      <div class="example-card">
+        <div class="example-img" style="background:linear-gradient(135deg,oklch(0.75 0.05 130),oklch(0.85 0.03 130));">
+          <span class="example-dim" style="left:10px;top:10px;color:oklch(0.3 0.02 130);">400 cm</span>
+          <span class="example-dim" style="right:10px;bottom:10px;color:oklch(0.3 0.02 130);">240 cm</span>
+        </div>
+        <div class="example-body">
+          <h3>🌿 Pergola</h3>
+          <p>Klassische Pergola mit Längs- und Querbalken. Ideal für Garten und Terrasse.</p>
+          <div class="example-spec">8 Balken · 3 Stützenpaare · 0,4 m³</div>
+        </div>
+      </div>
+      <div class="example-card">
+        <div class="example-img" style="background:linear-gradient(135deg,oklch(0.7 0.04 40),oklch(0.82 0.03 45));">
+          <span class="example-dim" style="left:10px;top:10px;color:oklch(0.3 0.02 40);">500 cm</span>
+        </div>
+        <div class="example-body">
+          <h3>🚗 Carport</h3>
+          <p>Pultdach-Carport mit schräger Dachkonstruktion und Querstreben.</p>
+          <div class="example-spec">12 Balken · Pultdach · 0,6 m³</div>
+        </div>
+      </div>
+      <div class="example-card">
+        <div class="example-img" style="background:linear-gradient(135deg,oklch(0.68 0.05 55),oklch(0.8 0.03 55));">
+          <span class="example-dim" style="left:10px;top:10px;color:oklch(0.3 0.02 55);">Tür 260 cm</span>
+          <span class="example-dim" style="right:10px;bottom:10px;color:oklch(0.3 0.02 55);">380 cm</span>
+        </div>
+        <div class="example-body">
+          <h3>🏠 Wandkonstruktion</h3>
+          <p>Holzrahmen-Bauweise mit Ständern, Riegeln und Diagonalstreben inkl. Öffnungen.</p>
+          <div class="example-spec">18 Elemente · Ständerbauweise · 0,3 m³</div>
+        </div>
+      </div>
+      <div class="example-card">
+        <div class="example-img" style="background:linear-gradient(135deg,oklch(0.65 0.05 30),oklch(0.78 0.04 35));">
+          <span class="example-dim" style="left:10px;top:10px;color:oklch(0.28 0.02 30);">600 cm</span>
+          <span class="example-dim" style="right:10px;bottom:10px;color:oklch(0.28 0.02 30);">190 cm</span>
+        </div>
+        <div class="example-body">
+          <h3>🏗️ Dachstuhl</h3>
+          <p>Klassischer Kehlbalkendachstuhl mit Hängesäulen und Windrispen.</p>
+          <div class="example-spec">14 Elemente · Kehlbalken · 0,8 m³</div>
+        </div>
+      </div>
+    </div>
+    <div class="examples-cta">
+      <a href="/register" class="btn-primary" style="padding:14px 28px;font-size:15px;">Jetzt kostenlos starten</a>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ PRICING ═══ -->
+<section id="pricing" class="section pricing-bg">
+  <div class="section-inner">
+    <div class="section-header">
+      <div class="section-eyebrow">Preise</div>
+      <h2 class="section-h2">Einfache, faire Preise</h2>
+      <p class="section-lead">Starte kostenlos und upgrade jederzeit. Monatlich kündbar, keine Bindung.</p>
+    </div>
+    <div class="pricing-grid">
+
+      <!-- Free -->
+      <div class="price-card">
+        <div class="price-name">Free</div>
+        <div class="price-amount">0 €</div>
+        <div class="price-desc">Mit Werbung · Ideal zum Ausprobieren</div>
+        <div class="price-features">
+          <div>✓ 3D Visualisierung</div>
+          <div>✓ Bis zu 3 Projekte</div>
+          <div>✓ Stückliste als CSV</div>
+          <div class="price-muted">⚠ Mit Werbebannern</div>
+          <div class="price-muted">✗ PDF Export</div>
+        </div>
+        <a href="/register" class="btn-plan btn-plan-outline">Kostenlos starten</a>
+      </div>
+
+      <!-- Premium monthly -->
+      <div class="price-card dark">
+        <div class="price-name">Premium</div>
+        <div class="price-amount">€9,99<sub>/Monat</sub></div>
+        <div class="price-desc">Werbefrei · Alle Features entsperrt</div>
+        <div class="price-features">
+          <div>✓ Unbegrenzte Projekte</div>
+          <div>✓ Stückliste als CSV &amp; PDF</div>
+          <div>✓ <strong>Vollständig werbefrei</strong></div>
+          <div>✓ Gruppen &amp; Ebenen</div>
+          <div>✓ Prioritäts-Support</div>
+        </div>
+        <a href="/subscribe" class="btn-plan btn-plan-solid">Monatlich starten</a>
+      </div>
+
+      <!-- Premium annual -->
+      <div class="price-card featured">
+        <div class="price-badge">Meistgewählt</div>
+        <div class="price-name">Premium Jährlich</div>
+        <div class="price-amount">€99,99<sub>/Jahr</sub></div>
+        <div class="price-desc">🎉 Spare 19,89 € — 2 Monate gratis</div>
+        <div class="price-features">
+          <div>✓ Unbegrenzte Projekte</div>
+          <div>✓ Stückliste als CSV &amp; PDF</div>
+          <div>✓ <strong>Vollständig werbefrei</strong></div>
+          <div>✓ Gruppen &amp; Ebenen</div>
+          <div>✓ Prioritäts-Support</div>
+        </div>
+        <a href="/subscribe" class="btn-plan btn-plan-solid">Jährlich starten</a>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ═══ FAQ ═══ -->
+<section id="faq" class="section faq-bg">
+  <div class="section-inner">
+    <div class="section-header" style="margin-bottom:48px;">
+      <div class="section-eyebrow">FAQ</div>
+      <h2 class="section-h2" style="margin-bottom:0;">Häufige Fragen</h2>
+    </div>
+    <div class="faq-list">
+      <details class="faq-item" open>
+        <summary>Ist HolzBau 3D kostenlos?</summary>
+        <p>Ja. Du kannst Holzkonstruktionen kostenlos in 3D planen. Premium schaltet zusätzlich PDF-Export, Säge-Tool, Schnittplan-Optimierung und unbegrenzte Projekte frei.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Kann ich eine Pergola selbst planen?</summary>
+        <p>Ja. Mit HolzBau 3D planst du Pergola, Carport, Dachstuhl, Terrassenüberdachung und beliebige Holzkonstruktionen selbst – inklusive Stückliste und Schnittplan.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Muss ich etwas installieren?</summary>
+        <p>Nein. HolzBau 3D läuft komplett im Browser – ohne Installation, auf PC, Tablet und Smartphone.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Welche Konstruktionen kann ich bauen?</summary>
+        <p>Vom Carport über die Pergola bis zum kompletten Dachstuhl: Du setzt Balken, Pfosten, Pfetten und Sparren maßstabsgetreu in 3D zusammen und drehst die Konstruktion frei im Raum.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Bekomme ich eine Stückliste?</summary>
+        <p>Ja. HolzBau 3D erzeugt automatisch eine Stückliste mit allen Balken, Längen und Querschnitten. Als Premium-Nutzer exportierst du sie als CSV und PDF.</p>
+      </details>
+      <details class="faq-item">
+        <summary>In welchen Sprachen ist HolzBau 3D verfügbar?</summary>
+        <p>HolzBau 3D ist aktuell auf Deutsch verfügbar. Weitere Sprachen sind in Planung.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Kann ich Premium kündigen?</summary>
+        <p>Ja, jederzeit. Du kündigst dein Premium-Abo mit einem Klick im Bereich „Mein Abonnement". Es gibt keine Mindestlaufzeit und keine Kündigungsfrist.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Bekomme ich mein Geld zurück?</summary>
+        <p>Nein, bereits gezahlte Beträge werden nicht erstattet. Stattdessen behältst du nach der Kündigung deinen vollen Premium-Zugang bis zum Ende des bezahlten Zeitraums.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SEO TEXT ═══ -->
+<div class="section seo-bg" style="padding:64px 48px;">
+  <div class="section-inner">
+    <div class="seo-inner">
+      <h2>Holzkonstruktionen online in 3D planen</h2>
+      <p>HolzBau 3D ist ein kostenloses Online-Tool, mit dem du Holzkonstruktionen direkt im Browser planst – ganz ohne Installation. Ob Pergola, Carport, Terrassenüberdachung oder kompletter Dachstuhl: Du setzt Balken, Pfosten, Pfetten und Sparren maßstabsgetreu in 3D zusammen und betrachtest deinen Entwurf sofort von allen Seiten. Die automatische Stückliste berechnet Längen und Mengen auf Knopfdruck — bereit für den Baumarkt oder die Werkstatt. Premium-Nutzer erhalten zusätzlich PDF-Export, Druckpläne und das Säge-Tool für die Schnittplanung.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ FOOTER ═══ -->
+<footer>
+  <a href="/landing" class="footer-logo">HolzBau 3D</a>
+  <div class="footer-links">
+    <a href="#features">Features</a>
+    <a href="#pricing">Preise</a>
+    <a href="/ratgeber">Ratgeber</a>
+    <a href="/faq">FAQ</a>
+    <a href="/impressum">Impressum</a>
+    <a href="/datenschutz">Datenschutz</a>
+  </div>
+  <div class="footer-copy">&copy; 2026 HolzBau 3D</div>
+</footer>
+
+</body>
+</html>
