@@ -1271,12 +1271,8 @@ body {
 </div>
 
 <div id="ctx-menu" style="display:none;position:fixed;z-index:500">
-  <div style="padding:6px 12px;font-size:10px;color:var(--text-3);border-bottom:1px solid var(--border);font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Horizontal drehen (auf dem Boden)</div>
-  <div class="ctx-item" onclick="rotateHorizontal(-90)">⟲ 90° nach links</div>
-  <div class="ctx-item" onclick="rotateHorizontal(90)">⟳ 90° nach rechts</div>
-  <div class="ctx-item" onclick="rotateHorizontal(180)">↻ 180° umdrehen</div>
-  <div style="border-top:1px solid var(--border);margin:2px 0"></div>
-  <div style="padding:6px 12px;font-size:10px;color:var(--text-3);border-bottom:1px solid var(--border);font-weight:700;text-transform:uppercase;letter-spacing:0.5px">In die Höhe / vertikal</div>
+  <div style="padding:6px 12px;font-size:10px;color:var(--text-3);border-bottom:1px solid var(--border);font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Drehen</div>
+  <div class="ctx-item" onclick="rotateHorizontal()">⟲ 90° flach drehen (quer)</div>
   <div class="ctx-item" onclick="standUpright()">⬆ Aufrichten (senkrecht stellen)</div>
   <div class="ctx-item" onclick="layFlat()">⬇ Flach hinlegen</div>
   <div style="border-top:1px solid var(--border);margin:2px 0"></div>
@@ -3013,9 +3009,23 @@ function switchAxis(newAxis) {
 }
 
 // Intuitive rotation wrappers used by the right-click menu.
-// Horizontal = spin around the vertical (Y) axis (turning on the floor).
-// Aufrichten/Hinlegen = switch the object's main orientation vertical<->horizontal.
-function rotateHorizontal(deg) { rotateSelected('y', deg); }
+// A flat 90° turn is an AXIS change (length X<->Z): it stays flat on the
+// ground and pivots around the object's origin corner (b.x/b.z = "Punkt 0").
+// (rotateSelected applied a Euler angle + dimension swap, which tilted/shifted
+//  the beam instead of turning it cleanly — hence this dedicated path.)
+function rotateHorizontal() {
+  closeCtxMenu();
+  const id = [...selectedIds][0] ?? null;
+  const b = beams.find(x => x.id === id);
+  if (!b) return;
+  if (b.axis === 'x') { switchAxis('z'); return; }
+  if (b.axis === 'z') { switchAxis('x'); return; }
+  // Already upright: turn the footprint 90° around the vertical axis
+  pushHistory();
+  const t = b.B; b.B = b.H; b.H = t;
+  rebuildMesh(b);
+  updateUI();
+}
 function standUpright() { switchAxis('y'); }
 function layFlat() {
   closeCtxMenu();
