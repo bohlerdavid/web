@@ -768,6 +768,30 @@
   </div>
 </section>
 
+<!-- ═══ RATGEBER TEASER ═══ -->
+{% if guides %}
+<section class="section examples-bg">
+  <div class="section-inner">
+    <div class="section-header">
+      <div class="section-eyebrow">Ratgeber</div>
+      <h2 class="section-h2">{{ guides_heading|default('Ratgeber & Anleitungen') }}</h2>
+      <p class="section-lead">{{ guides_lead }}</p>
+    </div>
+    <div class="examples-grid">
+      {% for g in guides %}
+      <a class="example-card" href="{{ g.url }}" style="text-decoration:none;color:inherit;padding:20px;display:block;">
+        <div style="font-size:22px;margin-bottom:8px;">{{ g.icon }}</div>
+        <h3 style="font-size:14.5px;font-weight:600;color:oklch(0.24 0.02 50);margin:0;line-height:1.4;">{{ g.title }}</h3>
+      </a>
+      {% endfor %}
+    </div>
+    <div class="examples-cta">
+      <a href="{{ guides_url|default('/ratgeber') }}" class="btn-outline" style="padding:12px 24px;font-size:14px;">{{ guides_cta|default('Alle Ratgeber ansehen') }}</a>
+    </div>
+  </div>
+</section>
+{% endif %}
+
 <!-- ═══ SEO TEXT ═══ -->
 <div class="section seo-bg" style="padding:64px 48px;">
   <div class="section-inner">

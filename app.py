@@ -528,15 +528,15 @@ SITE = 'https://holzbau3d.app'
 
 SEO_META = {
     'de': {
-        'title': 'Holzbau 3D – Holzkonstruktion online planen & konstruieren | Gratis',
-        'desc': 'Holzbau 3D: Holzkonstruktionen kostenlos online planen und konstruieren – Pergola, Carport, Dachstuhl & mehr, direkt im Browser. Konstruktion aus Holz in 3D, mit Stückliste, Schnittplan & PDF-Export. Jetzt gratis starten.',
-        'keywords': 'Holzbau, Holzbau 3D, Holzkonstruktion, Holz Konstruktion, Holzbau Konstruktion, Konstruktion aus Holz, Konstruktion Holz, Holzkonstruktion 3D, Holzkonstruktion planen, Holzkonstruktion online, Holz konstruieren, Holzbau planen, Holzbau Software, Holzbau Programm, Holzbau online, 3D Holzbau, Pergola planen, Carport planen, Dachstuhl planen, Stückliste, Schnittplan',
+        'title': 'Holzbau 3D – Holzkonstruktion planen, 3D Holzdesign | Gratis',
+        'desc': 'Holzbau 3D – das kostenlose Konstruktionsprogramm & 3D-Holzdesign-Tool: Holzkonstruktionen online planen – Pergola, Carport, Dachstuhl & mehr direkt im Browser, mit Stückliste, Schnittplan & PDF-Export. Jetzt gratis starten.',
+        'keywords': 'Holzbau, Holzbau 3D, 3D Holzdesign, Holzdesign 3D, Holzkonstruktion, Holz Konstruktion, Holzbau Konstruktion, Konstruktion aus Holz, Holzkonstruktion 3D, Holzkonstruktion planen, Holzkonstruktion planen kostenlos, Holzkonstruktion online, Holz konstruieren, Holzbau planen, Holzbau Software kostenlos, Holzbausoftware kostenlos, Konstruktionsprogramm Holzbau kostenlos, 3D Holz Planer kostenlos, Holzbau Programm, 3D Holzbau, Pergola planen, Carport planen, Dachstuhl planen, Stückliste, Schnittplan',
         'og_title': 'Holzbau 3D – Holzkonstruktion in 3D planen & konstruieren',
         'og_desc': 'Holzkonstruktionen online planen und konstruieren – Pergola, Carport, Dachstuhl & mehr. Gratis im Browser, mit Stückliste und PDF-Export.',
         'og_locale': 'de_DE',
     },
     'en': {
-        'title': 'Wood Construction 3D – Plan & Design Timber Structures Online | Free',
+        'title': 'Wood Construction 3D – Plan Timber Structures & 3D Wood Design | Free',
         'desc': 'HolzBau 3D: plan and design wood constructions online for free – pergola, carport, roof truss & more, right in your browser. Timber construction in 3D, with parts list, cutting plan & PDF export. Start free.',
         'keywords': 'wood construction, wood construction 3D, timber construction, timber construction 3D, plan wood construction, design timber structure, wood construction software, wood construction online, timber framing, 3D wood design, pergola, carport, roof truss, online wood planner, parts list, cutting plan',
         'og_title': 'Wood Construction 3D – Plan & design timber structures online',
@@ -616,8 +616,25 @@ def _seo_context(lang):
             {'@type': 'Offer', 'price': '99.99', 'priceCurrency': 'EUR', 'name': 'Premium Yearly'},
         ],
     }
+    # Top guides for the homepage teaser (internal linking → helps indexing/ranking)
+    guides = [{
+        'title': (_blog.ARTICLES[s].get(lang) or _blog.ARTICLES[s]['de'])['title'],
+        'url': _blog.article_url(s, lang),
+        'icon': _blog.ARTICLES[s].get('icon', '📄'),
+    } for s in _blog.ordered_slugs()[:6]]
+    guides_cta = {'de': 'Alle Ratgeber ansehen', 'en': 'View all guides', 'fr': 'Voir tous les guides'}
+    guides_lead = {
+        'de': 'Praxis-Anleitungen rund um Holzkonstruktionen – von der Pergola bis zum Dachstuhl.',
+        'en': 'Hands-on guides for wood constructions – from pergola to roof truss.',
+        'fr': 'Guides pratiques pour les constructions bois – de la pergola à la charpente.',
+    }
     return {
         'seo': m, 'seo_lang': lang,
+        'guides': guides,
+        'guides_url': _blog.GUIDES_PATH[lang],
+        'guides_heading': _blog.GUIDES_TITLE[lang].split('–')[0].strip(),
+        'guides_lead': guides_lead[lang],
+        'guides_cta': guides_cta[lang],
         'canonical': SITE + (path or '/'),
         'alternates': [
             ('de', SITE + '/'), ('en', SITE + '/en'), ('fr', SITE + '/fr'),
@@ -698,6 +715,17 @@ def nutzungsbedingungen():
 # ---------------------------------------------------------------------------
 # Auth routes
 # ---------------------------------------------------------------------------
+
+@app.before_request
+def _redirect_to_https():
+    # Behind the Railway proxy the real scheme is in X-Forwarded-Proto.
+    # Redirect plain-http GET/HEAD requests to https (301) for SEO canonicalisation.
+    if request.method in ('GET', 'HEAD') and request.headers.get('X-Forwarded-Proto') == 'http':
+        target = 'https://' + request.host + request.full_path
+        if target.endswith('?'):
+            target = target[:-1]
+        return redirect(target, code=301)
+
 
 @app.route('/')
 def index():
