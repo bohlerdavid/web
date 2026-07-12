@@ -425,6 +425,31 @@ body {
 #controls-help .ch-row b { color: var(--accent); flex: 0 0 92px; font-weight: 600; }
 #controls-help .ch-row span { color: var(--text-2); flex: 1; }
 
+/* ── ONBOARDING TOUR ── */
+#tour-overlay { position: fixed; inset: 0; z-index: 100000; display: none; }
+#tour-spot {
+  position: fixed; z-index: 100001; display: none; border-radius: 8px;
+  box-shadow: 0 0 0 9999px rgba(10,12,18,.62); border: 2px solid #4e8cdd;
+  pointer-events: none; transition: top .2s, left .2s, width .2s, height .2s;
+}
+#tour-pop {
+  position: fixed; z-index: 100002; display: none; width: 300px; max-width: 92vw;
+  background: #161b27; color: #e6ebf5; border: 1px solid #2a3550; border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.5); padding: 16px 16px 12px;
+  font-family: 'Inter','Segoe UI',sans-serif;
+}
+#tour-pop h4 { margin: 0 0 8px; font-size: 15px; color: #fff; padding-right: 18px; }
+#tour-pop p  { margin: 0 0 12px; font-size: 13px; line-height: 1.55; color: #b9c2d6; }
+#tour-pop .tour-x { position: absolute; top: 10px; right: 12px; cursor: pointer; color: #7f8aa3; font-size: 14px; line-height: 1; }
+#tour-pop .tour-x:hover { color: #fff; }
+#tour-dont { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #8b96ad; margin: 0 0 12px; cursor: pointer; user-select: none; }
+#tour-dont input { accent-color: #4e8cdd; }
+#tour-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+#tour-foot .tour-step { margin-right: auto; font-size: 11px; color: #7f8aa3; }
+#tour-foot button { border: none; border-radius: 7px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
+.tour-btn-primary { background: #4e8cdd; color: #fff; }
+.tour-btn-ghost { background: transparent; color: #9fb0d0; border: 1px solid #2a3550 !important; }
+
 /* ── COLOR DOT ── */
 .color-dot {
   display: inline-block;
@@ -1194,6 +1219,7 @@ body {
       <button class="view-btn" title="Isometrisch" onclick="setView('iso')">⬡</button>
       <button class="view-btn" title="Zoom Reset" onclick="resetCamera()">⊡</button>
       <button class="view-btn" id="btn-help" title="Steuerung ein/aus" onclick="toggleHelp()">⌨</button>
+      <button class="view-btn" id="btn-tour" title="Tutorial starten" onclick="hbStartTour && hbStartTour()">❔</button>
     </div>
     <div id="tooltip"></div>
     <div id="controls-help">
@@ -1802,19 +1828,20 @@ function drawFloorPreview(s1, s2, s3, s4) {
   const drawW = svgW - padL - padR;
   const drawH = svgH - padT - padB;
 
-  // pts: A=(0,0) front-left, B=(s1,0) front-right, C=(s1,s4) back-right, D=(0,s2) back-left
+  // pts: A=(0,0) front-left, B=(s1,0) front-right, C=(s1,s3) back-right, D=(0,s2) back-left
+  // (S3 = right wall depth, perpendicular; S4 is the derived back-wall LENGTH, not a coordinate)
   const maxX = g.s1;
-  const maxY = Math.max(g.s2, g.s4);
+  const maxY = Math.max(g.s2, g.s3);
   const sc = Math.min(drawW / maxX, drawH / maxY);
 
   // SVG x = left→right, SVG y = top→bottom (so flip Y: front=bottom, back=top)
   const px = x => padL + x * sc;
   const py = y => svgH - padB - y * sc;
 
-  // corner pixels
+  // corner pixels — C uses s3 (right-wall depth), matching the 3D outline
   const A = [px(0),     py(0)];
   const B = [px(g.s1),  py(0)];
-  const C = [px(g.s1),  py(g.s4)];
+  const C = [px(g.s1),  py(g.s3)];
   const D = [px(0),     py(g.s2)];
 
   const poly = [A,B,C,D].map(p=>p.join(',')).join(' ');
@@ -4827,6 +4854,112 @@ try {
 } catch(e) {
   console.error('Init error:', e);
 }
+
+// ══════════════════════════════════════════════
+// ONBOARDING TOUR (DE / EN / FR)
+// ══════════════════════════════════════════════
+(function(){
+  var SEL = [null, '#tab-balken', '#snap-size', '#view-controls', '#btn-help', '#right-panel', '#tab-list', null];
+  var TXT = {
+    de:{ next:'Weiter', prev:'Zurück', skip:'Überspringen', done:'Fertig', start:'Tour starten', no:'Kein Tutorial', dont:'Nicht mehr anzeigen', of:'von', steps:[
+      {t:'Willkommen bei HolzBau 3D 👋', b:'Diese kurze Tour zeigt dir in ~30 Sekunden die wichtigsten Funktionen.'},
+      {t:'Bauteile hinzufügen', b:'Im Reiter „Balken" legst du Maße, Holzart und Ausrichtung fest und fügst Balken zur Konstruktion hinzu.'},
+      {t:'Raster & Fang', b:'Hier stellst du die Rastergröße (in mm) ein. Objekte rasten beim Bewegen auf dieses Maß ein.'},
+      {t:'Ansichten', b:'Wechsle zwischen Oben, Vorne, Seite und 3D – oder setze den Zoom zurück.'},
+      {t:'Bewegen & Drehen', b:'Objekt ziehen = bewegen, Alt+Ziehen = Höhe, Rechtsklick = drehen. Dieser Knopf zeigt jederzeit alle Steuerungen.'},
+      {t:'Gruppen', b:'Organisiere Bauteile in Gruppen: ein-/ausblenden, umbenennen oder eine ganze Gruppe löschen.'},
+      {t:'Stückliste & Export', b:'Automatische Stückliste, Export und Drucken/PDF findest du hier oben.'},
+      {t:'Fertig! 🎉', b:'Du kannst diese Tour jederzeit über den ❔-Knopf oben rechts neu starten. Viel Erfolg beim Planen!'}
+    ]},
+    en:{ next:'Next', prev:'Back', skip:'Skip', done:'Done', start:'Start tour', no:'No tutorial', dont:'Don\'t show again', of:'of', steps:[
+      {t:'Welcome to HolzBau 3D 👋', b:'This short tour shows you the most important features in ~30 seconds.'},
+      {t:'Add components', b:'In the “Balken” (beams) tab you set dimensions, wood type and orientation, then add beams to your structure.'},
+      {t:'Grid & snapping', b:'Set the grid size (in mm) here. Objects snap to this step while you move them.'},
+      {t:'Views', b:'Switch between top, front, side and 3D – or reset the zoom.'},
+      {t:'Move & rotate', b:'Drag an object = move, Alt+drag = height, right-click = rotate. This button always shows all controls.'},
+      {t:'Groups', b:'Organize components into groups: show/hide, rename or delete an entire group.'},
+      {t:'Parts list & export', b:'Automatic parts list, export and print/PDF are up here.'},
+      {t:'All set! 🎉', b:'You can restart this tour anytime via the ❔ button at the top right. Happy building!'}
+    ]},
+    fr:{ next:'Suivant', prev:'Retour', skip:'Passer', done:'Terminé', start:'Démarrer', no:'Pas de tutoriel', dont:'Ne plus afficher', of:'sur', steps:[
+      {t:'Bienvenue sur HolzBau 3D 👋', b:'Cette courte visite présente les fonctions essentielles en ~30 secondes.'},
+      {t:'Ajouter des éléments', b:'Dans l’onglet « Balken » (poutres), définissez dimensions, essence et orientation, puis ajoutez des poutres.'},
+      {t:'Grille & aimantation', b:'Réglez ici la taille de la grille (en mm). Les objets s’y aimantent lors du déplacement.'},
+      {t:'Vues', b:'Basculez entre dessus, face, côté et 3D – ou réinitialisez le zoom.'},
+      {t:'Déplacer & tourner', b:'Glisser = déplacer, Alt+glisser = hauteur, clic droit = tourner. Ce bouton affiche toutes les commandes.'},
+      {t:'Groupes', b:'Organisez les éléments en groupes : afficher/masquer, renommer ou supprimer un groupe entier.'},
+      {t:'Liste & export', b:'Liste de pièces automatique, export et impression/PDF se trouvent ici en haut.'},
+      {t:'Terminé ! 🎉', b:'Vous pouvez relancer la visite via le bouton ❔ en haut à droite. Bonne conception !'}
+    ]}
+  };
+  var KEY='hb_tour_done';
+  function lang(){ var l=(window.hbLang||document.documentElement.getAttribute('lang')||'de').slice(0,2).toLowerCase(); return TXT[l]?l:'de'; }
+  var ov, spot, pop, dontChk, i=0, L;
+  function build(){
+    if(ov) return;
+    ov=document.createElement('div'); ov.id='tour-overlay';
+    spot=document.createElement('div'); spot.id='tour-spot';
+    pop=document.createElement('div'); pop.id='tour-pop';
+    document.body.appendChild(ov); document.body.appendChild(spot); document.body.appendChild(pop);
+  }
+  function persist(){ try{ localStorage.setItem(KEY,'1'); }catch(e){} }
+  function close(force){
+    if(pop) pop.style.display='none';
+    if(spot) spot.style.display='none';
+    if(ov) ov.style.display='none';
+    if(force || (dontChk && dontChk.checked)) persist();
+  }
+  function positionTo(sel){
+    var el = sel ? document.querySelector(sel) : null;
+    var r = el && el.getBoundingClientRect();
+    if(!r || r.width===0 || r.height===0){
+      spot.style.display='block'; spot.style.border='none';
+      spot.style.left=(innerWidth/2)+'px'; spot.style.top=(innerHeight/2)+'px'; spot.style.width='0px'; spot.style.height='0px';
+      pop.style.left=Math.max(10,(innerWidth-pop.offsetWidth)/2)+'px';
+      pop.style.top =Math.max(10,(innerHeight-pop.offsetHeight)/2)+'px';
+      return;
+    }
+    var pad=6;
+    spot.style.display='block'; spot.style.border='2px solid #4e8cdd';
+    spot.style.left=(r.left-pad)+'px'; spot.style.top=(r.top-pad)+'px';
+    spot.style.width=(r.width+pad*2)+'px'; spot.style.height=(r.height+pad*2)+'px';
+    var pw=pop.offsetWidth, ph=pop.offsetHeight, gap=12, left, top;
+    left=Math.min(Math.max(10,r.left), innerWidth-pw-10);
+    if(r.bottom+gap+ph<=innerHeight-6) top=r.bottom+gap;
+    else if(r.top-gap-ph>=6) top=r.top-gap-ph;
+    else { top=Math.max(10,(innerHeight-ph)/2); left=Math.min(Math.max(10,r.right+gap),innerWidth-pw-10); }
+    pop.style.left=left+'px'; pop.style.top=top+'px';
+  }
+  function render(){
+    var d=TXT[L], last=i===d.steps.length-1, first=i===0, btns;
+    if(first) btns='<button class="tour-btn-ghost" data-a="no">'+d.no+'</button><button class="tour-btn-primary" data-a="next">'+d.start+'</button>';
+    else if(last) btns='<button class="tour-btn-ghost" data-a="prev">'+d.prev+'</button><button class="tour-btn-primary" data-a="done">'+d.done+'</button>';
+    else btns='<button class="tour-btn-ghost" data-a="skip">'+d.skip+'</button><button class="tour-btn-ghost" data-a="prev">'+d.prev+'</button><button class="tour-btn-primary" data-a="next">'+d.next+'</button>';
+    pop.innerHTML='<span class="tour-x" data-a="skip">✕</span><h4></h4><p></p>'+
+      '<label id="tour-dont"><input type="checkbox"> '+d.dont+'</label>'+
+      '<div id="tour-foot"><span class="tour-step">'+(i+1)+' '+d.of+' '+d.steps.length+'</span>'+btns+'</div>';
+    pop.querySelector('h4').textContent=d.steps[i].t;
+    pop.querySelector('p').textContent=d.steps[i].b;
+    dontChk=pop.querySelector('#tour-dont input');
+    Array.prototype.forEach.call(pop.querySelectorAll('[data-a]'), function(b){
+      b.addEventListener('click', function(){ act(b.getAttribute('data-a')); });
+    });
+    ov.style.display='block'; pop.style.display='block';
+    positionTo(SEL[i]);
+  }
+  function act(a){
+    if(a==='no'||a==='done'){ close(true); return; }
+    if(a==='skip'){ close(false); return; }
+    if(a==='prev'&&i>0){ i--; render(); return; }
+    if(a==='next'&&i<TXT[L].steps.length-1){ i++; render(); return; }
+  }
+  function start(){ build(); L=lang(); i=0; render(); }
+  window.hbStartTour=start;
+  window.addEventListener('resize', function(){ if(ov&&ov.style.display==='block') positionTo(SEL[i]); });
+  window.addEventListener('load', function(){
+    try{ if(!localStorage.getItem(KEY)) setTimeout(start,900); }catch(e){ setTimeout(start,900); }
+  });
+})();
 </script>
 
 <script>
