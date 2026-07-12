@@ -1389,19 +1389,20 @@ gridHelper.position.y = 0;
 scene.add(gridHelper);
 
 // Rebuild the ground grid so its cell size matches the Rastergröße (snap size).
+// The covered AREA stays constant (~20 m) at every Rastergröße — only the cell
+// density changes — so the grid never shrinks below the Grundriss.
 function rebuildGrid() {
   const input = document.getElementById('snap-size');
   const snapSize = Math.max(1, parseFloat(input && input.value) || 10);
-  const TARGET_EXTENT = 20000;   // aim for ~20 m of coverage
-  const MAX_DIVISIONS = 600;     // keep it readable (still a single draw call)
-  let divisions = Math.round(TARGET_EXTENT / snapSize);
+  const EXTENT = 20000;         // fixed ground size (~20 m), independent of snap size
+  const MAX_DIVISIONS = 2000;   // safety cap for extremely fine grids (still one draw call)
+  let divisions = Math.round(EXTENT / snapSize);
   if (divisions > MAX_DIVISIONS) divisions = MAX_DIVISIONS;
   if (divisions < 1) divisions = 1;
-  const extent = divisions * snapSize; // grid cells are exactly snapSize
   scene.remove(gridHelper);
   gridHelper.geometry.dispose();
   gridHelper.material.dispose();
-  gridHelper = new THREE.GridHelper(extent, divisions, 0x999999, 0xbbbbbb);
+  gridHelper = new THREE.GridHelper(EXTENT, divisions, 0x999999, 0xbbbbbb);
   gridHelper.position.y = 0;
   scene.add(gridHelper);
 }
