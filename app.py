@@ -1,5 +1,6 @@
 import os
 import json
+import html
 import secrets
 import smtplib
 import time
@@ -160,6 +161,10 @@ SCHEMA_MIGRATIONS = [
     "ALTER TABLE subscriptions ADD COLUMN sub_started DATETIME NULL",
     "ALTER TABLE app_users ADD COLUMN lang VARCHAR(5) NOT NULL DEFAULT 'de'",
     "ALTER TABLE subscriptions ADD COLUMN reminder_stage VARCHAR(4) NOT NULL DEFAULT ''",
+    # Weekly Premium-upsell mailing: opt-out flag, unsubscribe token, throttle timestamp
+    "ALTER TABLE app_users ADD COLUMN marketing_opt_out TINYINT NOT NULL DEFAULT 0",
+    "ALTER TABLE app_users ADD COLUMN unsub_token VARCHAR(64) NULL",
+    "ALTER TABLE app_users ADD COLUMN last_upsell_sent DATETIME NULL",
 ]
 
 
@@ -1879,6 +1884,78 @@ def cron_subscription_reminders():
     return jsonify(ok=True, synced=synced, reminders=log)
 
 
+@app.route('/cron/premium-upsell', methods=['GET', 'POST'])
+def cron_premium_upsell():
+    """Weekly upsell email to all non-premium users (trigger e.g. every Sunday ~18:00).
+    Secured via CRON_SECRET (?key= or X-Cron-Key header). Throttled to once per 5 days
+    per user, so an accidental double-trigger on the same day won't double-send."""
+    secret = os.environ.get('CRON_SECRET', '')
+    given = request.args.get('key') or request.headers.get('X-Cron-Key', '')
+    if not secret or given != secret:
+        abort(403)
+    base_url = os.environ.get('BASE_URL', 'https://holzbau3d.app').rstrip('/')
+    subscribe_url = base_url + '/subscribe'
+    rows = query_db(
+        """SELECT u.id, u.email, u.full_name, u.username, u.unsub_token
+             FROM app_users u
+             LEFT JOIN subscriptions s ON s.user_id = u.id
+            WHERE u.email IS NOT NULL AND u.email <> ''
+              AND u.email_verified = 1
+              AND u.marketing_opt_out = 0
+              AND NOT (
+                    COALESCE(s.plan, '') = 'premium' AND (
+                      s.status = 'active'
+                      OR (s.status = 'cancelled' AND (s.current_period_end IS NULL OR s.current_period_end > NOW()))
+                    )
+                  )
+              AND (u.last_upsell_sent IS NULL OR u.last_upsell_sent < DATE_SUB(NOW(), INTERVAL 5 DAY))""",
+        [])
+    sent = 0
+    failed = 0
+    for r in rows:
+        try:
+            token = r.get('unsub_token')
+            if not token:
+                token = secrets.token_urlsafe(32)
+                execute_db('UPDATE app_users SET unsub_token=? WHERE id=?', [token, r['id']])
+            unsub_url = base_url + '/abmelden?token=' + token
+            name = r.get('full_name') or r.get('username') or ''
+            body = _email_upsell_html(name, subscribe_url, unsub_url)
+            if send_email(r['email'], 'Hol mehr aus deinen Holzprojekten – HolzBau 3D Premium', body):
+                execute_db('UPDATE app_users SET last_upsell_sent=NOW() WHERE id=?', [r['id']])
+                sent += 1
+            else:
+                failed += 1
+        except Exception as e:
+            failed += 1
+            logger.error('premium-upsell send failed for user %s: %s', r.get('id'), type(e).__name__)
+    logger.info('premium-upsell: %s sent, %s failed, %s candidates', sent, failed, len(rows))
+    return jsonify(ok=True, candidates=len(rows), sent=sent, failed=failed)
+
+
+@app.route('/abmelden')
+def unsubscribe_marketing():
+    """One-click unsubscribe from marketing emails (DSGVO)."""
+    token = (request.args.get('token') or '').strip()
+    done = False
+    if token:
+        u = query_db('SELECT id FROM app_users WHERE unsub_token=?', [token], one=True)
+        if u:
+            execute_db('UPDATE app_users SET marketing_opt_out=1 WHERE id=?', [u['id']])
+            done = True
+    msg = ('Du wurdest erfolgreich abgemeldet und erhältst keine Angebots-E-Mails mehr.'
+           if done else
+           'Abmeldelink ungültig oder abgelaufen. Bitte kontaktiere uns über das Impressum.')
+    page = f'''<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Abmeldung – HolzBau 3D</title>
+<style>body{{font-family:'Segoe UI',Arial,sans-serif;background:#faf6f0;color:#3a2a1a;display:flex;min-height:100vh;margin:0;align-items:center;justify-content:center;padding:20px}}
+.card{{background:#fff;border:1px solid #e3d6c4;border-radius:14px;padding:36px 40px;max-width:460px;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,.08)}}
+h1{{font-size:20px;margin:0 0 12px}}p{{color:#5a4a38;line-height:1.6;margin:0 0 20px}}
+a{{display:inline-block;background:#9a5b2c;color:#fff;text-decoration:none;padding:11px 24px;border-radius:8px;font-weight:600}}</style>
+</head><body><div class="card"><h1>HolzBau 3D</h1><p>{html.escape(msg)}</p><a href="https://holzbau3d.app/">Zur Startseite</a></div></body></html>'''
+    return page, (200 if done else 404)
+
+
 def _email_premium_html(display_name, amount_txt, interval, invoice_url, lang='de'):
     T = EMAIL_I18N.get(_norm_lang(lang), EMAIL_I18N['de'])
     interval_txt = T['p_plan_y'] if interval == 'yearly' else T['p_plan_m']
@@ -1899,6 +1976,68 @@ def _email_premium_html(display_name, amount_txt, interval, invoice_url, lang='d
     </td></tr></table>
     {invoice_block}
     <p style="margin:0;color:#9ca3af;font-size:.8rem;line-height:1.6;">{T['p_manage']}</p>''')
+
+
+def _email_upsell_html(display_name, subscribe_url, unsub_url):
+    """Weekly Premium-upsell email for non-premium users (approved 'Warmes Handwerk' design)."""
+    name = html.escape(display_name or '').strip() or 'Holzbauer'
+    return f'''<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f0e9df;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#f0e9df;font-size:1px;line-height:1px;">Mehr aus deinen Holzprojekten: werbefrei, PDF-Export, Säge-Tool &amp; unbegrenzte Projekte – 2 Monate gratis im Jahresabo.</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0e9df;padding:24px 12px;"><tr><td align="center">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:600px;background:#fbf7f1;border:1px solid #e3d6c4;border-radius:14px;overflow:hidden;font-family:Georgia,'Times New Roman',serif;">
+      <tr><td style="height:5px;background:#9a5b2c;font-size:0;line-height:0;">&nbsp;</td></tr>
+      <tr><td style="padding:26px 40px 8px;">
+        <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+          <td style="width:30px;vertical-align:middle;"><div style="width:26px;height:26px;background:#9a5b2c;border-radius:6px;"></div></td>
+          <td style="padding-left:10px;vertical-align:middle;font-family:Georgia,serif;font-size:20px;font-weight:bold;color:#3a2a1a;">HolzBau&nbsp;3D</td>
+        </tr></table>
+      </td></tr>
+      <tr><td style="padding:14px 40px 4px;">
+        <h1 style="margin:0;font-family:Georgia,serif;font-weight:normal;font-size:30px;line-height:1.2;color:#2a1c0e;">Hallo {name}, hol das Maximum<br>aus deinen Holzprojekten.</h1>
+      </td></tr>
+      <tr><td style="padding:14px 40px 6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.65;color:#5a4a38;">
+        Du planst deine Konstruktionen schon kostenlos in 3D – stark! Mit <strong style="color:#9a5b2c;">HolzBau&nbsp;3D&nbsp;Premium</strong> arbeitest du schneller, sauberer und ganz ohne Werbung. Alles freigeschaltet, für ein faires Abo.
+      </td></tr>
+      <tr><td style="padding:12px 40px 6px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#3a2a1a;">
+          <tr><td style="padding:7px 0;line-height:1.5;"><span style="color:#3d7a3d;font-weight:bold;">✓</span>&nbsp;&nbsp;<strong>Unbegrenzte Projekte &amp; Balken</strong> – keine Limits mehr</td></tr>
+          <tr><td style="padding:7px 0;line-height:1.5;"><span style="color:#3d7a3d;font-weight:bold;">✓</span>&nbsp;&nbsp;<strong>Vollständig werbefrei</strong> – volle Konzentration aufs Konstruieren</td></tr>
+          <tr><td style="padding:7px 0;line-height:1.5;"><span style="color:#3d7a3d;font-weight:bold;">✓</span>&nbsp;&nbsp;<strong>PDF-Export &amp; Druckpläne</strong> – direkt für Bauantrag oder Werkstatt</td></tr>
+          <tr><td style="padding:7px 0;line-height:1.5;"><span style="color:#3d7a3d;font-weight:bold;">✓</span>&nbsp;&nbsp;<strong>Säge-Tool &amp; Schnittplan-Optimierung</strong> – weniger Verschnitt, weniger Kosten</td></tr>
+          <tr><td style="padding:7px 0;line-height:1.5;"><span style="color:#3d7a3d;font-weight:bold;">✓</span>&nbsp;&nbsp;<strong>Gruppen &amp; Ebenen</strong> – Überblick auch bei großen Projekten</td></tr>
+          <tr><td style="padding:7px 0;line-height:1.5;"><span style="color:#3d7a3d;font-weight:bold;">✓</span>&nbsp;&nbsp;<strong>Prioritäts-Support</strong> – wir helfen zuerst dir</td></tr>
+        </table>
+      </td></tr>
+      <tr><td style="padding:18px 40px 6px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3ebdf;border:1px solid #e3d6c4;border-radius:10px;"><tr>
+          <td align="center" style="padding:18px 20px;font-family:Arial,Helvetica,sans-serif;">
+            <div style="font-size:14px;color:#5a4a38;">Schon ab</div>
+            <div style="font-family:Georgia,serif;font-size:34px;color:#2a1c0e;padding:2px 0;"><strong>9,99&nbsp;€</strong><span style="font-size:15px;color:#5a4a38;">/Monat</span></div>
+            <div style="font-size:14px;color:#9a5b2c;font-weight:bold;">oder 99,99&nbsp;€/Jahr&nbsp;— 2 Monate&nbsp;gratis&nbsp;🎉</div>
+          </td>
+        </tr></table>
+      </td></tr>
+      <tr><td align="center" style="padding:22px 40px 8px;">
+        <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+          <td align="center" style="background:#9a5b2c;border-radius:8px;">
+            <a href="{subscribe_url}" target="_blank" style="display:inline-block;padding:15px 38px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:#ffffff;text-decoration:none;border-radius:8px;">Jetzt Premium freischalten →</a>
+          </td>
+        </tr></table>
+      </td></tr>
+      <tr><td align="center" style="padding:4px 40px 26px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#8a7a68;">Jederzeit kündbar · keine Mindestlaufzeit</td></tr>
+      <tr><td style="padding:0 40px;"><div style="border-top:1px solid #e8ddce;font-size:0;line-height:0;">&nbsp;</div></td></tr>
+      <tr><td style="padding:18px 40px 28px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#9a8b78;">
+        Du erhältst diese E-Mail, weil du ein kostenloses HolzBau&nbsp;3D-Konto hast.<br>
+        <a href="{unsub_url}" style="color:#9a5b2c;">Keine Angebote mehr erhalten (abmelden)</a>
+        &nbsp;·&nbsp;<a href="https://holzbau3d.app/impressum" style="color:#9a5b2c;">Impressum</a>
+        &nbsp;·&nbsp;<a href="https://holzbau3d.app/datenschutz" style="color:#9a5b2c;">Datenschutz</a>
+        <br><br>© 2026 HolzBau 3D
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>'''
 
 
 def _activate_premium(user_id, customer_id, sub_id, interval, notify=True):

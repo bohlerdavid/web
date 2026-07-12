@@ -959,9 +959,9 @@ body {
         <div class="form-row">
           <label>Ausrichtung</label>
           <select id="beam-axis">
-            <option value="x">X-Achse →</option>
-            <option value="y">Y-Achse ↑</option>
-            <option value="z">Z-Achse ↗</option>
+            <option value="x">Waagerecht: links–rechts →</option>
+            <option value="z">Waagerecht: vorne–hinten ↗</option>
+            <option value="y">Senkrecht: in die Höhe ↑</option>
           </select>
         </div>
       </div>
@@ -1207,7 +1207,7 @@ body {
       <div class="ch-row"><b>Alt + ↑ / ↓</b><span>Höhe (Y) verändern</span></div>
       <div class="ch-row"><b>Bild ↑ / ↓</b><span>Höhe (Y) verändern</span></div>
       <div class="ch-row"><b>Umschalt + Klick</b><span>Mehrere auswählen</span></div>
-      <div class="ch-row"><b>Rechtsklick</b><span>Kontextmenü</span></div>
+      <div class="ch-row"><b>Rechtsklick</b><span>Drehen (horizontal / aufrichten) &amp; löschen</span></div>
       <div class="ch-row"><b>Entf</b><span>Auswahl löschen</span></div>
       <div class="ch-row"><b>Strg + Z / D</b><span>Rückgängig / Duplizieren</span></div>
       <div class="ch-row"><b>F · Esc</b><span>Fokus · Abbrechen</span></div>
@@ -1245,17 +1245,14 @@ body {
 </div>
 
 <div id="ctx-menu" style="display:none;position:fixed;z-index:500">
-  <div style="padding:6px 12px;font-size:10px;color:var(--text-3);border-bottom:1px solid var(--border);font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Objekt drehen</div>
-  <div class="ctx-item" onclick="rotateSelected('x',90)">↻ X-Achse +90°</div>
-  <div class="ctx-item" onclick="rotateSelected('x',180)">↺ X-Achse 180°</div>
-  <div class="ctx-item" onclick="rotateSelected('y',90)">↻ Y-Achse +90°</div>
-  <div class="ctx-item" onclick="rotateSelected('y',180)">↺ Y-Achse 180°</div>
-  <div class="ctx-item" onclick="rotateSelected('z',90)">↻ Z-Achse +90°</div>
-  <div class="ctx-item" onclick="rotateSelected('z',180)">↺ Z-Achse 180°</div>
+  <div style="padding:6px 12px;font-size:10px;color:var(--text-3);border-bottom:1px solid var(--border);font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Horizontal drehen (auf dem Boden)</div>
+  <div class="ctx-item" onclick="rotateHorizontal(-90)">⟲ 90° nach links</div>
+  <div class="ctx-item" onclick="rotateHorizontal(90)">⟳ 90° nach rechts</div>
+  <div class="ctx-item" onclick="rotateHorizontal(180)">↻ 180° umdrehen</div>
   <div style="border-top:1px solid var(--border);margin:2px 0"></div>
-  <div class="ctx-item" onclick="switchAxis('x')">→ Ausrichtung X</div>
-  <div class="ctx-item" onclick="switchAxis('y')">↑ Ausrichtung Y</div>
-  <div class="ctx-item" onclick="switchAxis('z')">↗ Ausrichtung Z</div>
+  <div style="padding:6px 12px;font-size:10px;color:var(--text-3);border-bottom:1px solid var(--border);font-weight:700;text-transform:uppercase;letter-spacing:0.5px">In die Höhe / vertikal</div>
+  <div class="ctx-item" onclick="standUpright()">⬆ Aufrichten (senkrecht stellen)</div>
+  <div class="ctx-item" onclick="layFlat()">⬇ Flach hinlegen</div>
   <div style="border-top:1px solid var(--border);margin:2px 0"></div>
   <div class="ctx-item" style="color:var(--red)" onclick="deleteSelected();closeCtxMenu()">✕ Löschen</div>
 </div>
@@ -1487,7 +1484,7 @@ Object.assign(window, {
   exportStückliste, applyEdit, deleteBeam,
   calcFloorPlan, updateFloorOutline, updateRoofOutline, drawFloorPreview,
   newProject, clearAllBeams,
-  rotateSelected, switchAxis, closeCtxMenu, showContextMenu,
+  rotateSelected, switchAxis, rotateHorizontal, standUpright, layFlat, closeCtxMenu, showContextMenu,
   showTab, setDims, setAngle, loadTemplate,
   addGroup, renderGroupList, selectGroup, moveBeamToGroup, deleteGroup, toggleGroupVisibility,
   addDeco, deleteDeco, clearAllDecos, moveDecoToGroup,
@@ -2985,6 +2982,18 @@ function switchAxis(newAxis) {
   b.axis = newAxis;
   rebuildMesh(b);
   updateUI();
+}
+
+// Intuitive rotation wrappers used by the right-click menu.
+// Horizontal = spin around the vertical (Y) axis (turning on the floor).
+// Aufrichten/Hinlegen = switch the object's main orientation vertical<->horizontal.
+function rotateHorizontal(deg) { rotateSelected('y', deg); }
+function standUpright() { switchAxis('y'); }
+function layFlat() {
+  closeCtxMenu();
+  const id = [...selectedIds][0] ?? null;
+  const b = beams.find(x => x.id === id);
+  if (b && b.axis === 'y') switchAxis('x'); // upright -> lay flat along X
 }
 
 function getBeamHalfW(b) { return (b.axis === 'x' ? b.L : b.B) / 2; }
