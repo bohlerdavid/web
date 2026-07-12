@@ -2257,33 +2257,45 @@ function rebuildMesh(beam) {
 // PARTS LIST (STÜCKLISTE)
 // ══════════════════════════════════════════════
 
-function updatePartsTable() {
-  // Group by name + dimensions + woodType
+// Group beams for the parts list by MEASUREMENTS (wood type + shape + L×B×H),
+// ignoring the individual name — so all beams with equal dimensions are counted
+// together. The distinct names are collected and shown as the label.
+function groupBeamsForList() {
   const grouped = {};
   beams.forEach(b => {
-    const key = `${b.woodType}||${b.name}||${b.L}×${b.B}×${b.H}`;
-    if (!grouped[key]) grouped[key] = { name: b.name, woodType: b.woodType, L: b.L, B: b.B, H: b.H, ids: [] };
+    const shape = b.shape || 'rect';
+    const key = `${b.woodType}||${shape}||${b.L}×${b.B}×${b.H}`;
+    if (!grouped[key]) grouped[key] = { woodType: b.woodType, L: b.L, B: b.B, H: b.H, ids: [], nameSet: [] };
     grouped[key].ids.push(b.id);
+    if (grouped[key].nameSet.indexOf(b.name) < 0) grouped[key].nameSet.push(b.name);
   });
+  return Object.values(grouped).map(g => ({
+    woodType: g.woodType, L: g.L, B: g.B, H: g.H, ids: g.ids,
+    count: g.ids.length,
+    label: g.nameSet.join(', ')
+  })).sort((a, b) => a.label.localeCompare(b.label) || a.L - b.L);
+}
 
+function updatePartsTable() {
+  const groups = groupBeamsForList();
   const tbody = document.getElementById('parts-body');
   tbody.innerHTML = '';
   let total = 0;
-  Object.values(grouped).sort((a, b) => a.name.localeCompare(b.name)).forEach(g => {
+  groups.forEach(g => {
     const tr = document.createElement('tr');
     const dotColor = WOOD_COLORS_HEX[g.woodType] || '#888';
     const isSelected = g.ids.some(id => selectedIds.has(id));
     if (isSelected) tr.className = 'selected-row';
     tr.innerHTML = `
-      <td><strong>${g.ids.length}×</strong></td>
-      <td><span class="color-dot" style="background:${dotColor}"></span>${g.name}</td>
+      <td><strong>${g.count}×</strong></td>
+      <td><span class="color-dot" style="background:${dotColor}"></span>${g.label}</td>
       <td style="font-family:monospace">${g.L}×${g.B}×${g.H}</td>`;
     tr.title = `${g.woodType} · ${g.L}×${g.B}×${g.H} mm`;
     tr.onclick = () => { selectBeam(g.ids[0]); updateUI(); };
     tbody.appendChild(tr);
-    total += g.ids.length;
+    total += g.count;
   });
-  document.getElementById('parts-total').innerHTML = `Gesamt: <strong>${total}</strong> Teile | ${Object.keys(grouped).length} Positionen`;
+  document.getElementById('parts-total').innerHTML = `Gesamt: <strong>${total}</strong> Teile | ${groups.length} Positionen`;
   document.getElementById('st-count').textContent = beams.length;
 }
 
@@ -3329,18 +3341,13 @@ function handleLoadFile(e) {
 
 function exportStückliste() {
   if (!requirePremium('📋 Stückliste exportieren', 'CSV-Export der Stückliste ist eine Premium-Funktion.')) return;
-  const grouped = {};
-  beams.forEach(b => {
-    const key = `${b.woodType}||${b.name}||${b.L}×${b.B}×${b.H}`;
-    if (!grouped[key]) grouped[key] = { name: b.name, woodType: b.woodType, L: b.L, B: b.B, H: b.H, count: 0 };
-    grouped[key].count++;
-  });
+  const groups = groupBeamsForList();
 
-  let csv = 'Pos;Anzahl;Bezeichnung;Holzart;Länge (mm);Breite (mm);Höhe (mm);Volumen (dm³)\n';
+  let csv = 'Pos;Anzahl;Bezeichnung;Holzart;Länge (mm);Breite (mm);Höhe (mm);Volumen gesamt (dm³)\n';
   let pos = 1;
-  Object.values(grouped).sort((a, b) => a.name.localeCompare(b.name)).forEach(g => {
-    const vol = ((g.L * g.B * g.H) / 1e6).toFixed(3);
-    csv += `${pos++};${g.count};${g.name};${g.woodType};${g.L};${g.B};${g.H};${vol}\n`;
+  groups.forEach(g => {
+    const volTotal = ((g.L * g.B * g.H) / 1e6 * g.count).toFixed(3); // total for the position
+    csv += `${pos++};${g.count};${g.label};${g.woodType};${g.L};${g.B};${g.H};${volTotal}\n`;
   });
 
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -4741,20 +4748,16 @@ function printProject() {
   // Side view: Z=horizontal, Y=vertical (flip Y)
   const svgSide  = makePlanSVG((x,y,z) => [z, -y], PLAN_W, PLAN_H, 'Ansicht Seite (Rechts)',   sharedScale);
 
-  // --- Stückliste ---
-  const grouped = {};
-  beams.forEach(b => {
-    const key = `${b.woodType}||${b.name}||${b.L}x${b.B}x${b.H}`;
-    if(!grouped[key]) grouped[key]={ name:b.name, woodType:b.woodType, L:b.L, B:b.B, H:b.H, ids:[] };
-    grouped[key].ids.push(b.id);
-  });
-  let pos=1;
-  const listRows = Object.values(grouped).sort((a,b)=>a.name.localeCompare(b.name)).map(g => {
-    const vol = ((g.L*g.B*g.H)/1e9).toFixed(4);
-    const lm  = (g.L/1000).toFixed(3);
+  // --- Stückliste (grouped by measurements) ---
+  const groups = groupBeamsForList();
+  let pos=1, totalVol=0;
+  const listRows = groups.map(g => {
+    const volTotal = (g.L*g.B*g.H)/1e9 * g.count; // total m³ for the position
+    totalVol += volTotal;
+    const lmTotal = (g.L/1000 * g.count).toFixed(3); // total running metres
     return `<tr>
-      <td>${pos++}</td><td>${g.ids.length}</td><td>${escHtml(g.name)}</td><td>${escHtml(g.woodType)}</td>
-      <td>${g.L}×${g.B}×${g.H}</td><td>${lm} m</td><td>${vol} m³</td>
+      <td>${pos++}</td><td>${g.count}</td><td>${escHtml(g.label)}</td><td>${escHtml(g.woodType)}</td>
+      <td>${g.L}×${g.B}×${g.H}</td><td>${lmTotal} m</td><td>${volTotal.toFixed(4)} m³</td>
     </tr>`;
   }).join('');
 
@@ -4851,8 +4854,9 @@ function printProject() {
     </tbody>
     <tfoot>
       <tr class="total-row">
-        <td colspan="2">${totalBeams}</td>
-        <td colspan="5">Balken gesamt</td>
+        <td>${groups.length}</td><td>${totalBeams}</td>
+        <td colspan="4">Balken gesamt</td>
+        <td>${totalVol.toFixed(4)} m³</td>
       </tr>
     </tfoot>
   </table>
