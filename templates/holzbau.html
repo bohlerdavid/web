@@ -826,6 +826,12 @@ body {
   <div class="tb-divider"></div>
 
   <div class="tb-group">
+    <button class="tb-btn" onclick="undo()" title="Rückgängig – letzte Aktion zurück (Strg+Z)">↶ Zurück</button>
+  </div>
+
+  <div class="tb-divider"></div>
+
+  <div class="tb-group">
     <button class="tb-btn" onclick="newProject()" title="Neues Projekt">Neu</button>
     <button class="tb-btn" onclick="saveProject()" title="Projekt speichern">💾 Speichern{% if show_ads %} 🔒{% endif %}</button>
     <label class="tb-btn" style="cursor:pointer" title="Projekt laden">📂 Laden{% if show_ads %} 🔒{% endif %}<input type="file" id="load-file-input" accept=".json,application/json" style="display:none" onchange="handleLoadFile(event)"></label>
@@ -1515,7 +1521,7 @@ Object.assign(window, {
   saveProject, handleLoadFile,
   exportStückliste, applyEdit, deleteBeam,
   calcFloorPlan, updateFloorOutline, updateRoofOutline, drawFloorPreview,
-  newProject, clearAllBeams,
+  newProject, clearAllBeams, undo,
   rotateSelected, switchAxis, rotateHorizontal, standUpright, layFlat, closeCtxMenu, showContextMenu,
   showTab, setDims, setAngle, loadTemplate,
   addGroup, renderGroupList, selectGroup, moveBeamToGroup, deleteGroup, toggleGroupVisibility,
