@@ -1,10 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <rect width="512" height="512" rx="104" fill="#141c2e"/>
-  <!-- timber-frame "H": two posts + a beam, inset within the rounded square -->
-  <rect x="120" y="120" width="88" height="272" rx="20" fill="#4e8cdd"/>
-  <rect x="304" y="120" width="88" height="272" rx="20" fill="#4e8cdd"/>
-  <rect x="200" y="212" width="112" height="88" rx="20" fill="#4e8cdd"/>
-  <!-- top highlights -->
-  <rect x="120" y="120" width="88" height="44" rx="20" fill="#ffffff" fill-opacity="0.22"/>
-  <rect x="304" y="120" width="88" height="44" rx="20" fill="#ffffff" fill-opacity="0.22"/>
+  <!-- artwork inset by 36px so the rounded corners never touch the canvas edge -->
+  <g transform="translate(36,36) scale(0.859375)">
+    <rect width="512" height="512" rx="104" fill="#141c2e"/>
+    <rect x="120" y="120" width="88" height="272" rx="20" fill="#4e8cdd"/>
+    <rect x="304" y="120" width="88" height="272" rx="20" fill="#4e8cdd"/>
+    <rect x="200" y="212" width="112" height="88" rx="20" fill="#4e8cdd"/>
+    <rect x="120" y="120" width="88" height="44" rx="20" fill="#ffffff" fill-opacity="0.22"/>
+    <rect x="304" y="120" width="88" height="44" rx="20" fill="#ffffff" fill-opacity="0.22"/>
+  </g>
 </svg>
