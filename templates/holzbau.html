@@ -399,22 +399,31 @@ body {
   line-height: 1.6;
 }
 
-/* ── MOVE HINT ── */
-#move-hint {
+/* ── CONTROLS HELP ── */
+#controls-help {
   position: absolute;
-  bottom: 30px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(14,17,23,.9);
+  left: 10px;
+  bottom: 10px;
+  z-index: 56;
+  width: 236px;
+  background: rgba(14,17,23,.92);
   border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 4px 14px;
+  border-radius: var(--r);
+  padding: 8px 10px;
   font-size: 11px;
   color: var(--text-2);
-  pointer-events: none;
-  display: none;
-  white-space: nowrap;
 }
+#controls-help.hidden { display: none; }
+#controls-help .ch-head {
+  display: flex; align-items: center; justify-content: space-between;
+  font-weight: 700; color: var(--text); margin-bottom: 6px;
+  font-size: 11px; letter-spacing: .3px;
+}
+#controls-help .ch-close { cursor: pointer; color: var(--text-3); padding: 0 3px; line-height: 1; }
+#controls-help .ch-close:hover { color: var(--red); }
+#controls-help .ch-row { display: flex; gap: 8px; line-height: 1.55; }
+#controls-help .ch-row b { color: var(--accent); flex: 0 0 92px; font-weight: 600; }
+#controls-help .ch-row span { color: var(--text-2); flex: 1; }
 
 /* ── COLOR DOT ── */
 .color-dot {
@@ -766,7 +775,7 @@ body {
 [data-theme="light"] .view-btn { background: rgba(255,255,255,.88); }
 [data-theme="light"] .view-btn:hover { background: var(--bg-panel); }
 [data-theme="light"] #tooltip { background: rgba(255,255,255,.97); }
-[data-theme="light"] #move-hint { background: rgba(255,255,255,.92); }
+[data-theme="light"] #controls-help { background: rgba(255,255,255,.94); }
 [data-theme="light"] #measure-hint { background: rgba(255,255,255,.97); }
 </style>
 </head>
@@ -787,15 +796,6 @@ body {
     <button class="tb-btn" onclick="saveProject()" title="Projekt speichern">💾 Speichern{% if show_ads %} 🔒{% endif %}</button>
     <label class="tb-btn" style="cursor:pointer" title="Projekt laden">📂 Laden{% if show_ads %} 🔒{% endif %}<input type="file" id="load-file-input" accept=".json,application/json" style="display:none" onchange="handleLoadFile(event)"></label>
     <button class="tb-btn" onclick="exportStückliste()" title="Stückliste exportieren">📋 Export{% if show_ads %} 🔒{% endif %}</button>
-  </div>
-
-  <div class="tb-divider"></div>
-
-  <div class="tb-group">
-    <span class="tb-label">Modus</span>
-    <button class="tb-btn active" id="btn-mode-select" onclick="setMode('select')">↖ Auswählen</button>
-    <button class="tb-btn" id="btn-mode-move" onclick="setMode('move')">✥ Verschieben</button>
-    <button class="tb-btn" id="btn-mode-rotate" onclick="setMode('rotate')">↻ Drehen</button>
   </div>
 
   <div class="tb-divider"></div>
@@ -1193,9 +1193,25 @@ body {
       <button class="view-btn" title="Seite" onclick="setView('side')">◧</button>
       <button class="view-btn" title="Isometrisch" onclick="setView('iso')">⬡</button>
       <button class="view-btn" title="Zoom Reset" onclick="resetCamera()">⊡</button>
+      <button class="view-btn" id="btn-help" title="Steuerung ein/aus" onclick="toggleHelp()">⌨</button>
     </div>
     <div id="tooltip"></div>
-    <div id="move-hint">Ziehen: XZ-Ebene · Alt+Ziehen: Höhe (Y) · Pfeiltasten: XZ · PgUp/PgDn: Y · Esc: Abbrechen</div>
+    <div id="controls-help">
+      <div class="ch-head">
+        <span>⌨ Steuerung</span>
+        <span class="ch-close" onclick="toggleHelp()" title="Ausblenden">✕</span>
+      </div>
+      <div class="ch-row"><b>Ziehen</b><span>Objekt bewegen (XZ-Ebene)</span></div>
+      <div class="ch-row"><b>Alt + Ziehen</b><span>Objekt in der Höhe bewegen (Y)</span></div>
+      <div class="ch-row"><b>Pfeiltasten</b><span>Bewegen in XZ (Schritt = Raster)</span></div>
+      <div class="ch-row"><b>Alt + ↑ / ↓</b><span>Höhe (Y) verändern</span></div>
+      <div class="ch-row"><b>Bild ↑ / ↓</b><span>Höhe (Y) verändern</span></div>
+      <div class="ch-row"><b>Umschalt + Klick</b><span>Mehrere auswählen</span></div>
+      <div class="ch-row"><b>Rechtsklick</b><span>Kontextmenü</span></div>
+      <div class="ch-row"><b>Entf</b><span>Auswahl löschen</span></div>
+      <div class="ch-row"><b>Strg + Z / D</b><span>Rückgängig / Duplizieren</span></div>
+      <div class="ch-row"><b>F · Esc</b><span>Fokus · Abbrechen</span></div>
+    </div>
     <div id="snap-indicator" class="snap-indicator on">Raster: EIN</div>
     <div id="measure-hint" style="display:none;position:absolute;top:10px;left:50%;transform:translateX(-50%);background:rgba(14,17,23,.92);border:1px solid var(--accent);border-radius:var(--r);padding:5px 14px;font-size:12px;color:var(--text);pointer-events:none;white-space:nowrap;z-index:55">📏 Maßband aktiv — 1. Punkt anklicken</div>
     <div id="measure-label" style="display:none;position:absolute;pointer-events:none;z-index:50"></div>
@@ -1225,7 +1241,6 @@ body {
   <span>Objekte: <strong id="st-count">0</strong></span>
   <span>Ausgewählt: <strong id="st-sel">–</strong></span>
   <span>Kamera: <strong id="st-cam">Isometrisch</strong></span>
-  <span>Modus: <strong id="st-mode">Auswählen</strong></span>
   <span style="margin-left:auto;color:var(--text-2);font-size:10px">Strg+Z Rückgängig · Entf Löschen · F Fokus</span>
 </div>
 
@@ -1372,9 +1387,32 @@ fillLight.position.set(-2000, 1000, -2000);
 scene.add(fillLight);
 
 // ── GROUND GRID ──
-const gridHelper = new THREE.GridHelper(20000, 200, 0x999999, 0xbbbbbb);
+let gridHelper = new THREE.GridHelper(20000, 200, 0x999999, 0xbbbbbb);
 gridHelper.position.y = 0;
 scene.add(gridHelper);
+
+// Rebuild the ground grid so its cell size matches the Rastergröße (snap size).
+function rebuildGrid() {
+  const input = document.getElementById('snap-size');
+  const snapSize = Math.max(1, parseFloat(input && input.value) || 10);
+  const TARGET_EXTENT = 20000;   // aim for ~20 m of coverage
+  const MAX_DIVISIONS = 600;     // keep it readable (still a single draw call)
+  let divisions = Math.round(TARGET_EXTENT / snapSize);
+  if (divisions > MAX_DIVISIONS) divisions = MAX_DIVISIONS;
+  if (divisions < 1) divisions = 1;
+  const extent = divisions * snapSize; // grid cells are exactly snapSize
+  scene.remove(gridHelper);
+  gridHelper.geometry.dispose();
+  gridHelper.material.dispose();
+  gridHelper = new THREE.GridHelper(extent, divisions, 0x999999, 0xbbbbbb);
+  gridHelper.position.y = 0;
+  scene.add(gridHelper);
+}
+{
+  const _snapSizeInput = document.getElementById('snap-size');
+  if (_snapSizeInput) _snapSizeInput.addEventListener('input', rebuildGrid);
+  rebuildGrid(); // sync the grid to the default Rastergröße on load
+}
 
 // Ground plane (for raycasting)
 const groundGeo = new THREE.PlaneGeometry(50000, 50000);
@@ -1426,7 +1464,6 @@ const collapsedGroups = new Set();      // group names collapsed in the sidebar 
 let decos = [];
 let decoIdCounter = 1;
 let snapEnabled = true;
-let currentMode = 'select'; // 'select' | 'move' | 'rotate'
 let history = [];     // undo stack
 let idCounter = 1;
 let measureActive = false;
@@ -1445,7 +1482,7 @@ const mouse = new THREE.Vector2();
 // ══════════════════════════════════════════════
 Object.assign(window, {
   addBeam, deleteSelected, duplicateSelected,
-  setMode, toggleSnap, setView, resetCamera,
+  toggleSnap, setView, resetCamera, toggleHelp,
   saveProject, handleLoadFile,
   exportStückliste, applyEdit, deleteBeam,
   calcFloorPlan, updateFloorOutline, updateRoofOutline, drawFloorPreview,
@@ -2374,11 +2411,31 @@ function renderGroupList() {
 
 function deleteGroup(groupName) {
   if (groupName === 'Standard') return;
-  beams.forEach(b => { if (b.group === groupName) b.group = 'Standard'; });
-  decos.forEach(d => { if (d.group === groupName) d.group = 'Standard'; });
+  const gBeams = beams.filter(b => b.group === groupName);
+  const gDecos = decos.filter(d => d.group === groupName);
+  const total = gBeams.length + gDecos.length;
+  const msg = total > 0
+    ? `Gruppe „${groupName}" und ${total} Objekt(e) darin unwiderruflich löschen?`
+    : `Gruppe „${groupName}" löschen?`;
+  if (!confirm(msg)) return;
+  pushHistory();
+  // Remove the meshes + dispose GPU resources
+  gBeams.forEach(b => removeMesh(b.mesh));
+  gDecos.forEach(d => {
+    if (d.mesh) { scene.remove(d.mesh); d.mesh.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); }
+  });
+  // Drop the objects and the group itself
+  const delBeamIds = new Set(gBeams.map(b => b.id));
+  beams = beams.filter(b => b.group !== groupName);
+  decos = decos.filter(d => d.group !== groupName);
+  selectedIds = new Set([...selectedIds].filter(id => !delBeamIds.has(id)));
+  hiddenGroups.delete(groupName);
+  collapsedGroups.delete(groupName);
   const idx = groups.indexOf(groupName);
   if (idx >= 0) groups.splice(idx, 1);
   renderGroupList();
+  if (typeof renderDekoList === 'function') renderDekoList();
+  updateUI();
 }
 
 function moveBeamToGroup(beamId, groupName) {
@@ -2480,15 +2537,12 @@ function smartSnapY(rawY, dragged) {
 // MODE
 // ══════════════════════════════════════════════
 
-function setMode(mode) {
-  currentMode = mode;
-  ['select','move','rotate'].forEach(m => {
-    document.getElementById('btn-mode-' + m).classList.toggle('active', m === mode);
-  });
-  document.getElementById('st-mode').textContent = { select:'Auswählen', move:'Verschieben', rotate:'Drehen' }[mode];
-  const hint = document.getElementById('move-hint');
-  hint.style.display = (mode === 'move') ? 'block' : 'none';
-  // controls managed via pointer events, not OrbitControls mode
+function toggleHelp() {
+  const panel = document.getElementById('controls-help');
+  const btn = document.getElementById('btn-help');
+  if (!panel) return;
+  const hidden = panel.classList.toggle('hidden');
+  if (btn) btn.classList.toggle('active', !hidden);
 }
 
 // ══════════════════════════════════════════════
@@ -2969,7 +3023,7 @@ document.addEventListener('keydown', e => {
   if (inputFocused) return;
 
   if (e.key === 'Delete' || e.key === 'Backspace') { deleteSelected(); return; }
-  if (e.key === 'Escape') { closeCtxMenu(); selectBeam(null); setMode('select'); if (measureActive) clearMeasure(); updateUI(); return; }
+  if (e.key === 'Escape') { closeCtxMenu(); selectBeam(null); if (measureActive) clearMeasure(); updateUI(); return; }
   if (e.key === 'f' || e.key === 'F') { resetCamera(); return; }
   if ((e.ctrlKey || e.metaKey) && e.key === 'z') { undo(); return; }
   if ((e.ctrlKey || e.metaKey) && e.key === 'd') { e.preventDefault(); duplicateSelected(); return; }
@@ -2981,12 +3035,18 @@ document.addEventListener('keydown', e => {
   if (!b) return;
   const step = snapEnabled ? (parseFloat(document.getElementById('snap-size').value) || 10) : 10;
   let moved = false;
-  if (e.key === 'ArrowLeft')  { b.x -= step; moved = true; }
-  if (e.key === 'ArrowRight') { b.x += step; moved = true; }
-  if (e.key === 'ArrowUp')    { b.z -= step; moved = true; }
-  if (e.key === 'ArrowDown')  { b.z += step; moved = true; }
-  if (e.key === 'PageUp')     { b.y += step; moved = true; }
-  if (e.key === 'PageDown')   { b.y -= step; moved = true; }
+  if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+    // Alt + ↑/↓ → move along height (Y)
+    b.y += (e.key === 'ArrowUp' ? step : -step);
+    moved = true;
+  } else {
+    if (e.key === 'ArrowLeft')  { b.x -= step; moved = true; }
+    if (e.key === 'ArrowRight') { b.x += step; moved = true; }
+    if (e.key === 'ArrowUp')    { b.z -= step; moved = true; }
+    if (e.key === 'ArrowDown')  { b.z += step; moved = true; }
+    if (e.key === 'PageUp')     { b.y += step; moved = true; }
+    if (e.key === 'PageDown')   { b.y -= step; moved = true; }
+  }
   if (moved) {
     e.preventDefault();
     b.mesh.position.set(b.x + getBeamHalfW(b), b.y + getBeamHalfH(b), b.z + getBeamHalfD(b));
@@ -3074,6 +3134,10 @@ function undo() {
     decos.push(deco);
   });
   if (decos.length > 0) decoIdCounter = Math.max(...decos.map(d => d.id)) + 1;
+
+  // Re-register any group names that only exist on restored objects
+  // (e.g. after undoing a group deletion) so they reappear in the sidebar.
+  [...beams, ...decos].forEach(o => { if (o.group && !groups.includes(o.group)) groups.push(o.group); });
 
   renderDekoList();
   updateUI();
