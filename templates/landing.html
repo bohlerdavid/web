@@ -146,6 +146,7 @@
 
     /* editor mockup */
     .mockup {
+      position: relative;
       background: oklch(0.24 0.02 50); border-radius: 14px;
       box-shadow: 0 20px 50px rgba(0,0,0,.25); overflow: hidden;
     }
@@ -161,24 +162,71 @@
       font-size: 11px; color: oklch(0.65 0.01 50);
     }
     .mockup-canvas {
-      height: 260px;
-      background: linear-gradient(160deg, oklch(0.28 0.02 50), oklch(0.22 0.02 50));
-      display: flex; align-items: center; justify-content: center; position: relative;
+      position: relative; height: 300px;
+      background: radial-gradient(ellipse at 50% 30%, oklch(0.94 0.004 250), oklch(0.86 0.006 250) 85%);
+      display: flex; align-items: center; justify-content: center; overflow: hidden;
     }
-    .beam-scene { position: relative; width: 220px; height: 130px; }
-    .beam { position: absolute; border-radius: 2px; }
-    .beam-h1 { left:20px;top:20px;width:180px;height:14px; background:linear-gradient(90deg,oklch(0.58 0.09 45),oklch(0.68 0.08 55)); transform:skewX(-18deg); }
-    .beam-h2 { left:20px;top:96px;width:180px;height:14px; background:linear-gradient(90deg,oklch(0.58 0.09 45),oklch(0.68 0.08 55)); transform:skewX(-18deg); }
-    .beam-v1 { left:34px;top:20px;width:14px;height:76px; background:linear-gradient(180deg,oklch(0.5 0.09 40),oklch(0.6 0.08 45)); }
-    .beam-v2 { left:172px;top:20px;width:14px;height:76px; background:linear-gradient(180deg,oklch(0.5 0.09 40),oklch(0.6 0.08 45)); }
-    .beam-diag { left:60px;top:30px;width:120px;height:10px; background:oklch(0.62 0.08 50); opacity:.7; transform:rotate(24deg); }
-    .dim-label {
+    .mockup-floor {
+      position: absolute; left: 50%; bottom: -40px;
+      width: 560px; height: 240px;
+      transform: translateX(-50%) perspective(500px) rotateX(58deg);
+      background-image:
+        linear-gradient(oklch(0.78 0.008 250 / .8) 1px, transparent 1px),
+        linear-gradient(90deg, oklch(0.78 0.008 250 / .8) 1px, transparent 1px),
+        linear-gradient(90deg, transparent 49.6%, oklch(0.72 0.08 235 / .55) 49.6%, oklch(0.72 0.08 235 / .55) 50.4%, transparent 50.4%);
+      background-size: 26px 26px, 26px 26px, 100% 100%;
+      -webkit-mask-image: radial-gradient(ellipse at 50% 30%, black 45%, transparent 78%);
+      mask-image: radial-gradient(ellipse at 50% 30%, black 45%, transparent 78%);
+    }
+    .pergola-3d {
+      position: relative; width: 300px; height: 300px;
+      transform-style: preserve-3d;
+      transform: translateY(66px) rotateX(-27deg) rotateY(-31deg) scale(0.88);
+    }
+    .p3d-shadow {
+      position: absolute; left: 40px; top: 75px; width: 220px; height: 150px;
+      transform: translate3d(20px,1px,-20px) rotateX(90deg);
+      background: radial-gradient(ellipse, oklch(0.55 0.02 250 / .3), transparent 70%);
+    }
+    .p3d-face { position: absolute; box-shadow: inset 0 0 0 0.5px oklch(0.6 0.05 75 / .5); }
+    .p3d-top    { background: oklch(0.87 0.055 85); box-shadow: inset 0 0 0 0.5px oklch(0.62 0.05 78 / .5); }
+    .p3d-side   { background: oklch(0.66 0.06 72); box-shadow: inset 0 0 0 0.5px oklch(0.55 0.05 70 / .5); }
+    .p3d-front  { background: linear-gradient(180deg, oklch(0.8 0.065 82), oklch(0.74 0.065 78)); }
+    .p3d-rafter-top   { background: oklch(0.78 0.06 80); }
+    .p3d-rafter-side  { background: oklch(0.89 0.05 86); box-shadow: inset 0 0 0 0.5px oklch(0.62 0.05 78 / .5); }
+    .p3d-rafter-front { background: oklch(0.69 0.06 73); box-shadow: inset 0 0 0 0.5px oklch(0.55 0.05 70 / .5); }
+    .p3d-rim-front { background: linear-gradient(180deg, oklch(0.81 0.065 82), oklch(0.76 0.065 79)); }
+    .p3d-rim-side  { background: oklch(0.77 0.065 79); }
+
+    .dim-chip {
       position: absolute; font-family: 'IBM Plex Mono', monospace; font-size: 10px;
-      color: oklch(0.7 0.02 55); background: oklch(0.24 0.02 50 / .8);
-      padding: 2px 6px; border-radius: 3px;
+      color: oklch(0.38 0.02 250); background: oklch(0.99 0.002 250 / .9);
+      padding: 2px 6px; border-radius: 3px; border: 1px solid oklch(0.8 0.01 250);
+      box-shadow: 0 1px 3px oklch(0.5 0.02 250 / .2);
     }
-    .dim-top  { left: -6px; top: 8px; }
-    .dim-bot  { left: 8px; top: 100px; }
+    .dim-chip.dim-span  { left: 14px; top: 36px; }
+    .dim-chip.dim-depth { right: 24px; bottom: 44px; }
+    .dim-chip.dim-height{ right: 20px; top: 20px; }
+
+    .orbit-hint {
+      position: absolute; left: 16px; bottom: 16px;
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 10px; background: oklch(0.99 0.002 250 / .85);
+      border: 1px solid oklch(0.82 0.01 250); border-radius: 20px;
+      box-shadow: 0 1px 4px oklch(0.5 0.02 250 / .18);
+    }
+    .orbit-icon {
+      width: 22px; height: 22px; border-radius: 50%;
+      border: 1.5px solid oklch(0.55 0.08 40); position: relative;
+    }
+    .orbit-icon::after {
+      content: ''; position: absolute; inset: 3px; border-radius: 50%;
+      border: 1px solid oklch(0.55 0.08 40); border-style: dashed;
+    }
+    .orbit-label {
+      font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; color: oklch(0.42 0.02 250);
+    }
+
     .mockup-footer {
       display: flex; justify-content: space-between; align-items: flex-start;
       padding: 14px 16px; background: oklch(0.2 0.02 50);
@@ -390,21 +438,84 @@
         <span class="mockup-url">holzbau3d.app/editor</span>
       </div>
       <div class="mockup-canvas">
-        <div class="beam-scene">
-          <div class="beam beam-h1"></div>
-          <div class="beam beam-h2"></div>
-          <div class="beam beam-v1"></div>
-          <div class="beam beam-v2"></div>
-          <div class="beam beam-diag"></div>
-          <span class="dim-label dim-top">240 cm</span>
-          <span class="dim-label dim-bot">146 cm</span>
+        <div class="mockup-floor"></div>
+
+        <div class="pergola-3d">
+          <div class="p3d-shadow"></div>
+
+          <!-- Post 1 (x=-90,z=-65) -->
+          <div class="p3d-face p3d-front" style="left:142px;top:90px;width:16px;height:120px;transform:translate3d(-90px,-60px,-65px) translateZ(8px);"></div>
+          <div class="p3d-face p3d-top" style="left:142px;top:142px;width:16px;height:16px;transform:translate3d(-90px,-60px,-65px) rotateX(90deg) translateZ(60px);"></div>
+          <div class="p3d-face p3d-side" style="left:142px;top:90px;width:16px;height:120px;transform:translate3d(-90px,-60px,-65px) rotateY(90deg) translateZ(8px);"></div>
+
+          <!-- Post 2 (x=90,z=-65) -->
+          <div class="p3d-face p3d-front" style="left:142px;top:90px;width:16px;height:120px;transform:translate3d(90px,-60px,-65px) translateZ(8px);"></div>
+          <div class="p3d-face p3d-top" style="left:142px;top:142px;width:16px;height:16px;transform:translate3d(90px,-60px,-65px) rotateX(90deg) translateZ(60px);"></div>
+          <div class="p3d-face p3d-side" style="left:142px;top:90px;width:16px;height:120px;transform:translate3d(90px,-60px,-65px) rotateY(90deg) translateZ(8px);"></div>
+
+          <!-- Post 3 (x=-90,z=65) -->
+          <div class="p3d-face p3d-front" style="left:142px;top:90px;width:16px;height:120px;transform:translate3d(-90px,-60px,65px) translateZ(8px);"></div>
+          <div class="p3d-face p3d-top" style="left:142px;top:142px;width:16px;height:16px;transform:translate3d(-90px,-60px,65px) rotateX(90deg) translateZ(60px);"></div>
+          <div class="p3d-face p3d-side" style="left:142px;top:90px;width:16px;height:120px;transform:translate3d(-90px,-60px,65px) rotateY(90deg) translateZ(8px);"></div>
+
+          <!-- Post 4 (x=90,z=65) -->
+          <div class="p3d-face p3d-front" style="left:142px;top:90px;width:16px;height:120px;transform:translate3d(90px,-60px,65px) translateZ(8px);"></div>
+          <div class="p3d-face p3d-top" style="left:142px;top:142px;width:16px;height:16px;transform:translate3d(90px,-60px,65px) rotateX(90deg) translateZ(60px);"></div>
+          <div class="p3d-face p3d-side" style="left:142px;top:90px;width:16px;height:120px;transform:translate3d(90px,-60px,65px) rotateY(90deg) translateZ(8px);"></div>
+
+          <!-- Top beam X, z=-65 (front rim) -->
+          <div class="p3d-face p3d-rim-front" style="left:52px;top:142px;width:196px;height:16px;transform:translate3d(0px,-120px,-65px) translateZ(8px);"></div>
+          <div class="p3d-face p3d-top" style="left:52px;top:142px;width:196px;height:16px;transform:translate3d(0px,-120px,-65px) rotateX(90deg) translateZ(8px);"></div>
+          <div class="p3d-face p3d-side" style="left:142px;top:142px;width:16px;height:16px;transform:translate3d(0px,-120px,-65px) rotateY(90deg) translateZ(98px);"></div>
+
+          <!-- Top beam X, z=65 (back rim) -->
+          <div class="p3d-face p3d-rim-front" style="left:52px;top:142px;width:196px;height:16px;transform:translate3d(0px,-120px,65px) translateZ(8px);"></div>
+          <div class="p3d-face p3d-top" style="left:52px;top:142px;width:196px;height:16px;transform:translate3d(0px,-120px,65px) rotateX(90deg) translateZ(8px);"></div>
+
+          <!-- Top beam Z, x=-90 (left rim) -->
+          <div class="p3d-face p3d-rim-side" style="left:142px;top:142px;width:16px;height:16px;transform:translate3d(-90px,-120px,0px) translateZ(73px);"></div>
+          <div class="p3d-face p3d-top" style="left:142px;top:77px;width:16px;height:146px;transform:translate3d(-90px,-120px,0px) rotateX(90deg) translateZ(8px);"></div>
+          <div class="p3d-face p3d-side" style="left:77px;top:142px;width:146px;height:16px;transform:translate3d(-90px,-120px,0px) rotateY(90deg) translateZ(8px);"></div>
+
+          <!-- Top beam Z, x=90 (right rim) -->
+          <div class="p3d-face p3d-rim-side" style="left:142px;top:142px;width:16px;height:16px;transform:translate3d(90px,-120px,0px) translateZ(73px);"></div>
+          <div class="p3d-face p3d-top" style="left:142px;top:77px;width:16px;height:146px;transform:translate3d(90px,-120px,0px) rotateX(90deg) translateZ(8px);"></div>
+          <div class="p3d-face p3d-side" style="left:77px;top:142px;width:146px;height:16px;transform:translate3d(90px,-120px,0px) rotateY(90deg) translateZ(8px);"></div>
+
+          <!-- Rafters (4, running z, sit above frame) -->
+          <div class="p3d-face p3d-rafter-top" style="left:145px;top:145px;width:10px;height:10px;transform:translate3d(-60px,-132px,0px) translateZ(73px);"></div>
+          <div class="p3d-face p3d-rafter-side" style="left:145px;top:77px;width:10px;height:146px;transform:translate3d(-60px,-132px,0px) rotateX(90deg) translateZ(5px);"></div>
+          <div class="p3d-face p3d-rafter-front" style="left:77px;top:145px;width:146px;height:10px;transform:translate3d(-60px,-132px,0px) rotateY(90deg) translateZ(5px);"></div>
+
+          <div class="p3d-face p3d-rafter-top" style="left:145px;top:145px;width:10px;height:10px;transform:translate3d(-20px,-132px,0px) translateZ(73px);"></div>
+          <div class="p3d-face p3d-rafter-side" style="left:145px;top:77px;width:10px;height:146px;transform:translate3d(-20px,-132px,0px) rotateX(90deg) translateZ(5px);"></div>
+          <div class="p3d-face p3d-rafter-front" style="left:77px;top:145px;width:146px;height:10px;transform:translate3d(-20px,-132px,0px) rotateY(90deg) translateZ(5px);"></div>
+
+          <div class="p3d-face p3d-rafter-top" style="left:145px;top:145px;width:10px;height:10px;transform:translate3d(20px,-132px,0px) translateZ(73px);"></div>
+          <div class="p3d-face p3d-rafter-side" style="left:145px;top:77px;width:10px;height:146px;transform:translate3d(20px,-132px,0px) rotateX(90deg) translateZ(5px);"></div>
+          <div class="p3d-face p3d-rafter-front" style="left:77px;top:145px;width:146px;height:10px;transform:translate3d(20px,-132px,0px) rotateY(90deg) translateZ(5px);"></div>
+
+          <div class="p3d-face p3d-rafter-top" style="left:145px;top:145px;width:10px;height:10px;transform:translate3d(60px,-132px,0px) translateZ(73px);"></div>
+          <div class="p3d-face p3d-rafter-side" style="left:145px;top:77px;width:10px;height:146px;transform:translate3d(60px,-132px,0px) rotateX(90deg) translateZ(5px);"></div>
+          <div class="p3d-face p3d-rafter-front" style="left:77px;top:145px;width:146px;height:10px;transform:translate3d(60px,-132px,0px) rotateY(90deg) translateZ(5px);"></div>
+        </div>
+
+        <span class="dim-chip dim-span">2,80 m</span>
+        <span class="dim-chip dim-depth">2,00 m</span>
+        <span class="dim-chip dim-height">2,40 m</span>
+
+        <div class="orbit-hint">
+          <div class="orbit-icon"></div>
+          <span class="orbit-label">3D-Ansicht · frei drehbar</span>
         </div>
       </div>
       <div class="mockup-footer">
         <div class="mockup-list">
-          <div>Balken 100×100 · 2 Stk — 2.92 m</div>
-          <div>Diele 240×18 · 3 Stk — 7.20 m</div>
-          <div>Gesamt: 12.27 lfm</div>
+          <div>Pfosten 100×100 mm · 4 Stk — 2,40 m</div>
+          <div>Pfette 120×80 mm · 2 Stk — 2,80 m</div>
+          <div>Pfette 120×80 mm · 2 Stk — 2,00 m</div>
+          <div>Sparren 60×40 mm · 4 Stk — 2,00 m</div>
+          <div>Gesamt: 27,20 lfm</div>
         </div>
         <div class="mockup-tools">
           <div class="tool-btn tool-active">Auswählen</div>
