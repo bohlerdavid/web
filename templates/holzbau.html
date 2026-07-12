@@ -1922,8 +1922,8 @@ function makeSelectionHighlight(mesh, on) {
   if (!mesh) return;
   const mat = mesh.material;
   if (on) {
-    mat.emissive = new THREE.Color(0xe94560);
-    mat.emissiveIntensity = 0.25;
+    mat.emissive = new THREE.Color(0xff2020);
+    mat.emissiveIntensity = 0.5;
   } else {
     mat.emissive = new THREE.Color(0x000000);
     mat.emissiveIntensity = 0;
@@ -2065,6 +2065,19 @@ function addToSelection(id) {
     const b = beams.find(b => b.id === id);
     if (b) makeSelectionHighlight(b.mesh, true);
   }
+  updateSelPanel();
+  updateObjList();
+}
+
+// Select (and red-highlight) a specific set of beam ids — used by the parts
+// list so clicking a row shows ALL beams with those measurements in the 3D view.
+function selectBeamIds(ids) {
+  beams.forEach(b => makeSelectionHighlight(b.mesh, false));
+  selectedIds = new Set(ids);
+  selectedIds.forEach(id => {
+    const b = beams.find(b => b.id === id);
+    if (b) makeSelectionHighlight(b.mesh, true);
+  });
   updateSelPanel();
   updateObjList();
 }
@@ -2290,8 +2303,8 @@ function updatePartsTable() {
       <td><strong>${g.count}×</strong></td>
       <td><span class="color-dot" style="background:${dotColor}"></span>${g.label}</td>
       <td style="font-family:monospace">${g.L}×${g.B}×${g.H}</td>`;
-    tr.title = `${g.woodType} · ${g.L}×${g.B}×${g.H} mm`;
-    tr.onclick = () => { selectBeam(g.ids[0]); updateUI(); };
+    tr.title = `${g.woodType} · ${g.L}×${g.B}×${g.H} mm — anklicken: alle ${g.count} rot markieren`;
+    tr.onclick = () => { selectBeamIds(g.ids); updateUI(); };
     tbody.appendChild(tr);
     total += g.count;
   });
