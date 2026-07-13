@@ -1124,6 +1124,15 @@ body {
             <button class="add-btn" onclick="deleteSelected();updateUI()" style="background:var(--red-dim);color:var(--red);border:1px solid var(--red);font-size:12px">✕ Löschen</button>
           </div>
         </div>
+        <div class="panel-section" id="cutout-section" style="display:none">
+          <div class="panel-title" style="margin-bottom:6px">🔩 Ausfräsungen / Aussparungen</div>
+          <div style="font-size:10px;color:var(--text-3);margin-bottom:8px;line-height:1.4">Loch in die Platte fräsen. Position = Abstand von der Ecke (Länge/Breite).</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
+            <button class="add-btn" onclick="addCutout('rect')" style="background:var(--bg-card);color:var(--accent);border:1px solid var(--accent);font-size:12px">▭ Rechteck</button>
+            <button class="add-btn" onclick="addCutout('circle')" style="background:var(--bg-card);color:var(--accent);border:1px solid var(--accent);font-size:12px">◯ Kreis</button>
+          </div>
+          <div id="cutout-list"></div>
+        </div>
       </div>
       <div id="deco-edit" style="display:none;margin-top:8px">
         <div class="panel-title" style="color:var(--green)">Dekoration</div>
@@ -1625,6 +1634,9 @@ Object.entries(WOOD_COLORS).forEach(([k, v]) => {
   WOOD_COLORS_HEX[k] = '#' + v.toString(16).padStart(6, '0');
 });
 
+// Plattenwerkstoffe (2D-Zuschnitt + Ausfräsungen möglich)
+const SHEET_MATERIALS = new Set(['Sperrholz', 'OSB']);
+
 // ── Materialpreise (Richtwerte EUR/m³, in localStorage editierbar) ──
 const WOOD_PRICES_DEFAULT = {
   'Fichte': 320, 'Kiefer': 340, 'Lärche': 620, 'Eiche': 1400,
@@ -1701,11 +1713,46 @@ Object.assign(window, {
   openParamTemplate, applyParamTemplate, showSpanAssist, calcSpanAssist,
   showPlattenzuschnitt, renderPlattenzuschnitt,
   toggleLeftPanel, toggleRightPanel,
+  addCutout, updateCutout, deleteCutout,
 });
 
 // ══════════════════════════════════════════════
 // BEAM CREATION
 // ══════════════════════════════════════════════
+
+// Plattengeometrie mit Ausfräsungen (Löcher) — ExtrudeGeometry statt Box.
+// Ersetzt BoxGeometry(W,H,D) exakt (zentriert); Löcher gehen durch die dünnste Achse (Dicke).
+function buildPanelGeometry(beam, W, H, D) {
+  const axes = [
+    { v: W, e: new THREE.Vector3(1, 0, 0) },
+    { v: H, e: new THREE.Vector3(0, 1, 0) },
+    { v: D, e: new THREE.Vector3(0, 0, 1) },
+  ];
+  let ti = 0; for (let i = 1; i < 3; i++) if (axes[i].v < axes[ti].v) ti = i;  // dünnste = Dicke
+  const face = axes.filter((_, i) => i !== ti);
+  if (face[1].v > face[0].v) face.reverse();   // faceA = längere Flächenseite (L), faceB = kürzere (B)
+  const A = face[0].v, B = face[1].v, T = axes[ti].v;
+
+  const shape = new THREE.Shape();
+  shape.moveTo(-A / 2, -B / 2); shape.lineTo(A / 2, -B / 2); shape.lineTo(A / 2, B / 2); shape.lineTo(-A / 2, B / 2); shape.closePath();
+  (beam.cutouts || []).forEach(c => {
+    const path = new THREE.Path();
+    if (c.shape === 'circle') {
+      path.absarc((c.u || 0) - A / 2, (c.v || 0) - B / 2, Math.max(1, (c.dia || 100) / 2), 0, Math.PI * 2, true);
+    } else {
+      const x0 = (c.u || 0) - A / 2, y0 = (c.v || 0) - B / 2, w = Math.max(1, c.w || 100), h = Math.max(1, c.h || 100);
+      path.moveTo(x0, y0); path.lineTo(x0, y0 + h); path.lineTo(x0 + w, y0 + h); path.lineTo(x0 + w, y0); path.closePath();
+    }
+    shape.holes.push(path);
+  });
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: T, bevelEnabled: false });
+  geo.translate(0, 0, -T / 2);  // entlang Extrude-Achse zentrieren
+  const eX = face[0].e.clone(), eY = face[1].e.clone(), eZ = axes[ti].e.clone();
+  if (eX.clone().cross(eY).dot(eZ) < 0) eZ.negate();  // Rechtshändigkeit sichern
+  geo.applyMatrix4(new THREE.Matrix4().makeBasis(eX, eY, eZ));
+  geo.computeVertexNormals();
+  return geo;
+}
 
 function createBeamMesh(beam) {
   const color = WOOD_COLORS[beam.woodType] || 0xc8864c;
@@ -1783,7 +1830,12 @@ function createBeamMesh(beam) {
   else if (beam.axis === 'y') { W = beam.B; H = beam.L; D = beam.H; }
   else { W = beam.B; H = beam.H; D = beam.L; }
 
-  geo = new THREE.BoxGeometry(W, H, D);
+  // Plattenwerkstoff mit Ausfräsungen → Extrusion mit Löchern, sonst Box.
+  if (SHEET_MATERIALS.has(beam.woodType) && beam.cutouts && beam.cutouts.length) {
+    geo = buildPanelGeometry(beam, W, H, D);
+  } else {
+    geo = new THREE.BoxGeometry(W, H, D);
+  }
   const mesh = new THREE.Mesh(geo, mat);
   mesh.position.set(beam.x + W/2, beam.y + H/2, beam.z + D/2);
   // Apply user-defined rotation (in degrees)
@@ -2319,6 +2371,67 @@ function updateSelPanel() {
   document.getElementById('edit-rz').value = b.rz || 0;
   const editPhase = document.getElementById('edit-phase');
   if (editPhase) editPhase.value = b.phase || '';
+  renderCutoutPanel(b);
+}
+
+// ── Ausfräsungen (Löcher in Plattenwerkstoffe) ──
+function _selectedSheetBeam() {
+  const b = beams.find(x => x.id === ([...selectedIds][0] ?? null));
+  return (b && SHEET_MATERIALS.has(b.woodType)) ? b : null;
+}
+function renderCutoutPanel(b) {
+  const sec = document.getElementById('cutout-section');
+  if (!sec) return;
+  if (!b || !SHEET_MATERIALS.has(b.woodType)) { sec.style.display = 'none'; return; }
+  sec.style.display = 'block';
+  const list = document.getElementById('cutout-list');
+  const cuts = b.cutouts || [];
+  if (!cuts.length) { list.innerHTML = '<div style="font-size:11px;color:var(--text-3);padding:2px 0">Noch keine Aussparung.</div>'; return; }
+  list.innerHTML = cuts.map((c, i) => {
+    const dims = c.shape === 'circle'
+      ? `<label style="font-size:10px;color:var(--text-3)">Ø<input type="number" value="${c.dia || 100}" min="1" step="5" style="width:56px" onchange="updateCutout(${i},'dia',this.value)"></label>`
+      : `<label style="font-size:10px;color:var(--text-3)">B<input type="number" value="${c.w || 100}" min="1" step="5" style="width:52px" onchange="updateCutout(${i},'w',this.value)"></label>
+         <label style="font-size:10px;color:var(--text-3)">H<input type="number" value="${c.h || 100}" min="1" step="5" style="width:52px" onchange="updateCutout(${i},'h',this.value)"></label>`;
+    return `<div style="border:1px solid var(--border);border-radius:var(--r-sm);padding:6px;margin-bottom:6px;background:var(--bg-card)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <strong style="font-size:11px;color:var(--text-2)">${c.shape === 'circle' ? '◯ Kreis' : '▭ Rechteck'} ${i + 1}</strong>
+        <span style="cursor:pointer;color:var(--red);font-size:12px" onclick="deleteCutout(${i})" title="Entfernen">✕</span>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <label style="font-size:10px;color:var(--text-3)">↔<input type="number" value="${Math.round(c.u || 0)}" step="10" style="width:56px" onchange="updateCutout(${i},'u',this.value)"></label>
+        <label style="font-size:10px;color:var(--text-3)">↕<input type="number" value="${Math.round(c.v || 0)}" step="10" style="width:56px" onchange="updateCutout(${i},'v',this.value)"></label>
+        ${dims}
+      </div>
+    </div>`;
+  }).join('');
+}
+function addCutout(shape) {
+  const b = _selectedSheetBeam();
+  if (!b) return;
+  pushHistory();
+  if (!b.cutouts) b.cutouts = [];
+  // Standardmaße + zentriert auf der Fläche (L×B), Dicke = kleinstes Maß
+  const dims = [b.L, b.B, b.H].sort((a, z) => z - a);
+  const A = dims[0], B = dims[1];
+  if (shape === 'circle') b.cutouts.push({ shape: 'circle', u: Math.round(A / 2), v: Math.round(B / 2), dia: Math.min(200, Math.round(Math.min(A, B) * 0.3)) });
+  else { const w = Math.min(300, Math.round(A * 0.25)), h = Math.min(300, Math.round(B * 0.25)); b.cutouts.push({ shape: 'rect', u: Math.round(A / 2 - w / 2), v: Math.round(B / 2 - h / 2), w, h }); }
+  rebuildMesh(b);
+  renderCutoutPanel(b);
+}
+function updateCutout(i, field, value) {
+  const b = _selectedSheetBeam();
+  if (!b || !b.cutouts || !b.cutouts[i]) return;
+  b.cutouts[i][field] = Math.max(1, parseFloat(value) || 0);
+  rebuildMesh(b);
+}
+function deleteCutout(i) {
+  const b = _selectedSheetBeam();
+  if (!b || !b.cutouts) return;
+  pushHistory();
+  b.cutouts.splice(i, 1);
+  if (!b.cutouts.length) delete b.cutouts;
+  rebuildMesh(b);
+  renderCutoutPanel(b);
 }
 
 function updateDecoSelPanel() {
@@ -3578,7 +3691,8 @@ function serializeProject() {
       ...(b.shape === 'sawnAngle' ? {
         _sawFL: b._sawFL, _sawBL: b._sawBL,
         _sawFR: b._sawFR, _sawBR: b._sawBR
-      } : {})
+      } : {}),
+      ...(b.cutouts && b.cutouts.length ? { cutouts: b.cutouts } : {})
     })),
     decos: decos.map(d => ({
       id: d.id, type: d.type, label: d.label,
@@ -5337,8 +5451,6 @@ function calcSpanAssist() {
 }
 
 // ── 2D-Plattenzuschnitt (OSB / Sperrholz) — Guillotine-Optimierung ──
-const SHEET_MATERIALS = new Set(['Sperrholz', 'OSB']);
-
 // Plattenteile aus den Balken mit Plattenwerkstoff sammeln:
 // die zwei größten Maße = Fläche (w×h), das kleinste = Dicke.
 function gatherPanelParts() {
