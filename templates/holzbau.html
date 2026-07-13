@@ -1479,6 +1479,7 @@ body {
         <input type="number" id="platten-kerf" value="4" min="0" max="20" step="1" style="width:48px;background:var(--bg-input);border:1px solid var(--border);color:var(--text);border-radius:var(--r-sm);padding:2px 6px;font-size:12px">
         <label style="font-size:11px;color:var(--text-2);display:flex;align-items:center;gap:4px"><input type="checkbox" id="platten-rotate" checked> drehen erlaubt</label>
         <button class="tb-btn" onclick="renderPlattenzuschnitt()">↺ Neu berechnen</button>
+        <button class="tb-btn green" onclick="exportPanelCNCDXF()" title="CNC-Fräsplan als DXF (1:1) – Plattenkontur, Teile und Ausfräsungen">⚙ CNC-DXF</button>
         <button class="tb-btn" style="color:var(--red);border-color:var(--red-dim)" onclick="document.getElementById('platten-modal').style.display='none'">✕ Schließen</button>
       </div>
     </div>
@@ -1711,7 +1712,7 @@ Object.assign(window, {
   showKalkulation, renderKalkulation, drawPartSVG, printAngebot, editCompany,
   setWoodPrice, setCommercialLen, exportDXF,
   openParamTemplate, applyParamTemplate, showSpanAssist, calcSpanAssist,
-  showPlattenzuschnitt, renderPlattenzuschnitt,
+  showPlattenzuschnitt, renderPlattenzuschnitt, exportPanelCNCDXF,
   toggleLeftPanel, toggleRightPanel,
   addCutout, updateCutout, deleteCutout,
 });
@@ -5471,10 +5472,60 @@ function showPlattenzuschnitt() {
   document.getElementById('platten-modal').style.display = 'block';
 }
 
+let _lastPanelGroups = [];  // {material, thick, res, panelW, panelH} für CNC-DXF-Export
+
+// Ausfräsungen eines platzierten Teils in Platten-lokale mm-Koordinaten umrechnen
+// (berücksichtigt 90°-Drehung des Teils im Nesting).
+function _placementCutouts(pl) {
+  const b = beams.find(x => x.id === pl.id);
+  if (!b || !b.cutouts || !b.cutouts.length) return [];
+  return b.cutouts.map(c => {
+    const cu = c.u || 0, cv = c.v || 0;   // u entlang A (=lange Seite), v entlang B
+    if (c.shape === 'circle') {
+      const r = Math.max(1, (c.dia || 100) / 2);
+      const x = pl.rotated ? cv : cu, y = pl.rotated ? cu : cv;
+      return { shape: 'circle', x: pl.x + x, y: pl.y + y, r };
+    }
+    const w = Math.max(1, c.w || 100), h = Math.max(1, c.h || 100);
+    if (pl.rotated) return { shape: 'rect', x: pl.x + cv, y: pl.y + cu, w: h, h: w };
+    return { shape: 'rect', x: pl.x + cu, y: pl.y + cv, w, h };
+  });
+}
+
+// Eigener Platten-SVG-Renderer inkl. Ausfräsungen (Löcher rot umrandet).
+function renderPanelGroupSVG(res, panelW, panelH) {
+  const DW = 540, s = DW / panelW, gap = 14;
+  const ph = panelH * s;
+  const n = res.panels.length;
+  const totalH = n * ph + (n - 1) * gap + 4;
+  let p = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${DW} ${totalH}" width="100%" style="max-width:${DW}px">`];
+  res.panels.forEach((pn, pi) => {
+    const oy = pi * (ph + gap);
+    p.push(`<g transform="translate(0 ${oy})">`);
+    p.push(`<rect x="0" y="0" width="${panelW * s}" height="${ph}" fill="#f0f0f0" stroke="#bbb" stroke-width="1"/>`);
+    pn.placements.forEach(pl => {
+      p.push(`<rect x="${pl.x * s}" y="${pl.y * s}" width="${pl.w * s}" height="${pl.h * s}" fill="#c8a06e" fill-opacity="0.85" stroke="#7a5020" stroke-width="1"/>`);
+      if (pl.w * s > 34 && pl.h * s > 16) {
+        const lbl = (pl.label ? pl.label + ' ' : '') + Math.round(pl.rotated ? pl.h : pl.w) + '×' + Math.round(pl.rotated ? pl.w : pl.h) + (pl.rotated ? ' ↻' : '');
+        p.push(`<text x="${(pl.x + pl.w / 2) * s}" y="${(pl.y + pl.h / 2) * s + 3}" text-anchor="middle" font-size="9" font-family="Arial" fill="#5a3a12">${escHtml(lbl)}</text>`);
+      }
+      _placementCutouts(pl).forEach(hc => {
+        if (hc.shape === 'circle') p.push(`<circle cx="${hc.x * s}" cy="${hc.y * s}" r="${hc.r * s}" fill="#fff" stroke="#c0392b" stroke-width="1.2"/>`);
+        else p.push(`<rect x="${hc.x * s}" y="${hc.y * s}" width="${hc.w * s}" height="${hc.h * s}" fill="#fff" stroke="#c0392b" stroke-width="1.2"/>`);
+      });
+    });
+    p.push(`<text x="2" y="-3" font-size="9" font-family="Arial" fill="#888">Platte ${pi + 1} (${panelW}×${panelH} mm)</text>`);
+    p.push(`</g>`);
+  });
+  p.push(`</svg>`);
+  return p.join('');
+}
+
 function renderPlattenzuschnitt() {
   const el = document.getElementById('platten-content');
   if (typeof window.pack2D !== 'function') { el.textContent = 'Modul nicht geladen.'; return; }
   const groups = gatherPanelParts();
+  _lastPanelGroups = [];
   if (!groups.length) {
     el.innerHTML = '<p style="color:var(--text-2);padding:24px;text-align:center;line-height:1.6">Keine Plattenwerkstoffe im Modell.<br>Erstelle Balken mit Holzart <strong>„OSB"</strong> oder <strong>„Sperrholz"</strong> – ihre Fläche (die zwei größten Maße) wird als Zuschnittteil verwendet.</p>';
     return;
@@ -5484,16 +5535,73 @@ function renderPlattenzuschnitt() {
   const kerf = Math.max(0, parseInt(document.getElementById('platten-kerf').value) || 0);
   const allowRotate = document.getElementById('platten-rotate').checked;
   let html = '';
+  let anyCut = false;
   groups.forEach(g => {
     const res = window.pack2D(g.parts, { panelW, panelH, kerf, allowRotate });
-    const svg = window.pack2DToSVG(res, { panelW, panelH });
+    _lastPanelGroups.push({ material: g.material, thick: g.thick, res, panelW, panelH });
+    if (g.parts.some(pt => { const b = beams.find(x => x.id === pt.id); return b && b.cutouts && b.cutouts.length; })) anyCut = true;
     const eff = res.stats && res.stats.wastePct != null ? (100 - res.stats.wastePct).toFixed(0) : '–';
     const panelCount = res.stats ? res.stats.panelCount : (res.panels ? res.panels.length : 0);
     html += `<div class="kalk-sec"><div class="kalk-h">${escHtml(g.material)} · ${g.thick} mm — <span style="color:var(--green)">${panelCount} Platten · ${eff}% Ausbeute</span>`;
     if (res.unplaced && res.unplaced.length) html += ` <span style="color:var(--red)">· ${res.unplaced.length} Teil(e) zu groß</span>`;
-    html += `</div><div style="max-width:560px;margin-top:6px">${svg}</div></div>`;
+    html += `</div><div style="margin-top:6px">${renderPanelGroupSVG(res, panelW, panelH)}</div></div>`;
   });
+  if (anyCut) html = '<p style="font-size:11px;color:var(--text-3);margin:0 0 10px">🔴 Rote Umrandungen = Ausfräsungen. Als CNC-Fräsplan (DXF, 1:1) exportierbar.</p>' + html;
   el.innerHTML = html;
+}
+
+// CNC-Fräsplan als DXF (R12, 1:1 mm): Plattenkontur + Teilekonturen + Ausfräsungen je Layer.
+function panelsToCNCDXF() {
+  const L = [];
+  const H = (code, val) => { L.push(code); L.push(String(val)); };
+  H(0, 'SECTION'); H(2, 'TABLES'); H(0, 'TABLE'); H(2, 'LAYER'); H(70, 3);
+  [['PLATTE', 5], ['TEILE', 3], ['FRAESUNG', 1]].forEach(([nm, col]) => {
+    H(0, 'LAYER'); H(2, nm); H(70, 0); H(62, col); H(6, 'CONTINUOUS');
+  });
+  H(0, 'ENDTAB'); H(0, 'ENDSEC');
+  H(0, 'SECTION'); H(2, 'ENTITIES');
+  const line = (x1, y1, x2, y2, layer) => { H(0, 'LINE'); H(8, layer); H(10, x1); H(20, y1); H(11, x2); H(21, y2); };
+  const rect = (x, y, w, h, layer) => { line(x, y, x + w, y, layer); line(x + w, y, x + w, y + h, layer); line(x + w, y + h, x, y + h, layer); line(x, y + h, x, y, layer); };
+  const circ = (x, y, r, layer) => { H(0, 'CIRCLE'); H(8, layer); H(10, x); H(20, y); H(40, r); };
+  let offY = 0;  // Platten vertikal versetzt; DXF-Y nach oben → wir spiegeln y
+  _lastPanelGroups.forEach(g => {
+    const { res, panelW, panelH } = g;
+    res.panels.forEach(pn => {
+      const flip = (yy) => (offY + panelH - yy);   // oben-links-Ursprung → DXF
+      rect(0, offY, panelW, panelH, 'PLATTE');
+      pn.placements.forEach(pl => {
+        // Teil-Rechteck
+        line(pl.x, flip(pl.y), pl.x + pl.w, flip(pl.y), 'TEILE');
+        line(pl.x + pl.w, flip(pl.y), pl.x + pl.w, flip(pl.y + pl.h), 'TEILE');
+        line(pl.x + pl.w, flip(pl.y + pl.h), pl.x, flip(pl.y + pl.h), 'TEILE');
+        line(pl.x, flip(pl.y + pl.h), pl.x, flip(pl.y), 'TEILE');
+        _placementCutouts(pl).forEach(hc => {
+          if (hc.shape === 'circle') circ(hc.x, flip(hc.y), hc.r, 'FRAESUNG');
+          else {
+            line(hc.x, flip(hc.y), hc.x + hc.w, flip(hc.y), 'FRAESUNG');
+            line(hc.x + hc.w, flip(hc.y), hc.x + hc.w, flip(hc.y + hc.h), 'FRAESUNG');
+            line(hc.x + hc.w, flip(hc.y + hc.h), hc.x, flip(hc.y + hc.h), 'FRAESUNG');
+            line(hc.x, flip(hc.y + hc.h), hc.x, flip(hc.y), 'FRAESUNG');
+          }
+        });
+      });
+      offY += panelH + 100;  // 100mm Abstand zwischen Platten
+    });
+  });
+  H(0, 'ENDSEC'); H(0, 'EOF');
+  return L.join('\r\n');
+}
+
+function exportPanelCNCDXF() {
+  if (!requirePremium('⚙ CNC-Fräsplan', 'Der CNC-DXF-Export ist eine Premium-Funktion.')) return;
+  if (!_lastPanelGroups.length) { alert('Bitte zuerst den Plattenzuschnitt berechnen.'); return; }
+  const dxf = panelsToCNCDXF();
+  const blob = new Blob([dxf], { type: 'application/dxf' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'cnc_fraesplan.dxf';
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 function printProject() {
