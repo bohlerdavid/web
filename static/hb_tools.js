@@ -1,4 +1,4 @@
-/* HolzBau 3D — Tools: Spannweiten-Tabelle, parametrische Vorlagen, DXF-Export. Auto-generiert. */
+/* HolzBau 3D — Tools: Spannweiten, parametrische Vorlagen, DXF, 2D-Plattenzuschnitt. Auto-generiert. */
 /* ===== span_table.js ===== */
 /*
  * span_table.js — Querschnitts-Assistent fuer holzbau3d.app
@@ -927,3 +927,434 @@
     global.beamsToDXF = beamsToDXF;
   }
 })(typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : this));
+
+/* ===== panel2d.js ===== */
+/*
+ * panel2d.js — 2D-Plattenzuschnitt-Optimierer (Guillotine Bin Packing)
+ * fuer holzbau3d.app
+ *
+ * Ordnet rechteckige Zuschnittteile (Breite x Hoehe, mm) moeglichst
+ * effizient auf Standard-Platten (z.B. 2500x1250 mm) an und minimiert
+ * Plattenanzahl und Verschnitt.
+ *
+ * Eigenstaendig, keine Imports, IIFE-gekapselt.
+ * Exponiert: window.pack2D, window.pack2DToSVG (+ module.exports fuer Node).
+ */
+(function (root) {
+  'use strict';
+
+  // ---------------------------------------------------------------------------
+  // Hilfsfunktionen
+  // ---------------------------------------------------------------------------
+
+  function clampNum(v, def) {
+    return (typeof v === 'number' && isFinite(v)) ? v : def;
+  }
+
+  function normalizeOpts(opts) {
+    opts = opts || {};
+    return {
+      panelW: clampNum(opts.panelW, 2500),
+      panelH: clampNum(opts.panelH, 1250),
+      kerf: clampNum(opts.kerf, 4),
+      allowRotate: opts.allowRotate !== false, // default true
+      margin: clampNum(opts.margin, 0)
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Guillotine-Packing
+  //
+  // Je Platte halten wir eine Liste freier Rest-Rechtecke (freeRects).
+  // Zu Beginn ist das der nutzbare Bereich (Platte abzueglich margin).
+  //
+  // Beim Platzieren eines Teils belegt es effektiv (w+kerf) x (h+kerf) im
+  // Rest-Rechteck (Saegeschnitt zwischen Nachbarn), die tatsaechlichen
+  // Teilmasse bleiben aber w x h. Wir suchen nach "Best Area Fit" (kleinster
+  // uebrigbleibender Flaechenrest) ueber alle freien Rechtecke und beide
+  // Orientierungen. Nach der Platzierung wird das genutzte Rest-Rechteck per
+  // Guillotine-Split ("Shorter Leftover Axis Split", SLAS) in zwei neue
+  // Rest-Rechtecke zerlegt.
+  // ---------------------------------------------------------------------------
+
+  function newPanel(usableW, usableH, margin, panelW, panelH) {
+    return {
+      w: panelW,
+      h: panelH,
+      placements: [],
+      // freie Rechtecke in absoluten Plattenkoordinaten
+      freeRects: [{ x: margin, y: margin, w: usableW, h: usableH }]
+    };
+  }
+
+  // Versucht ein Teil (in gegebener Orientierung ow x oh, inkl. kerf-Bedarf)
+  // in die freeRects einer Platte einzupassen. Gibt den besten Treffer zurueck
+  // oder null.
+  function findBestFit(panel, needW, needH) {
+    var best = null;
+    var bestScore = Infinity;
+    for (var i = 0; i < panel.freeRects.length; i++) {
+      var fr = panel.freeRects[i];
+      if (needW <= fr.w + 1e-9 && needH <= fr.h + 1e-9) {
+        // Best Area Fit: kleinster Flaechenrest, Tie-Break kuerzere Restseite
+        var areaFit = fr.w * fr.h - needW * needH;
+        var leftoverH = Math.abs(fr.w - needW);
+        var leftoverV = Math.abs(fr.h - needH);
+        var shortSide = Math.min(leftoverH, leftoverV);
+        var score = areaFit + shortSide * 1e-6;
+        if (score < bestScore) {
+          bestScore = score;
+          best = { index: i, rect: fr };
+        }
+      }
+    }
+    return best;
+  }
+
+  // Guillotine-Split nach SLAS (Shorter Leftover Axis Split).
+  // Das freie Rechteck fr wird durch ein platziertes (needW x needH inkl. kerf)
+  // an seiner oberen-linken Ecke belegt; die zwei Reststuecke werden erzeugt.
+  function splitFreeRect(fr, needW, needH) {
+    var leftoverHoriz = fr.w - needW; // Rest rechts
+    var leftoverVert = fr.h - needH;  // Rest unten
+    var result = [];
+
+    // SLAS: entlang der kuerzeren Rest-Achse schneiden.
+    // Wenn leftoverHoriz < leftoverVert -> horizontaler Schnitt bevorzugt
+    // (rechtes Reststueck ist schmal, unteres Reststueck volle Breite).
+    var splitHorizontal = leftoverHoriz <= leftoverVert;
+
+    var right, bottom;
+    if (splitHorizontal) {
+      // Rechts: schmal, nur so hoch wie das Teil
+      right = { x: fr.x + needW, y: fr.y, w: leftoverHoriz, h: needH };
+      // Unten: volle Breite des freien Rechtecks
+      bottom = { x: fr.x, y: fr.y + needH, w: fr.w, h: leftoverVert };
+    } else {
+      // Rechts: volle Hoehe des freien Rechtecks
+      right = { x: fr.x + needW, y: fr.y, w: leftoverHoriz, h: fr.h };
+      // Unten: nur so breit wie das Teil
+      bottom = { x: fr.x, y: fr.y + needH, w: needW, h: leftoverVert };
+    }
+
+    if (right.w > 1e-9 && right.h > 1e-9) result.push(right);
+    if (bottom.w > 1e-9 && bottom.h > 1e-9) result.push(bottom);
+    return result;
+  }
+
+  // Entfernt freie Rechtecke, die vollstaendig in einem anderen enthalten sind.
+  function pruneFreeRects(freeRects) {
+    for (var i = 0; i < freeRects.length; i++) {
+      for (var j = i + 1; j < freeRects.length; j++) {
+        if (isContained(freeRects[i], freeRects[j])) {
+          freeRects.splice(i, 1);
+          i--;
+          break;
+        }
+        if (isContained(freeRects[j], freeRects[i])) {
+          freeRects.splice(j, 1);
+          j--;
+        }
+      }
+    }
+  }
+
+  function isContained(a, b) {
+    // ist a vollstaendig in b enthalten?
+    return a.x >= b.x - 1e-9 && a.y >= b.y - 1e-9 &&
+           a.x + a.w <= b.x + b.w + 1e-9 &&
+           a.y + a.h <= b.y + b.h + 1e-9;
+  }
+
+  // ---------------------------------------------------------------------------
+  // pack2D — Hauptfunktion
+  // ---------------------------------------------------------------------------
+  function pack2D(parts, opts) {
+    var o = normalizeOpts(opts);
+    var panelW = o.panelW, panelH = o.panelH;
+    var margin = o.margin, kerf = o.kerf, allowRotate = o.allowRotate;
+
+    var usableW = panelW - 2 * margin;
+    var usableH = panelH - 2 * margin;
+
+    // Eingabe kopieren + validieren
+    var items = [];
+    var unplaced = [];
+    var idCounter = 0;
+
+    (parts || []).forEach(function (p) {
+      var w = clampNum(p.w, NaN);
+      var h = clampNum(p.h, NaN);
+      var id = (p.id !== undefined && p.id !== null) ? p.id : ('p' + (idCounter++));
+      var label = (p.label !== undefined && p.label !== null) ? p.label : String(id);
+      var item = { w: w, h: h, id: id, label: label };
+
+      if (!isFinite(w) || !isFinite(h) || w <= 0 || h <= 0) {
+        // ungueltige Masse -> nicht platzierbar
+        unplaced.push(item);
+        return;
+      }
+      // Passt das Teil ueberhaupt (in irgendeiner Orientierung) auf eine leere Platte?
+      var fitsNormal = (w <= usableW + 1e-9 && h <= usableH + 1e-9);
+      var fitsRotated = allowRotate && (h <= usableW + 1e-9 && w <= usableH + 1e-9);
+      if (!fitsNormal && !fitsRotated) {
+        unplaced.push(item);
+        return;
+      }
+      items.push(item);
+    });
+
+    // FFD: absteigend nach Flaeche sortieren, Tie-Break max(w,h).
+    // Deterministisch (stabiler Vergleich, keine Zufallswerte).
+    items.sort(function (a, b) {
+      var areaA = a.w * a.h, areaB = b.w * b.h;
+      if (areaB !== areaA) return areaB - areaA;
+      var maxA = Math.max(a.w, a.h), maxB = Math.max(b.w, b.h);
+      if (maxB !== maxA) return maxB - maxA;
+      // stabiler finaler Tie-Break ueber id-String
+      var sa = String(a.id), sb = String(b.id);
+      return sa < sb ? -1 : (sa > sb ? 1 : 0);
+    });
+
+    var panels = [];
+
+    for (var k = 0; k < items.length; k++) {
+      var it = items[k];
+      var placed = false;
+
+      // Versuche in bestehenden Platten, dann neue Platte.
+      for (var pi = 0; pi <= panels.length && !placed; pi++) {
+        var panel;
+        if (pi === panels.length) {
+          panel = newPanel(usableW, usableH, margin, panelW, panelH);
+        } else {
+          panel = panels[pi];
+        }
+
+        // Kerf-Bedarf: das Teil belegt (w+kerf) x (h+kerf) im Rest-Rechteck,
+        // damit ein Saegeschnitt zu den Nachbarn passt. Am rechten/unteren Rand
+        // wird durch den margin/Plattenrand ohnehin nicht weiter geschnitten,
+        // aber wir modellieren konservativ konstant mit kerf.
+        var placement = tryPlaceInPanel(panel, it, kerf, allowRotate);
+        if (placement) {
+          panel.placements.push(placement);
+          if (pi === panels.length) panels.push(panel);
+          placed = true;
+        }
+      }
+
+      if (!placed) {
+        // Sollte kaum vorkommen (Teil passt auf leere Platte, wurde oben geprueft),
+        // aber zur Sicherheit:
+        unplaced.push({ w: it.w, h: it.h, id: it.id, label: it.label });
+      }
+    }
+
+    // Statistik
+    var partArea = 0;
+    panels.forEach(function (pn) {
+      pn.placements.forEach(function (pl) { partArea += pl.w * pl.h; });
+    });
+    var panelArea = panels.length * panelW * panelH;
+    var wastePct = panelArea > 0 ? ((panelArea - partArea) / panelArea) * 100 : 0;
+
+    return {
+      panels: panels.map(function (pn) {
+        return { w: pn.w, h: pn.h, placements: pn.placements };
+      }),
+      unplaced: unplaced,
+      stats: {
+        panelCount: panels.length,
+        partArea: partArea,
+        panelArea: panelArea,
+        wastePct: Math.round(wastePct * 100) / 100
+      }
+    };
+  }
+
+  // Versucht ein Teil in eine konkrete Platte zu platzieren.
+  // Probiert beide Orientierungen (falls erlaubt), waehlt Best Area Fit.
+  // Gibt placement { x, y, w, h, rotated, id, label } zurueck oder null.
+  function tryPlaceInPanel(panel, it, kerf, allowRotate) {
+    var candidates = [];
+    // Orientierung 0: normal
+    candidates.push({ w: it.w, h: it.h, rotated: false });
+    // Orientierung 1: gedreht
+    if (allowRotate && (it.w !== it.h)) {
+      candidates.push({ w: it.h, h: it.w, rotated: true });
+    }
+
+    var best = null;
+    var bestScore = Infinity;
+    var bestCand = null;
+
+    for (var c = 0; c < candidates.length; c++) {
+      var cand = candidates[c];
+      var needW = cand.w + kerf;
+      var needH = cand.h + kerf;
+      var fit = findBestFit(panel, needW, needH);
+      if (fit) {
+        var fr = fit.rect;
+        var areaFit = fr.w * fr.h - needW * needH;
+        var leftoverH = Math.abs(fr.w - needW);
+        var leftoverV = Math.abs(fr.h - needH);
+        var score = areaFit + Math.min(leftoverH, leftoverV) * 1e-6;
+        if (score < bestScore) {
+          bestScore = score;
+          best = fit;
+          bestCand = cand;
+        }
+      }
+    }
+
+    if (!best) return null;
+
+    var frUsed = best.rect;
+    var nW = bestCand.w + kerf;
+    var nH = bestCand.h + kerf;
+
+    // freies Rechteck entfernen und durch Splits ersetzen
+    panel.freeRects.splice(best.index, 1);
+    var splits = splitFreeRect(frUsed, nW, nH);
+    for (var s = 0; s < splits.length; s++) {
+      panel.freeRects.push(splits[s]);
+    }
+    pruneFreeRects(panel.freeRects);
+
+    // tatsaechliche Teilmasse (ohne kerf) an der oberen-linken Ecke
+    return {
+      x: frUsed.x,
+      y: frUsed.y,
+      w: bestCand.w,
+      h: bestCand.h,
+      rotated: bestCand.rotated,
+      id: it.id,
+      label: it.label
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // pack2DToSVG — rendert das Ergebnis als SVG-String
+  // ---------------------------------------------------------------------------
+  function esc(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function fmt(n) {
+    return Math.round(n * 100) / 100;
+  }
+
+  function pack2DToSVG(result, opts) {
+    var o = normalizeOpts(opts);
+    var panelW = o.panelW, panelH = o.panelH;
+
+    var panels = (result && result.panels) || [];
+    var gap = Math.max(panelW, panelH) * 0.04; // Abstand zwischen Platten
+    var pad = gap;
+    var labelH = Math.max(panelH * 0.08, 40); // Platz fuer Plattenueberschrift
+
+    // Gesamtgroesse (viewBox in mm-Koordinaten)
+    var totalW = panelW + 2 * pad;
+    var totalH = pad;
+    for (var i = 0; i < panels.length; i++) {
+      totalH += labelH + panels[i].h + gap;
+    }
+    if (panels.length === 0) totalH += labelH + gap;
+    totalH += pad;
+
+    var fontMain = Math.max(panelH * 0.05, 28);
+    var fontPart = Math.max(panelH * 0.03, 18);
+
+    var svg = [];
+    svg.push(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' +
+      fmt(totalW) + ' ' + fmt(totalH) +
+      '" width="100%" preserveAspectRatio="xMidYMin meet" ' +
+      'font-family="Arial, Helvetica, sans-serif">'
+    );
+    // Hintergrund
+    svg.push('<rect x="0" y="0" width="' + fmt(totalW) + '" height="' +
+      fmt(totalH) + '" fill="#ffffff"/>');
+
+    var cursorY = pad;
+    for (var p = 0; p < panels.length; p++) {
+      var panel = panels[p];
+      var ox = pad;
+      var oy = cursorY + labelH;
+
+      var used = 0;
+      for (var q = 0; q < panel.placements.length; q++) {
+        used += panel.placements[q].w * panel.placements[q].h;
+      }
+      var panelAreaThis = panel.w * panel.h;
+      var wp = panelAreaThis > 0 ? ((panelAreaThis - used) / panelAreaThis) * 100 : 0;
+
+      // Ueberschrift
+      svg.push('<text x="' + fmt(ox) + '" y="' + fmt(cursorY + labelH * 0.7) +
+        '" font-size="' + fmt(fontMain) + '" font-weight="bold" fill="#333333">' +
+        'Platte ' + (p + 1) + ' (' + fmt(panel.w) + ' x ' + fmt(panel.h) +
+        ' mm) - Verschnitt ' + fmt(Math.round(wp * 10) / 10) + '%' +
+        '</text>');
+
+      // Plattenflaeche (Verschnitt hell)
+      svg.push('<rect x="' + fmt(ox) + '" y="' + fmt(oy) + '" width="' +
+        fmt(panel.w) + '" height="' + fmt(panel.h) +
+        '" fill="#f0f0f0" stroke="#999999" stroke-width="' +
+        fmt(Math.max(panelW * 0.0015, 2)) + '"/>');
+
+      // Teile
+      for (var r = 0; r < panel.placements.length; r++) {
+        var pl = panel.placements[r];
+        var x = ox + pl.x;
+        var y = oy + pl.y;
+        svg.push('<rect x="' + fmt(x) + '" y="' + fmt(y) + '" width="' +
+          fmt(pl.w) + '" height="' + fmt(pl.h) +
+          '" fill="#c8a06e" stroke="#8a6a3e" stroke-width="' +
+          fmt(Math.max(panelW * 0.0008, 1)) + '"/>');
+
+        // Label + Masse (zentriert), nur wenn genug Platz
+        var cx = x + pl.w / 2;
+        var cy = y + pl.h / 2;
+        var labelText = esc(pl.label);
+        var dimText = fmt(pl.w) + ' x ' + fmt(pl.h) + (pl.rotated ? ' ↻' : '');
+        var minSide = Math.min(pl.w, pl.h);
+        if (minSide > fontPart * 1.5) {
+          svg.push('<text x="' + fmt(cx) + '" y="' + fmt(cy - fontPart * 0.2) +
+            '" font-size="' + fmt(fontPart) + '" fill="#3a2a12" ' +
+            'text-anchor="middle" dominant-baseline="middle">' + labelText + '</text>');
+          svg.push('<text x="' + fmt(cx) + '" y="' + fmt(cy + fontPart * 1.0) +
+            '" font-size="' + fmt(fontPart * 0.85) + '" fill="#5a4526" ' +
+            'text-anchor="middle" dominant-baseline="middle">' + dimText + '</text>');
+        }
+      }
+
+      cursorY = oy + panel.h + gap;
+    }
+
+    if (panels.length === 0) {
+      svg.push('<text x="' + fmt(pad) + '" y="' + fmt(pad + labelH * 0.7) +
+        '" font-size="' + fmt(fontMain) + '" fill="#999999">Keine Teile platziert</text>');
+    }
+
+    svg.push('</svg>');
+    return svg.join('');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Export
+  // ---------------------------------------------------------------------------
+  var api = { pack2D: pack2D, pack2DToSVG: pack2DToSVG };
+
+  if (typeof root !== 'undefined' && root) {
+    root.pack2D = pack2D;
+    root.pack2DToSVG = pack2DToSVG;
+  }
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = api;
+  }
+
+})(typeof window !== 'undefined' ? window : this);
