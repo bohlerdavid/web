@@ -6,6 +6,7 @@
 <title>Holzkonstruktion 3D</title>
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <script src="/static/i18n.js" defer></script>
+  <script src="/static/hb_tools.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
@@ -292,6 +293,16 @@ body {
 }
 #parts-table tr:hover td { background: var(--bg-hover); cursor: pointer; }
 #parts-table tr.selected-row td { background: var(--accent-dim); color: var(--accent); }
+.parts-draw { cursor:pointer; color:var(--text-3); font-size:12px; padding:0 3px; }
+.parts-draw:hover { color:var(--accent); }
+.kalk-sec { margin-bottom:16px; }
+.kalk-h { font-size:11px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px; }
+.kalk-grid { display:grid;grid-template-columns:1fr 1fr;gap:16px; }
+@media (max-width:640px){ .kalk-grid{ grid-template-columns:1fr; } }
+.kalk-table { width:100%;border-collapse:collapse;font-size:12px; }
+.kalk-table th { text-align:left;padding:5px 8px;border-bottom:1px solid var(--border);color:var(--text-2);font-weight:600;font-size:11px; }
+.kalk-table td { padding:5px 8px;border-bottom:1px solid var(--border-2);color:var(--text); }
+.kalk-table tfoot td { border-top:2px solid var(--border);border-bottom:none;color:var(--text); }
 
 .parts-total {
   padding: 5px 10px;
@@ -966,6 +977,7 @@ body {
 
     <!-- TAB: BALKEN -->
     <div id="pane-balken" class="tab-pane" style="display:none;overflow-y:auto;padding:12px">
+      <button class="tb-btn" style="width:100%;justify-content:center;margin-bottom:10px" onclick="showSpanAssist()" title="Querschnitt aus Spannweite &amp; Abstand vorschlagen">📏 Querschnitts-Assistent</button>
       <div class="panel-title">Balken hinzufügen</div>
       <div class="form-row">
         <label>Holzart</label>
@@ -1173,12 +1185,15 @@ body {
 
     <!-- TAB: STÜCKLISTE -->
     <div id="pane-list" class="tab-pane" style="display:none;flex-direction:column;flex:1;overflow:hidden">
-      <div style="padding:8px;border-bottom:1px solid var(--border);flex-shrink:0">
-        <button class="tb-btn" style="width:100%;justify-content:center" onclick="showSchnittplan()">✂️ Schnittplan-Optimierung</button>
+      <div style="padding:8px;border-bottom:1px solid var(--border);flex-shrink:0;display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <button class="tb-btn" style="justify-content:center" onclick="showKalkulation()">💶 Kalkulation{% if user_plan != 'premium' %} 🔒{% endif %}</button>
+        <button class="tb-btn" style="justify-content:center" onclick="showSchnittplan()">✂️ Schnittplan</button>
+        <button class="tb-btn" style="justify-content:center" onclick="exportDXF()">📐 DXF-Export{% if user_plan != 'premium' %} 🔒{% endif %}</button>
+        <button class="tb-btn" style="justify-content:center" onclick="printProject()">🖨 Plan / PDF{% if user_plan != 'premium' %} 🔒{% endif %}</button>
       </div>
       <div id="parts-scroll" style="flex:1;overflow-y:auto">
         <table id="parts-table">
-          <thead><tr><th>Anz.</th><th>Bezeichnung</th><th>L×B×H (mm)</th></tr></thead>
+          <thead><tr><th>Anz.</th><th>Bezeichnung</th><th>L×B×H (mm)</th><th></th></tr></thead>
           <tbody id="parts-body"></tbody>
         </table>
       </div>
@@ -1191,6 +1206,22 @@ body {
         Fertige Konstruktion laden &amp; anpassen.
         {% if user_plan != 'premium' %}<br><strong style="color:#d97706">✨ Premium erforderlich</strong>{% endif %}
       </p>
+      <div class="panel-title" style="margin:2px 0 6px">📐 Nach Maß erzeugen{% if user_plan != 'premium' %} 🔒{% endif %}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px">
+        <div class="tpl-card" onclick="openParamTemplate('carport')">
+          <div class="tpl-ico">🚗</div><div class="tpl-lbl">Carport</div><div class="tpl-meta">Maße eingeben</div>
+        </div>
+        <div class="tpl-card" onclick="openParamTemplate('pergola')">
+          <div class="tpl-ico">🌿</div><div class="tpl-lbl">Pergola</div><div class="tpl-meta">Maße eingeben</div>
+        </div>
+        <div class="tpl-card" onclick="openParamTemplate('gartenhaus')">
+          <div class="tpl-ico">🏡</div><div class="tpl-lbl">Gartenhaus</div><div class="tpl-meta">Maße eingeben</div>
+        </div>
+        <div class="tpl-card" onclick="openParamTemplate('terrasse')">
+          <div class="tpl-ico">☀️</div><div class="tpl-lbl">Terrassen&shy;dach</div><div class="tpl-meta">Maße eingeben</div>
+        </div>
+      </div>
+      <div class="panel-title" style="margin:2px 0 6px">📦 Feste Vorlagen</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
         <div class="tpl-card" onclick="loadTemplate('wand')">
           <div class="tpl-ico">🏠</div>
@@ -1352,11 +1383,57 @@ body {
         <span style="font-size:11px;color:var(--text-2);margin-left:6px" title="Sägeblattbreite – Materialverlust je Schnitt">Sägeblatt:</span>
         <input type="number" id="schnitt-kerf" value="3" min="0" max="20" step="1" style="width:52px;background:var(--bg-input);border:1px solid var(--border);color:var(--text);border-radius:var(--r-sm);padding:2px 6px;font-size:12px">
         <span style="font-size:11px;color:var(--text-2)">mm</span>
+        <span style="font-size:11px;color:var(--text-2);margin-left:6px" title="Vorhandene Reststücke/Lagerlängen in mm, kommagetrennt – werden zuerst belegt">Restholz:</span>
+        <input type="text" id="schnitt-stock" placeholder="z.B. 1200, 800, 2400" style="width:140px;background:var(--bg-input);border:1px solid var(--border);color:var(--text);border-radius:var(--r-sm);padding:2px 6px;font-size:12px">
         <button class="tb-btn" onclick="showSchnittplan()">↺ Neu berechnen</button>
         <button class="tb-btn" style="color:var(--red);border-color:var(--red-dim)" onclick="document.getElementById('schnittplan-modal').style.display='none'">✕ Schließen</button>
       </div>
     </div>
     <div id="schnittplan-content"></div>
+  </div>
+</div>
+
+<!-- KALKULATION / ANGEBOT MODAL -->
+<div id="kalkulation-modal" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.78);overflow:auto">
+  <div class="schnitt-modal-inner">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+      <span style="font-size:16px;font-weight:700;color:var(--text)">💶 Materialkosten &amp; Angebot</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="tb-btn" onclick="printAngebot()">🖨 Angebot drucken / PDF</button>
+        <button class="tb-btn" onclick="editCompany()" title="Firmenlogo/Briefkopf für Angebote">🏷 Briefkopf</button>
+        <button class="tb-btn" style="color:var(--red);border-color:var(--red-dim)" onclick="document.getElementById('kalkulation-modal').style.display='none'">✕ Schließen</button>
+      </div>
+    </div>
+    <p style="font-size:11px;color:var(--text-3);margin:0 0 14px">Preise sind Richtwerte – bitte an deinen Holzhändler anpassen. Werte werden im Browser gespeichert.</p>
+    <div id="kalk-content"></div>
+  </div>
+</div>
+
+<!-- PARAMETRISCHE VORLAGE MODAL -->
+<div id="paramtpl-modal" style="display:none;position:fixed;inset:0;z-index:1001;background:rgba(0,0,0,.78);align-items:center;justify-content:center">
+  <div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--r);padding:22px;width:340px;max-width:92%">
+    <div id="paramtpl-body"></div>
+  </div>
+</div>
+
+<!-- SPANNWEITEN-ASSISTENT MODAL -->
+<div id="spanassist-modal" style="display:none;position:fixed;inset:0;z-index:1001;background:rgba(0,0,0,.78);align-items:center;justify-content:center">
+  <div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--r);padding:22px;width:360px;max-width:92%">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <span style="font-size:15px;font-weight:700;color:var(--text)">📏 Querschnitts-Assistent</span>
+      <button class="tb-btn" style="color:var(--red);border-color:var(--red-dim)" onclick="document.getElementById('spanassist-modal').style.display='none'">✕</button>
+    </div>
+    <label style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;font-size:12px;color:var(--text-2)">Bauteil
+      <select id="sa-type" onchange="calcSpanAssist()" style="width:170px;background:var(--bg-input);border:1px solid var(--border);color:var(--text);border-radius:var(--r-sm);padding:4px 6px;font-size:12px">
+        <option value="sparren">Dachsparren</option>
+        <option value="balken">Deckenbalken / Pfette</option>
+        <option value="pfosten">Pfosten / Stütze</option>
+      </select></label>
+    <label style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;font-size:12px;color:var(--text-2)">Spannweite / Höhe (mm)
+      <input type="number" id="sa-span" value="3500" min="500" step="100" onchange="calcSpanAssist()" oninput="calcSpanAssist()" style="width:100px;background:var(--bg-input);border:1px solid var(--border);color:var(--text);border-radius:var(--r-sm);padding:4px 6px;font-size:12px"></label>
+    <label style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:14px;font-size:12px;color:var(--text-2)">Achsabstand (mm)
+      <input type="number" id="sa-spacing" value="700" min="100" step="50" onchange="calcSpanAssist()" oninput="calcSpanAssist()" style="width:100px;background:var(--bg-input);border:1px solid var(--border);color:var(--text);border-radius:var(--r-sm);padding:4px 6px;font-size:12px"></label>
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:14px;text-align:center" id="sa-result"></div>
   </div>
 </div>
 
@@ -1508,6 +1585,29 @@ Object.entries(WOOD_COLORS).forEach(([k, v]) => {
   WOOD_COLORS_HEX[k] = '#' + v.toString(16).padStart(6, '0');
 });
 
+// ── Materialpreise (Richtwerte EUR/m³, in localStorage editierbar) ──
+const WOOD_PRICES_DEFAULT = {
+  'Fichte': 320, 'Kiefer': 340, 'Lärche': 620, 'Eiche': 1400,
+  'Buche': 900, 'Douglasie': 560, 'Brettschichtholz (BSH)': 780,
+  'Sperrholz': 900, 'OSB': 480, 'Benutzerdefiniert': 400,
+};
+function getWoodPrices() {
+  try { return { ...WOOD_PRICES_DEFAULT, ...(JSON.parse(localStorage.getItem('hb_wood_prices') || '{}')) }; }
+  catch (e) { return { ...WOOD_PRICES_DEFAULT }; }
+}
+function setWoodPrice(wt, eur) {
+  const p = getWoodPrices();
+  p[wt] = eur;
+  try { localStorage.setItem('hb_wood_prices', JSON.stringify(p)); } catch (e) {}
+}
+// ── Firmen-/Briefkopf (Premium entfernt Wasserzeichen, setzt eigenes Logo) ──
+function getCompany() {
+  try { return JSON.parse(localStorage.getItem('hb_company') || '{}'); } catch (e) { return {}; }
+}
+function setCompany(obj) {
+  try { localStorage.setItem('hb_company', JSON.stringify(obj || {})); } catch (e) {}
+}
+
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -1556,6 +1656,9 @@ Object.assign(window, {
   addBeamRow, setPhaseFilter, showSchnittplan,
   toggleSaw, executeSawCut,
   toggleTheme,
+  showKalkulation, renderKalkulation, drawPartSVG, printAngebot, editCompany,
+  setWoodPrice, setCommercialLen, exportDXF,
+  openParamTemplate, applyParamTemplate, showSpanAssist, calcSpanAssist,
 });
 
 // ══════════════════════════════════════════════
@@ -2332,9 +2435,11 @@ function updatePartsTable() {
     tr.innerHTML = `
       <td><strong>${g.count}×</strong></td>
       <td><span class="color-dot" style="background:${dotColor}"></span>${g.label}</td>
-      <td style="font-family:monospace">${g.L}×${g.B}×${g.H}</td>`;
+      <td style="font-family:monospace">${g.L}×${g.B}×${g.H}</td>
+      <td style="text-align:right"><span class="parts-draw" title="Bemaßte Werkstattzeichnung (SVG)">📐</span></td>`;
     tr.title = `${g.woodType} · ${g.L}×${g.B}×${g.H} mm — anklicken: alle ${g.count} rot markieren`;
     tr.onclick = () => { selectBeamIds(g.ids); updateUI(); };
+    tr.querySelector('.parts-draw').onclick = (ev) => { ev.stopPropagation(); drawPartSVG(g.ids); };
     tbody.appendChild(tr);
     total += g.count;
   });
@@ -4235,6 +4340,10 @@ function showSchnittplan() {
   if (!requirePremium('✂️ Schnittplan-Optimierung', 'Die Schnittplan-Optimierung minimiert Holzverschnitt — Premium-Funktion.')) return;
   const BOARD_LEN = parseInt(document.getElementById('schnitt-board-len')?.value) || 4000;
   const KERF = Math.max(0, parseInt(document.getElementById('schnitt-kerf')?.value) || 0); // Sägeblattbreite je Schnitt
+  // Vorhandenes Restholz (Lagerlängen) — wird vor neuen Stangen belegt.
+  const STOCK = (document.getElementById('schnitt-stock')?.value || '')
+    .split(',').map(s => parseInt((s || '').trim())).filter(n => n > 0).sort((a, b) => b - a);
+  const stockBins = STOCK.map(len => ({ total: len, remaining: len, pieces: [], stock: true, group: null }));
 
   // Group by woodType + B×H (only rectangular beams)
   const grpMap = new Map();
@@ -4255,7 +4364,7 @@ function showSchnittplan() {
   const SEG_COLORS = ['#4caf50','#2196f3','#ff9800','#9c27b0','#f44336','#00bcd4','#8bc34a','#ffc107'];
   let html = '<div style="display:grid;gap:14px">';
 
-  grpMap.forEach((grp) => {
+  grpMap.forEach((grp, key) => {
     // FFD sort descending
     const pieces = [...grp.pieces].sort((a, b2) => b2 - a);
     const bins = [];
@@ -4266,19 +4375,22 @@ function showSchnittplan() {
         return;
       }
       let placed = false;
+      // 1) Restholz zuerst belegen (frei oder bereits dieser Gruppe zugeordnet)
+      for (const sb of stockBins) {
+        if (sb.group && sb.group !== key) continue;
+        const need = sb.pieces.length ? len + KERF : len;
+        if (sb.remaining >= need) { sb.group = key; sb.pieces.push(len); sb.remaining -= need; placed = true; break; }
+      }
+      if (placed) return;
+      // 2) bereits geöffnete Standard-Stangen dieser Gruppe
       for (const bin of bins) {
-        // jedes weitere Teil kostet zusätzlich eine Schnittfuge (Kerf)
-        const need = bin.pieces.length ? len + KERF : len;
-        if (!bin.oversized && bin.remaining >= need) {
-          bin.pieces.push(len);
-          bin.remaining -= need;
-          placed = true;
-          break;
-        }
+        const need = bin.pieces.length ? len + KERF : len;   // Schnittfuge je weiterem Teil
+        if (!bin.oversized && bin.remaining >= need) { bin.pieces.push(len); bin.remaining -= need; placed = true; break; }
       }
       if (!placed) bins.push({ total: BOARD_LEN, remaining: BOARD_LEN - len, pieces: [len], oversized: false });
     });
 
+    const myStock = stockBins.filter(sb => sb.group === key && sb.pieces.length);
     const totalWaste = bins.filter(b => !b.oversized).reduce((s, b2) => s + b2.remaining, 0);
     const totalUsed  = bins.filter(b => !b.oversized).reduce((s, b2) => s + (b2.total - b2.remaining), 0);
     const eff = totalUsed + totalWaste > 0 ? ((totalUsed / (totalUsed + totalWaste)) * 100).toFixed(1) : '–';
@@ -4287,37 +4399,45 @@ function showSchnittplan() {
     html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:12px">`;
     html += `<div style="font-weight:700;color:var(--text);margin-bottom:8px;display:flex;justify-content:space-between;align-items:baseline">`;
     html += `<span>${escHtml(grp.woodType)} | ${grp.B}×${grp.H} mm</span>`;
-    html += `<span style="font-size:11px;color:var(--green)">${normalBins} Stangen · ${eff}% Ausbeute</span>`;
+    html += `<span style="font-size:11px;color:var(--green)">${normalBins} Stangen${myStock.length ? ` + ${myStock.length} Restholz` : ''} · ${eff}% Ausbeute</span>`;
     html += `</div>`;
 
+    const renderBar = (bin, label, labelColor) => {
+      let h = `<div style="margin-bottom:6px">`;
+      h += `<div style="font-size:10px;color:${labelColor};margin-bottom:2px">${label} — ${bin.pieces.join(' + ')} mm` +
+           (bin.remaining > 0 ? ` + <span style="color:var(--text-3)">${bin.remaining} mm Rest</span>` : '') + `</div>`;
+      h += `<div class="schnitt-bar-row">`;
+      bin.pieces.forEach((p, pi) => {
+        const pct = (p / bin.total) * 100;
+        const c = SEG_COLORS[pi % SEG_COLORS.length];
+        h += `<div class="schnitt-bar-seg" style="width:${pct}%;background:${c}">${p > bin.total * 0.08 ? p : ''}</div>`;
+      });
+      if (bin.remaining > 0) h += `<div class="schnitt-bar-waste">${bin.remaining}</div>`;
+      h += `</div></div>`;
+      return h;
+    };
+
+    myStock.forEach((sb) => { html += renderBar(sb, `♻ Restholz ${sb.total} mm`, 'var(--green)'); });
     bins.forEach((bin, i) => {
       if (bin.oversized) {
         html += `<div style="margin-bottom:6px"><div style="font-size:10px;color:var(--red);margin-bottom:2px">⚠ Überlang (${bin.pieces[0]} mm > ${BOARD_LEN} mm)</div></div>`;
         return;
       }
-      html += `<div style="margin-bottom:6px">`;
-      html += `<div style="font-size:10px;color:var(--text-2);margin-bottom:2px">Stange ${i + 1} — ${bin.pieces.join(' + ')} mm` +
-              (bin.remaining > 0 ? ` + <span style="color:var(--text-3)">${bin.remaining} mm Rest</span>` : '') + `</div>`;
-      html += `<div class="schnitt-bar-row">`;
-      bin.pieces.forEach((p, pi) => {
-        const pct = (p / bin.total) * 100;
-        const c = SEG_COLORS[pi % SEG_COLORS.length];
-        html += `<div class="schnitt-bar-seg" style="width:${pct}%;background:${c}">${p > bin.total * 0.08 ? p : ''}</div>`;
-      });
-      if (bin.remaining > 0) {
-        html += `<div class="schnitt-bar-waste">${bin.remaining}</div>`;
-      }
-      html += `</div></div>`;
+      html += renderBar(bin, `Stange ${i + 1}`, 'var(--text-2)');
     });
 
     if (totalWaste > 0) {
       html += `<div style="font-size:10px;color:#666;margin-top:4px">Gesamt-Verschnitt: ${totalWaste} mm`;
-      if (grp.pieces.length > 1) html += ` — ${grp.pieces.length} Teile auf ${normalBins} Stangen`;
+      if (grp.pieces.length > 1) html += ` — ${grp.pieces.length} Teile auf ${normalBins} Stangen${myStock.length ? ' + Restholz' : ''}`;
       html += `</div>`;
     }
     html += `</div>`;
   });
 
+  if (STOCK.length) {
+    const usedStock = stockBins.filter(sb => sb.pieces.length).length;
+    html += `<div style="font-size:10px;color:var(--text-3);padding:2px 2px">♻ ${usedStock}/${STOCK.length} Reststücke genutzt · Restholz wird längenbasiert belegt – Querschnitt bitte selbst prüfen.</div>`;
+  }
   html += '</div>';
   document.getElementById('schnittplan-content').innerHTML = html;
   document.getElementById('schnittplan-modal').style.display = 'block';
@@ -4844,6 +4964,312 @@ function updateMeasureCanvas() {
 // ══════════════════════════════════════════════
 // DRUCK / PDF EXPORT
 // ══════════════════════════════════════════════
+
+// ══════════════════════════════════════════════
+// MATERIALKOSTEN, EINKAUFSLISTE, EINZELTEIL-ZEICHNUNG
+// ══════════════════════════════════════════════
+
+function _fmtEur(n) { return (Math.round(n * 100) / 100).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'; }
+
+// Positionen mit Volumen (m³), Laufmeter und Kosten anreichern.
+function computeCostRows() {
+  const prices = getWoodPrices();
+  return groupBeamsForList().map(g => {
+    const volM3 = (g.L * g.B * g.H) / 1e9 * g.count;      // m³ gesamt
+    const lfm = g.L / 1000 * g.count;                     // Laufmeter gesamt
+    const eurM3 = prices[g.woodType] != null ? prices[g.woodType] : (WOOD_PRICES_DEFAULT[g.woodType] || 400);
+    return { ...g, volM3, lfm, eurM3, cost: volM3 * eurM3 };
+  });
+}
+
+let COMMERCIAL_LEN = 5000; // Ziel-Handelslänge mm (im Kalkulations-Modal wählbar)
+
+// Standard-Handelslängen-Einkauf: je Holzart+Querschnitt Stangen bündeln (FFD).
+function computeShoppingList() {
+  const map = new Map();
+  beams.forEach(b => {
+    if ((b.shape || 'rect') !== 'rect') return;
+    const key = `${b.woodType}||${b.B}×${b.H}`;
+    if (!map.has(key)) map.set(key, { woodType: b.woodType, B: b.B, H: b.H, pieces: [] });
+    map.get(key).pieces.push(Math.round(b.L));
+  });
+  const prices = getWoodPrices();
+  const rows = [];
+  map.forEach(grp => {
+    const pieces = [...grp.pieces].sort((a, b) => b - a);
+    let boards = 0, oversized = 0;
+    const bins = [];
+    pieces.forEach(len => {
+      if (len > COMMERCIAL_LEN) { oversized++; return; }
+      let placed = false;
+      for (const bin of bins) {
+        const need = bin.n ? len + 3 : len;   // 3mm Schnittfuge
+        if (bin.rem >= need) { bin.rem -= need; bin.n++; placed = true; break; }
+      }
+      if (!placed) { bins.push({ rem: COMMERCIAL_LEN - len, n: 1 }); }
+    });
+    boards = bins.length;
+    const eurM3 = prices[grp.woodType] || 400;
+    const boardVol = (COMMERCIAL_LEN * grp.B * grp.H) / 1e9;
+    rows.push({ woodType: grp.woodType, B: grp.B, H: grp.H, boards, oversized,
+                len: COMMERCIAL_LEN, cost: boards * boardVol * eurM3 });
+  });
+  return rows.sort((a, b) => a.woodType.localeCompare(b.woodType) || a.B - b.B);
+}
+
+// Grobe Verbinder-/Schraubenliste (transparente Schätzung aus Bauteil-Rollen).
+function computeHardware() {
+  let posts = 0, horiz = 0;
+  beams.forEach(b => { if (b.axis === 'y') posts++; else horiz++; });
+  const anchors = posts;                    // Pfostenanker / Stützenfüße
+  const angles = horiz * 2;                 // Winkelverbinder (2 je liegendem Balken)
+  const screws = anchors * 4 + angles * 6;  // Schrauben
+  return { anchors, angles, screws, posts, horiz };
+}
+
+function showKalkulation() {
+  if (!requirePremium('💶 Kalkulation & Angebot', 'Materialkosten-Kalkulation und Angebots-PDF sind Premium-Funktionen.')) return;
+  if (beams.length === 0) { alert('Keine Balken vorhanden.'); return; }
+  renderKalkulation();
+  document.getElementById('kalkulation-modal').style.display = 'block';
+}
+
+function renderKalkulation() {
+  const rows = computeCostRows();
+  const prices = getWoodPrices();
+  const usedWoods = [...new Set(rows.map(r => r.woodType))];
+  let sum = 0, vol = 0;
+  rows.forEach(r => { sum += r.cost; vol += r.volM3; });
+
+  // Preis-Editor je verwendeter Holzart
+  let priceHtml = '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">';
+  usedWoods.forEach(w => {
+    priceHtml += `<label style="font-size:11px;color:var(--text-2);display:flex;align-items:center;gap:4px">
+      <span class="color-dot" style="background:${WOOD_COLORS_HEX[w] || '#888'}"></span>${escHtml(w)}
+      <input type="number" value="${prices[w] || 400}" min="0" step="10" style="width:70px;background:var(--bg-input);border:1px solid var(--border);color:var(--text);border-radius:var(--r-sm);padding:2px 6px;font-size:12px"
+        onchange="setWoodPrice('${w.replace(/'/g,"\\'")}', parseFloat(this.value)||0); renderKalkulation();"> €/m³</label>`;
+  });
+  priceHtml += '</div>';
+
+  // Kostentabelle
+  let t = '<table class="kalk-table"><thead><tr><th>Anz.</th><th>Bezeichnung</th><th>Maß (mm)</th><th>Holzart</th><th>Volumen</th><th>€/m³</th><th>Kosten</th></tr></thead><tbody>';
+  rows.forEach(r => {
+    t += `<tr><td>${r.count}×</td><td>${escHtml(r.label)}</td><td style="font-family:monospace">${r.L}×${r.B}×${r.H}</td>
+      <td>${escHtml(r.woodType)}</td><td>${r.volM3.toFixed(3)} m³</td><td>${r.eurM3}</td><td style="text-align:right">${_fmtEur(r.cost)}</td></tr>`;
+  });
+  t += `</tbody><tfoot><tr><td colspan="4"><strong>Summe Material</strong></td><td><strong>${vol.toFixed(3)} m³</strong></td><td></td><td style="text-align:right"><strong>${_fmtEur(sum)}</strong></td></tr></tfoot></table>`;
+
+  // Einkaufsliste
+  const shop = computeShoppingList();
+  let s = '<table class="kalk-table"><thead><tr><th>Holzart</th><th>Querschnitt</th><th>Länge</th><th>Stangen</th></tr></thead><tbody>';
+  shop.forEach(r => {
+    s += `<tr><td>${escHtml(r.woodType)}</td><td style="font-family:monospace">${r.B}×${r.H} mm</td><td>${(r.len/1000).toFixed(1)} m</td>
+      <td><strong>${r.boards}×</strong>${r.oversized ? ` <span style="color:var(--red)">+${r.oversized} überlang</span>` : ''}</td></tr>`;
+  });
+  s += '</tbody></table>';
+
+  // Verbinder
+  const hw = computeHardware();
+  const hwHtml = `<ul style="margin:6px 0 0;padding-left:18px;font-size:12px;color:var(--text-2);line-height:1.7">
+    <li>${hw.anchors}× Pfostenanker / Stützenfuß</li>
+    <li>ca. ${hw.angles}× Winkelverbinder</li>
+    <li>ca. ${hw.screws}× Schrauben</li>
+  </ul>`;
+
+  document.getElementById('kalk-content').innerHTML =
+    `<div class="kalk-sec"><div class="kalk-h">Preise je Holzart</div>${priceHtml}</div>` +
+    `<div class="kalk-sec"><div class="kalk-h">Materialkosten</div>${t}</div>` +
+    `<div class="kalk-grid">` +
+      `<div class="kalk-sec"><div class="kalk-h">Einkaufsliste (Handelslängen)
+        <select id="kalk-comlen" onchange="setCommercialLen(this.value)" style="margin-left:6px;background:var(--bg-input);border:1px solid var(--border);color:var(--text);border-radius:var(--r-sm);padding:1px 4px;font-size:11px">
+          ${[4000,4500,5000,6000].map(l=>`<option value="${l}" ${l===COMMERCIAL_LEN?'selected':''}>${(l/1000).toFixed(1)} m</option>`).join('')}
+        </select></div>${s}</div>` +
+      `<div class="kalk-sec"><div class="kalk-h">Verbinder &amp; Schrauben <span style="font-weight:400;color:var(--text-3);font-size:10px">(grobe Schätzung)</span></div>${hwHtml}</div>` +
+    `</div>`;
+}
+
+// Einzelteil-Werkstattzeichnung (bemaßt) als SVG-Download.
+function drawPartSVG(ids) {
+  const b = beams.find(x => ids.includes(x.id));
+  if (!b) return;
+  const L = Math.round(b.L), B = Math.round(b.B), H = Math.round(b.H);
+  const count = ids.length;
+  const PAD = 70, maxW = 640;
+  const scale = Math.min((maxW - PAD * 2) / L, 0.5);
+  const vw = L * scale, vh = H * scale;
+  const W = vw + PAD * 2, Hsvg = vh + PAD * 2 + 90;
+  const ox = PAD, oy = PAD + 20;
+  const fill = WOOD_COLORS_HEX[b.woodType] || '#c8a06e';
+  let p = [];
+  p.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${Hsvg}" viewBox="0 0 ${W} ${Hsvg}">`);
+  p.push(`<rect width="${W}" height="${Hsvg}" fill="white"/>`);
+  p.push(`<text x="${W/2}" y="26" text-anchor="middle" font-size="15" font-weight="bold" font-family="Arial" fill="#0f3460">${escHtml(b.name)} — ${count}×</text>`);
+  p.push(`<text x="${W/2}" y="44" text-anchor="middle" font-size="11" font-family="Arial" fill="#555">${escHtml(b.woodType)} · Querschnitt ${B}×${H} mm</text>`);
+  // Seitenansicht (Länge × Höhe)
+  p.push(`<rect x="${ox}" y="${oy}" width="${vw}" height="${vh}" fill="${fill}" fill-opacity="0.65" stroke="#7a5020" stroke-width="1"/>`);
+  p.push(`<line x1="${ox}" y1="${oy}" x2="${ox+vw}" y2="${oy+vh}" stroke="#7a5020" stroke-width="0.5" opacity="0.4"/>`);
+  p.push(`<line x1="${ox+vw}" y1="${oy}" x2="${ox}" y2="${oy+vh}" stroke="#7a5020" stroke-width="0.5" opacity="0.4"/>`);
+  // Längen-Bemaßung unten
+  const dy = oy + vh + 26;
+  p.push(`<line x1="${ox}" y1="${oy+vh}" x2="${ox}" y2="${dy+4}" stroke="#e94560" stroke-width="0.7"/>`);
+  p.push(`<line x1="${ox+vw}" y1="${oy+vh}" x2="${ox+vw}" y2="${dy+4}" stroke="#e94560" stroke-width="0.7"/>`);
+  p.push(`<line x1="${ox}" y1="${dy}" x2="${ox+vw}" y2="${dy}" stroke="#e94560" stroke-width="0.9"/>`);
+  p.push(`<line x1="${ox}" y1="${dy-4}" x2="${ox}" y2="${dy+4}" stroke="#e94560" stroke-width="1.3"/>`);
+  p.push(`<line x1="${ox+vw}" y1="${dy-4}" x2="${ox+vw}" y2="${dy+4}" stroke="#e94560" stroke-width="1.3"/>`);
+  p.push(`<text x="${ox+vw/2}" y="${dy+16}" text-anchor="middle" font-size="12" font-family="Arial" fill="#e94560">${L >= 1000 ? (L/1000).toFixed(2)+' m' : L+' mm'}</text>`);
+  // Höhen-Bemaßung links
+  const dx = ox - 22;
+  p.push(`<line x1="${ox}" y1="${oy}" x2="${dx-4}" y2="${oy}" stroke="#e94560" stroke-width="0.7"/>`);
+  p.push(`<line x1="${ox}" y1="${oy+vh}" x2="${dx-4}" y2="${oy+vh}" stroke="#e94560" stroke-width="0.7"/>`);
+  p.push(`<line x1="${dx}" y1="${oy}" x2="${dx}" y2="${oy+vh}" stroke="#e94560" stroke-width="0.9"/>`);
+  p.push(`<text x="${dx-4}" y="${oy+vh/2}" text-anchor="middle" font-size="11" font-family="Arial" fill="#e94560" transform="rotate(-90 ${dx-4} ${oy+vh/2})">${H} mm</text>`);
+  p.push(`<text x="${ox}" y="${Hsvg-14}" font-size="9" font-family="Arial" fill="#999">erstellt mit holzbau3d.app</text>`);
+  p.push(`</svg>`);
+  const blob = new Blob([p.join('\n')], { type: 'image/svg+xml' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'bauteil_' + (b.name || 'teil').replace(/[^a-z0-9]+/gi, '_').toLowerCase() + '.svg';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// Firmen-Briefkopf pflegen (Premium: eigenes Logo statt Wasserzeichen).
+function editCompany() {
+  const c = getCompany();
+  const name = prompt('Firmenname / Name für den Briefkopf (leer = nur Wasserzeichen):', c.name || '');
+  if (name === null) return;
+  const contact = prompt('Kontakt-Zeile (Adresse, Telefon, E-Mail):', c.contact || '');
+  setCompany({ name: (name || '').trim(), contact: (contact || '').trim() });
+  alert('Briefkopf gespeichert.');
+}
+
+// Angebot als druckbares HTML (mit Firmen-Briefkopf oder Wasserzeichen).
+function printAngebot() {
+  const rows = computeCostRows();
+  const shop = computeShoppingList();
+  const hw = computeHardware();
+  let sum = 0, vol = 0;
+  rows.forEach(r => { sum += r.cost; vol += r.volM3; });
+  const c = getCompany();
+  const isPremium = {% if user_plan == 'premium' %}true{% else %}false{% endif %};
+  const header = (isPremium && c.name)
+    ? `<div style="border-bottom:2px solid #92400e;padding-bottom:10px;margin-bottom:18px">
+         <div style="font-size:20px;font-weight:800;color:#1f2937">${escHtml(c.name)}</div>
+         ${c.contact ? `<div style="font-size:12px;color:#666">${escHtml(c.contact)}</div>` : ''}
+       </div>`
+    : `<div style="border-bottom:2px solid #92400e;padding-bottom:10px;margin-bottom:18px;font-size:18px;font-weight:800;color:#92400e">HolzBau 3D — Materialangebot</div>`;
+  const watermark = (!isPremium || !c.name)
+    ? '<div style="position:fixed;bottom:12px;right:16px;font-size:10px;color:#bbb">erstellt mit holzbau3d.app</div>' : '';
+
+  let costRows = rows.map(r =>
+    `<tr><td>${r.count}×</td><td>${escHtml(r.label)}</td><td>${r.L}×${r.B}×${r.H}</td><td>${escHtml(r.woodType)}</td>
+     <td style="text-align:right">${r.volM3.toFixed(3)} m³</td><td style="text-align:right">${r.eurM3} €</td><td style="text-align:right">${_fmtEur(r.cost)}</td></tr>`).join('');
+  let shopRows = shop.map(r =>
+    `<tr><td>${escHtml(r.woodType)}</td><td>${r.B}×${r.H} mm</td><td>${(r.len/1000).toFixed(1)} m</td><td>${r.boards}×${r.oversized?` (+${r.oversized} überlang)`:''}</td></tr>`).join('');
+
+  const html = `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>Materialangebot</title>
+    <style>body{font-family:Arial,sans-serif;color:#1f2937;padding:30px;font-size:12px}
+      h2{font-size:14px;color:#92400e;margin:22px 0 8px}
+      table{width:100%;border-collapse:collapse;margin-bottom:6px}
+      th{text-align:left;background:#fef3e0;color:#92400e;padding:6px 8px;border:1px solid #f0e0c8;font-size:11px}
+      td{padding:5px 8px;border:1px solid #eee3d3}
+      tfoot td{font-weight:bold;border-top:2px solid #92400e}
+      @media print{button{display:none}}</style></head><body>
+    ${header}
+    <h2>Materialkosten</h2>
+    <table><thead><tr><th>Anz.</th><th>Bezeichnung</th><th>Maß (mm)</th><th>Holzart</th><th>Volumen</th><th>€/m³</th><th>Kosten</th></tr></thead>
+    <tbody>${costRows}</tbody>
+    <tfoot><tr><td colspan="4">Summe Material</td><td style="text-align:right">${vol.toFixed(3)} m³</td><td></td><td style="text-align:right">${_fmtEur(sum)}</td></tr></tfoot></table>
+    <p style="color:#888;font-size:10px">Materialkosten netto ohne Verschnitt-Aufschlag und ohne Kleinteile. Preise sind Richtwerte.</p>
+    <h2>Einkaufsliste (Handelslängen ${(COMMERCIAL_LEN/1000).toFixed(1)} m)</h2>
+    <table><thead><tr><th>Holzart</th><th>Querschnitt</th><th>Länge</th><th>Stangen</th></tr></thead><tbody>${shopRows}</tbody></table>
+    <h2>Verbinder &amp; Schrauben (grobe Schätzung)</h2>
+    <p>${hw.anchors}× Pfostenanker · ca. ${hw.angles}× Winkelverbinder · ca. ${hw.screws}× Schrauben</p>
+    <p style="margin-top:24px;color:#999;font-size:10px">Erstellt am ${new Date().toLocaleDateString('de-DE')} · unverbindliches Materialangebot, keine Rechnung.</p>
+    ${watermark}
+    <button onclick="window.print()" style="margin-top:16px;padding:10px 20px;background:#92400e;color:#fff;border:none;border-radius:6px;cursor:pointer">🖨 Drucken / Als PDF speichern</button>
+    </body></html>`;
+  const win = window.open('', '_blank');
+  win.document.write(html);
+  win.document.close();
+}
+
+// Inline-Handler laufen im globalen Scope → Setter fürs modul-private COMMERCIAL_LEN.
+function setCommercialLen(v) { COMMERCIAL_LEN = parseInt(v) || 5000; renderKalkulation(); }
+
+// ── DXF-Export (#5) ──
+function exportDXF() {
+  if (!requirePremium('📐 DXF-Export', 'Der DXF-Export der Planansichten ist eine Premium-Funktion.')) return;
+  if (beams.length === 0) { alert('Keine Balken vorhanden.'); return; }
+  if (typeof window.beamsToDXF !== 'function') { alert('DXF-Modul nicht geladen.'); return; }
+  const dxf = window.beamsToDXF(beams);
+  const blob = new Blob([dxf], { type: 'application/dxf' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'holzbau_plan.dxf';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ── Parametrische Vorlagen (#3) ──
+function openParamTemplate(key) {
+  if (!requirePremium('📦 Vorlagen', 'Fertige Konstruktionen sind nur im Premium-Abo verfügbar.')) return;
+  const tpl = window.PARAM_TEMPLATES && window.PARAM_TEMPLATES[key];
+  if (!tpl) { alert('Vorlage nicht verfügbar.'); return; }
+  let f = `<div style="font-weight:700;margin-bottom:12px;color:var(--text)">${escHtml(tpl.label)}</div>`;
+  tpl.params.forEach(p => {
+    f += `<label style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:7px;font-size:12px;color:var(--text-2)">${escHtml(p.label)}
+      <input type="number" id="pt-${p.key}" value="${p.def}" min="${p.min || 0}" max="${p.max || 99999}" style="width:100px;background:var(--bg-input);border:1px solid var(--border);color:var(--text);border-radius:var(--r-sm);padding:3px 6px;font-size:12px"></label>`;
+  });
+  f += `<div style="display:flex;gap:8px;margin-top:14px">
+     <button class="tb-btn green" style="flex:1;justify-content:center" onclick="applyParamTemplate('${key}')">✓ Einfügen</button>
+     <button class="tb-btn" onclick="document.getElementById('paramtpl-modal').style.display='none'">Abbrechen</button></div>`;
+  document.getElementById('paramtpl-body').innerHTML = f;
+  document.getElementById('paramtpl-modal').style.display = 'flex';
+}
+function applyParamTemplate(key) {
+  const tpl = window.PARAM_TEMPLATES && window.PARAM_TEMPLATES[key];
+  if (!tpl) return;
+  const params = {};
+  tpl.params.forEach(p => { params[p.key] = parseFloat(document.getElementById('pt-' + p.key).value) || p.def; });
+  let gen;
+  try { gen = tpl.gen(params); } catch (e) { alert('Fehler beim Erzeugen: ' + e.message); return; }
+  if (!gen || !gen.length) { alert('Vorlage lieferte keine Teile.'); return; }
+  pushHistory();
+  const base = tpl.label.split(/[\s(]/)[0];
+  let n = 1; while (groups.includes(base + ' ' + n)) n++;
+  const gname = base + ' ' + n;
+  groups.push(gname);
+  gen.forEach(s => {
+    const beam = { rx: 0, ry: 0, rz: 0, phase: null, shape: 'rect', ...s, group: gname, id: idCounter++, mesh: null };
+    beam.mesh = createBeamMesh(beam);
+    scene.add(beam.mesh);
+    beams.push(beam);
+  });
+  document.getElementById('paramtpl-modal').style.display = 'none';
+  resetCamera();
+  updateUI();
+  showTab('balken');
+}
+
+// ── Querschnitts-/Spannweiten-Assistent (#7) ──
+function showSpanAssist() {
+  document.getElementById('spanassist-modal').style.display = 'flex';
+  calcSpanAssist();
+}
+function calcSpanAssist() {
+  const type = document.getElementById('sa-type').value;
+  const span = parseFloat(document.getElementById('sa-span').value) || 0;
+  const spacing = parseFloat(document.getElementById('sa-spacing').value) || 0;
+  const el = document.getElementById('sa-result');
+  if (typeof window.suggestCrossSection !== 'function') { el.textContent = 'Modul nicht geladen.'; return; }
+  const res = window.suggestCrossSection(type, span, spacing, {});
+  el.innerHTML = res
+    ? `<div style="font-size:24px;font-weight:800;color:var(--accent)">${res.B} × ${res.H} mm</div>
+       ${res.hint ? `<div style="font-size:11px;color:var(--text-2);margin-top:6px">${escHtml(res.hint)}</div>` : ''}
+       <div style="font-size:11px;color:var(--red);margin-top:10px;line-height:1.5">⚠ ${escHtml(res.disclaimer)}</div>`
+    : '<div style="color:var(--text-2)">Kein Richtwert verfügbar.</div>';
+}
 
 function printProject() {
   if (!requirePremium('🖨 Drucken / PDF', 'Drucken und PDF-Export ist eine Premium-Funktion.')) return;
