@@ -269,6 +269,7 @@
     .feature-icon { margin-bottom: 18px; font-size: 24px; color: oklch(0.48 0.1 40); }
     .feature-card h3 { font-size:17px;font-weight:600;color:oklch(0.24 0.02 50);margin:0 0 8px; }
     .feature-card p  { font-size:14px;line-height:1.55;color:oklch(0.45 0.02 50);margin:0; }
+    .feat-new { display:inline-block;font-size:10px;font-weight:700;letter-spacing:.3px;color:#fff;background:oklch(0.48 0.1 40);border-radius:999px;padding:2px 8px;margin-left:6px;vertical-align:middle;text-transform:uppercase; }
 
     /* ── EXAMPLES ── */
     .examples-bg { background: oklch(0.94 0.012 60); }
@@ -532,7 +533,7 @@
     <div class="section-header">
       <div class="section-eyebrow">Features</div>
       <h2 class="section-h2">Alles was du brauchst</h2>
-      <p class="section-lead">Von der ersten Idee bis zur fertigen Stückliste — HolzBau 3D begleitet dein gesamtes Projekt.</p>
+      <p class="section-lead">Von der ersten Idee über die Materialkosten bis zum fertigen Zuschnitt — HolzBau 3D begleitet dein gesamtes Projekt.</p>
     </div>
     <div class="features-grid">
       <div class="feature-card">
@@ -541,19 +542,39 @@
         <p>Interaktive 3D-Ansicht deiner Holzkonstruktion direkt im Browser. Drehen, zoomen, inspizieren — ohne Plugin oder Installation.</p>
       </div>
       <div class="feature-card">
-        <div class="feature-icon"><i class="bi bi-table"></i></div>
-        <h3>Stückliste / BOM Export</h3>
-        <p>Automatische Stücklisten-Generierung als CSV. Materialmengen und Längen auf Knopfdruck — bereit für Baumarkt oder Werkstatt.</p>
+        <div class="feature-icon"><i class="bi bi-magic"></i></div>
+        <h3>Vorlagen nach Maß <span class="feat-new">Neu</span></h3>
+        <p>Carport, Pergola, Gartenhaus oder Terrassendach: einfach Maße eingeben und die komplette Konstruktion wird automatisch erzeugt.</p>
       </div>
       <div class="feature-card">
-        <div class="feature-icon"><i class="bi bi-layers"></i></div>
-        <h3>Gruppen &amp; Ebenen</h3>
-        <p>Organisiere komplexe Konstruktionen mit Gruppen und Ebenen. Behalte den Überblick auch bei anspruchsvollen Projekten.</p>
+        <div class="feature-icon"><i class="bi bi-currency-euro"></i></div>
+        <h3>Materialkosten &amp; Angebot <span class="feat-new">Neu</span></h3>
+        <p>Sofort sehen, was dein Projekt kostet. Preise je Holzart pflegen und ein fertiges Angebots-PDF mit eigenem Briefkopf erstellen.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon"><i class="bi bi-scissors"></i></div>
+        <h3>Verschnitt-Optimierung <span class="feat-new">Neu</span></h3>
+        <p>Zuschnittpläne für Balken (1D) und 2D-Plattenzuschnitt für OSB/Sperrholz wie bei Cutlist Optimizer — inkl. Sägeblattbreite und Restholz.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon"><i class="bi bi-record-circle"></i></div>
+        <h3>Ausfräsungen <span class="feat-new">Neu</span></h3>
+        <p>Runde und rechteckige Aussparungen millimetergenau in Plattenwerkstoffe fräsen — als echtes 3D-Loch, direkt in der Ansicht.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon"><i class="bi bi-table"></i></div>
+        <h3>Stückliste, CSV &amp; DXF</h3>
+        <p>Automatische Stückliste als CSV, bemaßte Einzelteil-Zeichnungen und DXF-Export der Planansichten — bereit für Werkstatt und CAD.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon"><i class="bi bi-rulers"></i></div>
+        <h3>Querschnitts-Assistent <span class="feat-new">Neu</span></h3>
+        <p>Aus Spannweite und Achsabstand einen sinnvollen Holzquerschnitt vorgeschlagen bekommen — nimmt dir das Raten ab.</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon"><i class="bi bi-printer"></i></div>
         <h3>Druck &amp; PDF Export</h3>
-        <p>Druckfertige Pläne und PDF-Exporte für Bauantrag oder Werkstatt. Professionelle Ausgabe mit einem Klick.</p>
+        <p>Druckfertige Pläne mit Ansichten und Bemaßung als PDF — für Bauantrag oder Werkstatt, professionell mit einem Klick.</p>
       </div>
     </div>
   </div>
@@ -720,10 +741,11 @@
         <div class="price-amount">€9,99<sub>/Monat</sub></div>
         <div class="price-desc">Werbefrei · Alle Features entsperrt</div>
         <div class="price-features">
-          <div>✓ Unbegrenzte Projekte</div>
-          <div>✓ Stückliste als CSV &amp; PDF</div>
+          <div>✓ Unbegrenzte Projekte &amp; Vorlagen nach Maß</div>
+          <div>✓ Materialkosten &amp; Angebots-PDF</div>
+          <div>✓ Schnittplan, 2D-Plattenzuschnitt &amp; Ausfräsungen</div>
+          <div>✓ Stückliste als CSV, DXF &amp; Druck-PDF</div>
           <div>✓ <strong>Vollständig werbefrei</strong></div>
-          <div>✓ Gruppen &amp; Ebenen</div>
           <div>✓ Prioritäts-Support</div>
         </div>
         <a href="/subscribe" class="btn-plan btn-plan-solid">Monatlich starten</a>
@@ -737,10 +759,11 @@
         <div class="price-amount">€99,99<sub>/Jahr</sub></div>
         <div class="price-desc">= 8,33 €/Monat · 2 Monate gratis</div>
         <div class="price-features">
-          <div>✓ Unbegrenzte Projekte</div>
-          <div>✓ Stückliste als CSV &amp; PDF</div>
+          <div>✓ Unbegrenzte Projekte &amp; Vorlagen nach Maß</div>
+          <div>✓ Materialkosten &amp; Angebots-PDF</div>
+          <div>✓ Schnittplan, 2D-Plattenzuschnitt &amp; Ausfräsungen</div>
+          <div>✓ Stückliste als CSV, DXF &amp; Druck-PDF</div>
           <div>✓ <strong>Vollständig werbefrei</strong></div>
-          <div>✓ Gruppen &amp; Ebenen</div>
           <div>✓ Prioritäts-Support</div>
         </div>
         <a href="/subscribe" class="btn-plan btn-plan-solid">Jährlich starten</a>
@@ -808,6 +831,7 @@
       <h2>Holzkonstruktionen online in 3D planen</h2>
       <p>HolzBau 3D ist ein kostenloses Online-Tool, mit dem du Holzkonstruktionen direkt im Browser planst – ganz ohne Installation. Ob Pergola, Carport, Terrassenüberdachung oder kompletter Dachstuhl: Du setzt Balken, Pfosten, Pfetten und Sparren maßstabsgetreu in 3D zusammen und betrachtest deinen Entwurf sofort von allen Seiten. Fehler in den Maßen oder Verbindungen fallen so schon in der Planung auf, nicht erst auf der Baustelle.</p>
       <p>Der Entwurf entsteht Schritt für Schritt: Maße eingeben, Balken platzieren, Gruppen bilden. Aus jedem fertigen Projekt erzeugt die App automatisch eine Stückliste mit Längen und Querschnitten sowie einen optimierten Schnittplan für den Zuschnitt im Holzhandel – als Premium-Nutzer exportierst du alles als PDF. Wer sich erst einlesen möchte, findet in unserem <a href="/ratgeber">Ratgeber</a> Anleitungen zu Pergola, Carport, Dachstuhl und mehr.</p>
+      <p>Neu: Ganze Konstruktionen wie Carport, Pergola oder Gartenhaus lassen sich per Maßeingabe automatisch erzeugen. Eine integrierte <strong>Materialkosten-Kalkulation</strong> zeigt sofort den Holzpreis und erstellt ein Angebots-PDF, der <strong>2D-Plattenzuschnitt</strong> optimiert OSB- und Sperrholz-Platten wie ein Cutlist Optimizer, und Aussparungen lassen sich millimetergenau in Platten fräsen. Fertige Pläne exportierst du als CSV, DXF oder Druck-PDF.</p>
       {% endif %}
     </div>
   </div>
