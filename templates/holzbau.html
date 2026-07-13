@@ -826,7 +826,8 @@ body {
   <div class="tb-divider"></div>
 
   <div class="tb-group">
-    <button class="tb-btn" onclick="undo()" title="Rückgängig – letzte Aktion zurück (Strg+Z)">↶ Zurück</button>
+    <button class="tb-btn" id="btn-undo" onclick="undo()" title="Rückgängig – letzte Aktion zurück (Strg+Z)">↶ Zurück</button>
+    <button class="tb-btn" id="btn-redo" onclick="redo()" title="Wiederholen (Strg+Y)">↷ Vor</button>
   </div>
 
   <div class="tb-divider"></div>
@@ -868,6 +869,7 @@ body {
     <button class="tb-btn" id="btn-measure" onclick="toggleMeasure()" title="Maßband: 2 Punkte anklicken">📏 Maßband</button>
     <button class="tb-btn" id="btn-measure-clear" onclick="clearMeasure()" style="display:none;color:var(--red);border-color:var(--red-dim)">✕</button>
     <button class="tb-btn" id="btn-saw" onclick="toggleSaw()" title="Säge — Balken schneiden">🪚 Säge{% if show_ads %} 🔒{% endif %}</button>
+    <button class="tb-btn" onclick="screenshotPNG()" title="Screenshot als PNG speichern">📷 Foto</button>
     <button class="tb-btn" onclick="printProject()" title="Drucken / PDF">🖨 Drucken{% if show_ads %} 🔒{% endif %}</button>
   </div>
 
@@ -1248,10 +1250,18 @@ body {
       <div class="ch-row"><b>Alt + ↑ / ↓</b><span>Höhe (Y) verändern</span></div>
       <div class="ch-row"><b>Bild ↑ / ↓</b><span>Höhe (Y) verändern</span></div>
       <div class="ch-row"><b>Umschalt + Klick</b><span>Mehrere auswählen</span></div>
-      <div class="ch-row"><b>Rechtsklick</b><span>Drehen (horizontal / aufrichten) &amp; löschen</span></div>
+      <div class="ch-row"><b>Rechtsklick</b><span>Drehen / aufrichten &amp; löschen</span></div>
+      <div class="ch-row"><b>Gruppe + Rechtsklick</b><span>Ganze Gruppe drehen / spiegeln</span></div>
+      <div class="ch-row"><b>R</b><span>90° drehen (Balken oder Gruppe)</span></div>
       <div class="ch-row"><b>Entf</b><span>Auswahl löschen</span></div>
-      <div class="ch-row"><b>Strg + Z / D</b><span>Rückgängig / Duplizieren</span></div>
-      <div class="ch-row"><b>F · Esc</b><span>Fokus · Abbrechen</span></div>
+      <div class="ch-row"><b>Strg + Z / Y</b><span>Rückgängig / Wiederholen</span></div>
+      <div class="ch-row"><b>Strg + D</b><span>Duplizieren</span></div>
+      <div class="ch-row"><b>F · Esc · ?</b><span>Fokus · Abbrechen · Hilfe</span></div>
+    </div>
+    <div id="autosave-banner" style="display:none;position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:60;background:var(--bg-card);border:1px solid var(--accent);border-radius:var(--r);padding:9px 14px;box-shadow:0 6px 24px rgba(0,0,0,.35);align-items:center;gap:12px;font-size:12.5px;color:var(--text);max-width:92%;">
+      <span>💾 Nicht gespeicherter Stand gefunden <span id="autosave-info" style="color:var(--text-3)"></span></span>
+      <button class="tb-btn green" style="height:26px" onclick="restoreAutosave()">Wiederherstellen</button>
+      <button class="tb-btn" style="height:26px" onclick="discardAutosave()" title="Verwerfen">✕</button>
     </div>
     <div id="snap-indicator" class="snap-indicator on">Raster: EIN</div>
     <div id="measure-hint" style="display:none;position:absolute;top:10px;left:50%;transform:translateX(-50%);background:rgba(14,17,23,.92);border:1px solid var(--accent);border-radius:var(--r);padding:5px 14px;font-size:12px;color:var(--text);pointer-events:none;white-space:nowrap;z-index:55">📏 Maßband aktiv — 1. Punkt anklicken</div>
@@ -1286,10 +1296,19 @@ body {
 </div>
 
 <div id="ctx-menu" style="display:none;position:fixed;z-index:500">
-  <div style="padding:6px 12px;font-size:10px;color:var(--text-3);border-bottom:1px solid var(--border);font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Drehen</div>
-  <div class="ctx-item" onclick="rotateHorizontal()">⟲ 90° flach drehen (quer)</div>
-  <div class="ctx-item" onclick="standUpright()">⬆ Aufrichten (senkrecht stellen)</div>
-  <div class="ctx-item" onclick="layFlat()">⬇ Flach hinlegen</div>
+  <div id="ctx-single">
+    <div style="padding:6px 12px;font-size:10px;color:var(--text-3);border-bottom:1px solid var(--border);font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Drehen</div>
+    <div class="ctx-item" onclick="rotateHorizontal()">⟲ 90° flach drehen (quer)</div>
+    <div class="ctx-item" onclick="standUpright()">⬆ Aufrichten (senkrecht stellen)</div>
+    <div class="ctx-item" onclick="layFlat()">⬇ Flach hinlegen</div>
+  </div>
+  <div id="ctx-group" style="display:none">
+    <div style="padding:6px 12px;font-size:10px;color:var(--text-3);border-bottom:1px solid var(--border);font-weight:700;text-transform:uppercase;letter-spacing:0.5px"><span id="ctx-group-label">Gruppe</span></div>
+    <div class="ctx-item" onclick="rotateGroup(90)">⟳ Gruppe 90° drehen</div>
+    <div class="ctx-item" onclick="rotateGroup(-90)">⟲ Gruppe 90° zurück drehen</div>
+    <div class="ctx-item" onclick="mirrorSelection('x')">◄► Spiegeln links/rechts{% if show_ads %} 🔒{% endif %}</div>
+    <div class="ctx-item" onclick="mirrorSelection('z')">▲▼ Spiegeln vorne/hinten{% if show_ads %} 🔒{% endif %}</div>
+  </div>
   <div style="border-top:1px solid var(--border);margin:2px 0"></div>
   <div class="ctx-item" style="color:var(--red)" onclick="deleteSelected();closeCtxMenu()">✕ Löschen</div>
 </div>
@@ -1329,6 +1348,9 @@ body {
       <div style="display:flex;align-items:center;gap:8px">
         <span style="font-size:11px;color:var(--text-2)">Standardlänge:</span>
         <input type="number" id="schnitt-board-len" value="4000" min="100" step="100" style="width:70px;background:var(--bg-input);border:1px solid var(--border);color:var(--text);border-radius:var(--r-sm);padding:2px 6px;font-size:12px">
+        <span style="font-size:11px;color:var(--text-2)">mm</span>
+        <span style="font-size:11px;color:var(--text-2);margin-left:6px" title="Sägeblattbreite – Materialverlust je Schnitt">Sägeblatt:</span>
+        <input type="number" id="schnitt-kerf" value="3" min="0" max="20" step="1" style="width:52px;background:var(--bg-input);border:1px solid var(--border);color:var(--text);border-radius:var(--r-sm);padding:2px 6px;font-size:12px">
         <span style="font-size:11px;color:var(--text-2)">mm</span>
         <button class="tb-btn" onclick="showSchnittplan()">↺ Neu berechnen</button>
         <button class="tb-btn" style="color:var(--red);border-color:var(--red-dim)" onclick="document.getElementById('schnittplan-modal').style.display='none'">✕ Schließen</button>
@@ -1521,8 +1543,10 @@ Object.assign(window, {
   saveProject, handleLoadFile,
   exportStückliste, applyEdit, deleteBeam,
   calcFloorPlan, updateFloorOutline, updateRoofOutline, drawFloorPreview,
-  newProject, clearAllBeams, undo,
+  newProject, clearAllBeams, undo, redo,
   rotateSelected, switchAxis, rotateHorizontal, standUpright, layFlat, closeCtxMenu, showContextMenu,
+  rotateGroup, mirrorSelection, screenshotPNG,
+  restoreAutosave, discardAutosave,
   showTab, setDims, setAngle, loadTemplate,
   addGroup, renderGroupList, selectGroup, moveBeamToGroup, deleteGroup, toggleGroupVisibility,
   addDeco, deleteDeco, clearAllDecos, moveDecoToGroup,
@@ -2751,9 +2775,13 @@ function onPointerDown(e) {
       let obj = hits[0].object;
       while (obj.parent && !obj.userData.beamId) obj = obj.parent;
       if (obj.userData.beamId) {
-        selectBeam(obj.userData.beamId);
+        const bid = obj.userData.beamId;
+        // Ist der angeklickte Balken Teil einer bestehenden Mehrfach-/Gruppenauswahl?
+        // Dann Auswahl NICHT auf ein Objekt reduzieren → ganze Gruppe drehen/spiegeln.
+        const isGroupClick = selectedIds.has(bid) && selectedIds.size > 1;
+        if (!isGroupClick) selectBeam(bid);
         updateUI();
-        showContextMenu(e.clientX, e.clientY);
+        showContextMenu(e.clientX, e.clientY, isGroupClick);
       }
     }
     return;
@@ -3001,8 +3029,19 @@ function onContextMenu(e) {
   e.preventDefault(); // prevent browser menu — actual logic is in pointerdown button===2
 }
 
-function showContextMenu(cx, cy) {
+function showContextMenu(cx, cy, isGroup) {
   const menu = document.getElementById('ctx-menu');
+  // Einzel- vs. Gruppen-Menü umschalten
+  const single = document.getElementById('ctx-single');
+  const group  = document.getElementById('ctx-group');
+  if (isGroup) {
+    single.style.display = 'none';
+    group.style.display = 'block';
+    document.getElementById('ctx-group-label').textContent = 'Gruppe (' + selectedIds.size + ' Teile)';
+  } else {
+    single.style.display = 'block';
+    group.style.display = 'none';
+  }
   menu.style.display = 'block';
   menu.style.left = cx + 'px';
   menu.style.top  = cy + 'px';
@@ -3078,6 +3117,83 @@ function getBeamHalfW(b) { return (b.axis === 'x' ? b.L : b.B) / 2; }
 function getBeamHalfH(b) { return (b.axis === 'y' ? b.L : b.H) / 2; }
 function getBeamHalfD(b) { return (b.axis === 'z' ? b.L : b.B) / 2; }
 
+// ── GRUPPE DREHEN / SPIEGELN (Rechtsklick auf ein Objekt der Auswahl) ──
+
+// Mittelpunkt (XZ) aller ausgewählten Balken über deren Bounding-Box.
+function _selectionCenterXZ(sel) {
+  let minx = Infinity, maxx = -Infinity, minz = Infinity, maxz = -Infinity;
+  sel.forEach(b => {
+    const cx = b.x + getBeamHalfW(b), cz = b.z + getBeamHalfD(b);
+    minx = Math.min(minx, cx); maxx = Math.max(maxx, cx);
+    minz = Math.min(minz, cz); maxz = Math.max(maxz, cz);
+  });
+  return { cx: (minx + maxx) / 2, cz: (minz + maxz) / 2 };
+}
+
+// Ganze Auswahl um 90° (deg = 90 | -90) um die vertikale Achse durch den
+// Gruppen-Mittelpunkt drehen: jeder Balken wandert um das Zentrum UND dreht
+// sich selbst 90° (Achstausch = saubere Neuorientierung ohne Kippen).
+function rotateGroup(deg) {
+  closeCtxMenu();
+  const sel = [...selectedIds].map(id => beams.find(b => b.id === id)).filter(Boolean);
+  if (sel.length === 0) return;
+  pushHistory();
+  const { cx: gcx, cz: gcz } = _selectionCenterXZ(sel);
+  const rad = deg * Math.PI / 180;
+  const cos = Math.round(Math.cos(rad)), sin = Math.round(Math.sin(rad));
+  sel.forEach(b => {
+    const ccx = b.x + getBeamHalfW(b), ccz = b.z + getBeamHalfD(b);
+    const dx = ccx - gcx, dz = ccz - gcz;
+    const ncx = gcx + (cos * dx + sin * dz);
+    const ncz = gcz + (-sin * dx + cos * dz);
+    // Balken selbst 90° drehen (Achstausch bzw. B/H bei senkrechten)
+    if (b.axis === 'x') b.axis = 'z';
+    else if (b.axis === 'z') b.axis = 'x';
+    else { const t = b.B; b.B = b.H; b.H = t; }
+    // Ursprung (Punkt 0) aus dem neuen Zentrum ableiten
+    b.x = ncx - getBeamHalfW(b);
+    b.z = ncz - getBeamHalfD(b);
+    rebuildMesh(b);
+  });
+  updateUI();
+}
+
+// Auswahl an der Mittelebene spiegeln. axis='x' → links/rechts (X invertieren),
+// axis='z' → vorne/hinten (Z invertieren). Position zentriert gespiegelt,
+// ry invertiert, bei Gehrungsbalken werden L/R-Ecken getauscht.
+function mirrorSelection(axis) {
+  closeCtxMenu();
+  if (!requirePremium('◄► Gruppe spiegeln', 'Baugruppen spiegeln ist eine Premium-Funktion — halbiert die Zeit bei symmetrischen Bauten.')) return;
+  const sel = [...selectedIds].map(id => beams.find(b => b.id === id)).filter(Boolean);
+  if (sel.length === 0) return;
+  pushHistory();
+  const { cx: gcx, cz: gcz } = _selectionCenterXZ(sel);
+  sel.forEach(b => {
+    if (axis === 'x') {
+      const ccx = b.x + getBeamHalfW(b);
+      const ncx = 2 * gcx - ccx;
+      b.x = ncx - getBeamHalfW(b);
+    } else {
+      const ccz = b.z + getBeamHalfD(b);
+      const ncz = 2 * gcz - ccz;
+      b.z = ncz - getBeamHalfD(b);
+    }
+    if (b.ry) b.ry = (360 - b.ry) % 360;
+    // Gehrungsbalken: gespiegelte Seite tauschen
+    if (b.shape === 'sawnAngle') {
+      if (axis === 'x') {
+        const a = b._sawFL; b._sawFL = b._sawFR; b._sawFR = a;
+        const c = b._sawBL; b._sawBL = b._sawBR; b._sawBR = c;
+      } else {
+        const a = b._sawFL; b._sawFL = b._sawBL; b._sawBL = a;
+        const c = b._sawFR; b._sawFR = b._sawBR; b._sawBR = c;
+      }
+    }
+    rebuildMesh(b);
+  });
+  updateUI();
+}
+
 // ══════════════════════════════════════════════
 // KEYBOARD
 // ══════════════════════════════════════════════
@@ -3111,9 +3227,18 @@ document.addEventListener('keydown', e => {
 
   if (e.key === 'Delete' || e.key === 'Backspace') { deleteSelected(); return; }
   if (e.key === 'Escape') { closeCtxMenu(); selectBeam(null); if (measureActive) clearMeasure(); updateUI(); return; }
+  if (e.key === '?' || (e.shiftKey && e.key === '/')) { toggleHelp(); return; }
   if (e.key === 'f' || e.key === 'F') { resetCamera(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); redo(); return; }
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); redo(); return; }
   if ((e.ctrlKey || e.metaKey) && e.key === 'z') { undo(); return; }
   if ((e.ctrlKey || e.metaKey) && e.key === 'd') { e.preventDefault(); duplicateSelected(); return; }
+  // R = 90° drehen (bei Mehrfachauswahl die ganze Gruppe, sonst den Balken)
+  if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey) {
+    if (selectedIds.size > 1) rotateGroup(90);
+    else if (selectedIds.size === 1) rotateHorizontal();
+    return;
+  }
 
   // Arrow key: move selected beam
   const selectedId = [...selectedIds][0] ?? null;
@@ -3180,19 +3305,25 @@ function applyWASD() {
 // UNDO
 // ══════════════════════════════════════════════
 
-function pushHistory() {
-  const snap = {
+let redoStack = [];   // redo stack (populated on undo, cleared on new action)
+
+function _captureSnapshot() {
+  return JSON.stringify({
     beams: beams.map(b => ({ ...b, mesh: null })),
     decos: decos.map(d => ({ ...d, mesh: null })),
-  };
-  history.push(JSON.stringify(snap));
-  if (history.length > 50) history.shift();
+  });
 }
 
-function undo() {
-  if (history.length === 0) return;
-  const snap = JSON.parse(history.pop());
+function pushHistory() {
+  history.push(_captureSnapshot());
+  if (history.length > 50) history.shift();
+  redoStack = [];   // a new action invalidates the redo chain
+  updateUndoRedoButtons();
+}
 
+// Restore the scene from a snapshot string (shared by undo & redo).
+function _applySnapshot(snapStr) {
+  const snap = JSON.parse(snapStr);
   clearAllBeams();
   clearAllDecos();
 
@@ -3230,6 +3361,27 @@ function undo() {
   updateUI();
 }
 
+function undo() {
+  if (history.length === 0) return;
+  redoStack.push(_captureSnapshot());   // remember current state so redo can return to it
+  _applySnapshot(history.pop());
+  updateUndoRedoButtons();
+}
+
+function redo() {
+  if (redoStack.length === 0) return;
+  history.push(_captureSnapshot());
+  _applySnapshot(redoStack.pop());
+  updateUndoRedoButtons();
+}
+
+function updateUndoRedoButtons() {
+  const u = document.getElementById('btn-undo');
+  const r = document.getElementById('btn-redo');
+  if (u) u.disabled = history.length === 0;
+  if (r) r.disabled = redoStack.length === 0;
+}
+
 // ══════════════════════════════════════════════
 // PROJECT SAVE / LOAD
 // ══════════════════════════════════════════════
@@ -3242,6 +3394,8 @@ function newProject() {
   idCounter = 1;
   decoIdCounter = 1;
   history = [];
+  redoStack = [];
+  updateUndoRedoButtons();
   updateUI();
 }
 
@@ -3260,9 +3414,9 @@ function removeMesh(mesh) {
   });
 }
 
-function saveProject() {
-  if (!requirePremium('💾 Projekt speichern', 'Projekte speichern und laden ist eine Premium-Funktion. Upgrade für unbegrenzte Projektverwaltung.')) return;
-  const data = {
+// Konstruktion als reines Datenobjekt (version 3) — genutzt von Speichern & Auto-Speichern.
+function serializeProject() {
+  return {
     version: 3,
     groups: groups,
     hiddenGroups: [...hiddenGroups],
@@ -3287,6 +3441,11 @@ function saveProject() {
       params: d.params || {}
     })),
   };
+}
+
+function saveProject() {
+  if (!requirePremium('💾 Projekt speichern', 'Projekte speichern und laden ist eine Premium-Funktion. Upgrade für unbegrenzte Projektverwaltung.')) return;
+  const data = serializeProject();
   const json = JSON.stringify(data, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -3308,49 +3467,146 @@ function handleLoadFile(e) {
     try {
       const data = JSON.parse(ev.target.result);
       pushHistory();
-      clearAllBeams();
-      clearAllDecos();
-      if (Array.isArray(data.groups)) {
-        groups.length = 0;
-        data.groups.forEach(g => { if (!groups.includes(g)) groups.push(g); });
-        if (!groups.includes('Standard')) groups.unshift('Standard');
-      }
-      hiddenGroups.clear();
-      if (Array.isArray(data.hiddenGroups)) data.hiddenGroups.forEach(g => hiddenGroups.add(g));
-      activePhaseFilter = null;
-      (data.beams || []).forEach(s => {
-        const beam = { rx:0, ry:0, rz:0, group:'Standard', phase: null, ...s, mesh: null };
-        beam.mesh = createBeamMesh(beam);
-        if (hiddenGroups.has(beam.group)) beam.mesh.visible = false;
-        scene.add(beam.mesh);
-        beams.push(beam);
-      });
-      if (data.beams && data.beams.length) idCounter = Math.max(...data.beams.map(b=>b.id)) + 1;
-      (data.decos || []).forEach(s => {
-        const def = DEKO_DEFS[s.type];
-        if (!def) return;
-        const deco = { ry:0, group:'Standard', params:{}, ...s, mesh: null };
-        deco.mesh = def.build(deco.params);
-        if (def.defaultParams && def.defaultParams.scale !== undefined) {
-          const sc = (deco.params.scale || 100) / 100;
-          deco.mesh.scale.setScalar(sc);
-        }
-        deco.mesh.userData.isDecoId = deco.id;
-        deco.mesh.position.set(deco.x, deco.y, deco.z);
-        deco.mesh.rotation.y = (deco.ry || 0) * Math.PI / 180;
-        if (hiddenGroups.has(deco.group)) deco.mesh.visible = false;
-        scene.add(deco.mesh);
-        decos.push(deco);
-      });
-      if (data.decos && data.decos.length) decoIdCounter = Math.max(...data.decos.map(d=>d.id)) + 1;
-      renderDekoList();
+      applyProjectData(data);
       resetCamera();
-      updateUI();
     } catch(err) {
       alert('Fehler beim Laden: ' + err.message);
     }
   };
   reader.readAsText(file);
+}
+
+// Konstruktion aus einem Datenobjekt (version 3) in die Szene laden.
+// Genutzt von handleLoadFile und der Auto-Speichern-Wiederherstellung.
+function applyProjectData(data) {
+  clearAllBeams();
+  clearAllDecos();
+  if (Array.isArray(data.groups)) {
+    groups.length = 0;
+    data.groups.forEach(g => { if (!groups.includes(g)) groups.push(g); });
+    if (!groups.includes('Standard')) groups.unshift('Standard');
+  }
+  hiddenGroups.clear();
+  if (Array.isArray(data.hiddenGroups)) data.hiddenGroups.forEach(g => hiddenGroups.add(g));
+  activePhaseFilter = null;
+  (data.beams || []).forEach(s => {
+    const beam = { rx:0, ry:0, rz:0, group:'Standard', phase: null, ...s, mesh: null };
+    beam.mesh = createBeamMesh(beam);
+    if (hiddenGroups.has(beam.group)) beam.mesh.visible = false;
+    scene.add(beam.mesh);
+    beams.push(beam);
+  });
+  if (data.beams && data.beams.length) idCounter = Math.max(...data.beams.map(b=>b.id)) + 1;
+  (data.decos || []).forEach(s => {
+    const def = DEKO_DEFS[s.type];
+    if (!def) return;
+    const deco = { ry:0, group:'Standard', params:{}, ...s, mesh: null };
+    deco.mesh = def.build(deco.params);
+    if (def.defaultParams && def.defaultParams.scale !== undefined) {
+      const sc = (deco.params.scale || 100) / 100;
+      deco.mesh.scale.setScalar(sc);
+    }
+    deco.mesh.userData.isDecoId = deco.id;
+    deco.mesh.position.set(deco.x, deco.y, deco.z);
+    deco.mesh.rotation.y = (deco.ry || 0) * Math.PI / 180;
+    if (hiddenGroups.has(deco.group)) deco.mesh.visible = false;
+    scene.add(deco.mesh);
+    decos.push(deco);
+  });
+  if (data.decos && data.decos.length) decoIdCounter = Math.max(...data.decos.map(d=>d.id)) + 1;
+  renderDekoList();
+  updateUI();
+}
+
+// ══════════════════════════════════════════════
+// AUTO-SPEICHERN (Browser localStorage) — Free
+// Sichert bei Timeout/Reload vor Datenverlust.
+// ══════════════════════════════════════════════
+
+const AUTOSAVE_KEY = 'hb_autosave_v1';
+let _lastAutosave = '';
+
+function autosaveNow() {
+  try {
+    if (beams.length === 0 && decos.length === 0) return;
+    const json = JSON.stringify(serializeProject());
+    if (json === _lastAutosave) return;   // nichts geändert
+    _lastAutosave = json;
+    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ t: Date.now(), data: json }));
+  } catch (e) { /* localStorage voll/gesperrt → still ignorieren */ }
+}
+
+function restoreAutosave() {
+  try {
+    const raw = localStorage.getItem(AUTOSAVE_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    applyProjectData(JSON.parse(saved.data));
+    resetCamera();
+  } catch (e) { alert('Wiederherstellen fehlgeschlagen.'); }
+  dismissAutosaveBanner();
+}
+
+function dismissAutosaveBanner() {
+  const b = document.getElementById('autosave-banner');
+  if (b) b.style.display = 'none';
+}
+
+function discardAutosave() {
+  try { localStorage.removeItem(AUTOSAVE_KEY); } catch (e) {}
+  dismissAutosaveBanner();
+}
+
+// Beim Start prüfen, ob ein ungespeicherter Stand existiert.
+function checkAutosaveOnLoad() {
+  try {
+    const raw = localStorage.getItem(AUTOSAVE_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    const data = JSON.parse(saved.data);
+    const nBeams = (data.beams || []).length;
+    if (nBeams === 0 && (data.decos || []).length === 0) return;
+    const when = new Date(saved.t);
+    const ago = Math.round((Date.now() - saved.t) / 60000);
+    const agoTxt = ago < 1 ? 'gerade eben' : (ago < 60 ? `vor ${ago} Min.` : when.toLocaleString('de-DE'));
+    const info = document.getElementById('autosave-info');
+    if (info) info.textContent = `${nBeams} Balken · ${agoTxt}`;
+    const banner = document.getElementById('autosave-banner');
+    if (banner) banner.style.display = 'flex';
+  } catch (e) { /* ignore */ }
+}
+
+// PNG-Screenshot mit dezentem Wasserzeichen — Free.
+function screenshotPNG() {
+  try {
+    renderer.render(scene, camera);
+    const src = renderer.domElement;
+    const cv = document.createElement('canvas');
+    cv.width = src.width; cv.height = src.height;
+    const ctx = cv.getContext('2d');
+    ctx.drawImage(src, 0, 0);
+    // Wasserzeichen unten rechts
+    const pad = Math.round(cv.width * 0.012) + 6;
+    const fs = Math.max(13, Math.round(cv.width * 0.016));
+    ctx.font = `600 ${fs}px "Segoe UI", system-ui, sans-serif`;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
+    const label = 'erstellt mit holzbau3d.app';
+    ctx.lineWidth = Math.max(2, fs / 6);
+    ctx.strokeStyle = 'rgba(0,0,0,.55)';
+    ctx.strokeText(label, cv.width - pad, cv.height - pad);
+    ctx.fillStyle = 'rgba(255,255,255,.92)';
+    ctx.fillText(label, cv.width - pad, cv.height - pad);
+    cv.toBlob(blob => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'holzbau3d.png';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }, 'image/png');
+  } catch (e) {
+    alert('Screenshot fehlgeschlagen: ' + e.message);
+  }
 }
 
 
@@ -3978,6 +4234,7 @@ function renderPhaseFilterBar() {
 function showSchnittplan() {
   if (!requirePremium('✂️ Schnittplan-Optimierung', 'Die Schnittplan-Optimierung minimiert Holzverschnitt — Premium-Funktion.')) return;
   const BOARD_LEN = parseInt(document.getElementById('schnitt-board-len')?.value) || 4000;
+  const KERF = Math.max(0, parseInt(document.getElementById('schnitt-kerf')?.value) || 0); // Sägeblattbreite je Schnitt
 
   // Group by woodType + B×H (only rectangular beams)
   const grpMap = new Map();
@@ -4010,9 +4267,11 @@ function showSchnittplan() {
       }
       let placed = false;
       for (const bin of bins) {
-        if (!bin.oversized && bin.remaining >= len) {
+        // jedes weitere Teil kostet zusätzlich eine Schnittfuge (Kerf)
+        const need = bin.pieces.length ? len + KERF : len;
+        if (!bin.oversized && bin.remaining >= need) {
           bin.pieces.push(len);
-          bin.remaining -= len;
+          bin.remaining -= need;
           placed = true;
           break;
         }
@@ -4893,6 +5152,11 @@ function printProject() {
 try {
   calcFloorPlan();
   updateUI();
+  updateUndoRedoButtons();
+  checkAutosaveOnLoad();
+  // Auto-Speichern alle 8s + beim Verlassen der Seite (Free — verhindert Datenverlust)
+  setInterval(autosaveNow, 8000);
+  window.addEventListener('beforeunload', autosaveNow);
 } catch(e) {
   console.error('Init error:', e);
 }
