@@ -92,7 +92,7 @@ window.HB_I18N = {"en":{"Nadelbaum":"Conifer","Laubbaum":"Deciduous tree","Profi
       b.textContent = l.toUpperCase();
       b.style.cssText = 'border:none;background:' + (l === lang ? '#4e8cdd' : 'transparent') +
         ';color:' + (l === lang ? '#fff' : (inApp ? '#8fa3c8' : '#7a6a55')) +
-        ';padding:4px 8px;border-radius:999px;cursor:pointer;font:inherit;';
+        ';min-height:36px;min-width:36px;display:inline-flex;align-items:center;justify-content:center;padding:0 10px;border-radius:999px;cursor:pointer;font:inherit;';
       b.onclick = function () { window.hbSetLang(l); };
       d.appendChild(b);
     });
