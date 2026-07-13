@@ -128,12 +128,12 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 {% block extra_js %}{% endblock %}
 
-<footer style="max-width:860px;margin:24px auto 0;padding:16px 20px;border-top:1px solid #e8ddd0;font-size:.78rem;color:#9ca3af;display:flex;gap:14px;flex-wrap:wrap;">
-  <a href="/ueber-uns" style="color:#9ca3af;text-decoration:none;">Über uns</a>
-  <a href="/impressum" style="color:#9ca3af;text-decoration:none;">Impressum</a>
-  <a href="/datenschutz" style="color:#9ca3af;text-decoration:none;">Datenschutz</a>
-  <a href="/nutzungsbedingungen" style="color:#9ca3af;text-decoration:none;">Nutzungsbedingungen</a>
-  <a href="#" onclick="if(window.googlefc){googlefc.callbackQueue.push(googlefc.showRevocationMessage);}return false;" style="color:#9ca3af;text-decoration:none;">Cookie-Einstellungen</a>
+<footer style="max-width:860px;margin:24px auto 0;padding:12px 20px;border-top:1px solid #e8ddd0;font-size:.78rem;color:#9ca3af;display:flex;gap:6px 16px;flex-wrap:wrap;">
+  <a href="/ueber-uns" style="color:#9ca3af;text-decoration:none;display:inline-flex;align-items:center;min-height:40px;padding:0 2px;">Über uns</a>
+  <a href="/impressum" style="color:#9ca3af;text-decoration:none;display:inline-flex;align-items:center;min-height:40px;padding:0 2px;">Impressum</a>
+  <a href="/datenschutz" style="color:#9ca3af;text-decoration:none;display:inline-flex;align-items:center;min-height:40px;padding:0 2px;">Datenschutz</a>
+  <a href="/nutzungsbedingungen" style="color:#9ca3af;text-decoration:none;display:inline-flex;align-items:center;min-height:40px;padding:0 2px;">Nutzungsbedingungen</a>
+  <a href="#" onclick="if(window.googlefc){googlefc.callbackQueue.push(googlefc.showRevocationMessage);}return false;" style="color:#9ca3af;text-decoration:none;display:inline-flex;align-items:center;min-height:40px;padding:0 2px;">Cookie-Einstellungen</a>
 </footer>
 
 {% if session.get('user_id') %}
