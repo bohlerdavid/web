@@ -1214,6 +1214,20 @@ body {
         <button class="tb-btn" style="justify-content:center" onclick="showSchnittplan()">✂️ Schnittplan</button>
         <button class="tb-btn" style="justify-content:center" onclick="showPlattenzuschnitt()">🪵 Platten{% if user_plan != 'premium' %} 🔒{% endif %}</button>
         <button class="tb-btn" style="justify-content:center" onclick="exportDXF()">📐 DXF-Export{% if user_plan != 'premium' %} 🔒{% endif %}</button>
+        <label style="grid-column:span 2;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-2)">Maßstab (Druck)
+          <select id="plan-scale" style="flex:1;background:var(--bg-input);border:1px solid var(--border);color:var(--text);border-radius:var(--r-sm);padding:3px 6px;font-size:11px">
+            <option value="auto">Auto (einpassen)</option>
+            <option value="1">1:1 (lebensgroß / Schablone)</option>
+            <option value="0.5">1:2</option>
+            <option value="0.2">1:5</option>
+            <option value="0.1">1:10</option>
+            <option value="0.05">1:20</option>
+            <option value="0.02">1:50</option>
+            <option value="0.01">1:100</option>
+            <option value="5">5:1 (Detail)</option>
+            <option value="10">10:1 (Detail)</option>
+          </select>
+        </label>
         <button class="tb-btn" style="justify-content:center;grid-column:span 2" onclick="printProject()">🖨 Plan / PDF{% if user_plan != 'premium' %} 🔒{% endif %}</button>
       </div>
       <div id="parts-scroll" style="flex:1;overflow-y:auto">
@@ -5785,6 +5799,79 @@ function printProject() {
   // Side view: Z=horizontal, Y=vertical (flip Y)
   const svgSide  = makePlanSVG((x,y,z) => [z, -y], PLAN_W, PLAN_H, 'Ansicht Seite (Rechts)',   sharedScale);
 
+  // ── Maßstabsgetreue Ansicht (echte mm auf Papier) ──
+  // factor = Zeichnung/Realität: 1:100 → 0.01, 1:1 → 1, 10:1 → 10.
+  // Bemaßungen/Beschriftungen bleiben papier-relativ (mm), damit sie bei jedem
+  // Maßstab lesbar bleiben.
+  function makeScaledPlanSVG(projectFn, label, factor, scaleLbl, extraPoly) {
+    const rects = beams.map(b => {
+      const corners = [
+        [b.x, b.y, b.z], [b.x+(b.axis==='x'?b.L:b.B), b.y, b.z],
+        [b.x, b.y+(b.axis==='y'?b.L:b.H), b.z], [b.x+(b.axis==='x'?b.L:b.B), b.y+(b.axis==='y'?b.L:b.H), b.z],
+        [b.x, b.y, b.z+(b.axis==='z'?b.L:b.B)], [b.x+(b.axis==='x'?b.L:b.B), b.y, b.z+(b.axis==='z'?b.L:b.B)],
+        [b.x, b.y+(b.axis==='y'?b.L:b.H), b.z+(b.axis==='z'?b.L:b.B)], [b.x+(b.axis==='x'?b.L:b.B), b.y+(b.axis==='y'?b.L:b.H), b.z+(b.axis==='z'?b.L:b.B)],
+      ].map(([x,y,z]) => projectFn(x,y,z));
+      const us = corners.map(c=>c[0]), vs = corners.map(c=>c[1]);
+      return { b, u0:Math.min(...us), u1:Math.max(...us), v0:Math.min(...vs), v1:Math.max(...vs) };
+    });
+    const allU = rects.flatMap(r=>[r.u0,r.u1]), allV = rects.flatMap(r=>[r.v0,r.v1]);
+    const wU0=Math.min(...allU), wU1=Math.max(...allU), wV0=Math.min(...allV), wV1=Math.max(...allV);
+    const wW=(wU1-wU0)||1, wH=(wV1-wV0)||1;
+    const MG = 16, TITLE = 8;                 // Rand + Titelzone in mm
+    const contentW = wW*factor, contentH = wH*factor;
+    const svgW = contentW + MG*2, svgH = contentH + MG*2 + TITLE;
+    const P = (u,v) => [MG + (u-wU0)*factor, MG + TITLE + (v-wV0)*factor];
+    const p = [];
+    p.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${svgW.toFixed(1)}mm" height="${svgH.toFixed(1)}mm" viewBox="0 0 ${svgW.toFixed(1)} ${svgH.toFixed(1)}">`);
+    p.push(`<rect width="${svgW}" height="${svgH}" fill="white"/>`);
+    p.push(`<text x="${MG}" y="5" font-size="3.2" font-weight="bold" fill="#0f3460" font-family="Arial">${label} — Maßstab ${scaleLbl}</text>`);
+    // Raster: Weltschritt so wählen, dass Papierabstand ~10mm
+    let gw = Math.pow(10, Math.round(Math.log10(10/factor)));
+    [1,2,5].forEach(m=>{ if (Math.abs(gw*m*factor-10) < Math.abs(gw*factor-10)) gw = gw*m; });
+    p.push(`<g stroke="#e0e8f0" stroke-width="0.15">`);
+    for(let u=Math.ceil(wU0/gw)*gw; u<=wU1; u+=gw){ const [sx]=P(u,wV0),[,sy2]=P(u,wV1); p.push(`<line x1="${sx.toFixed(2)}" y1="${(MG+TITLE).toFixed(2)}" x2="${sx.toFixed(2)}" y2="${sy2.toFixed(2)}"/>`); }
+    for(let v=Math.ceil(wV0/gw)*gw; v<=wV1; v+=gw){ const [,sy]=P(wU0,v),[sx2]=P(wU1,v); p.push(`<line x1="${MG.toFixed(2)}" y1="${sy.toFixed(2)}" x2="${sx2.toFixed(2)}" y2="${sy.toFixed(2)}"/>`); }
+    p.push(`</g>`);
+    if (extraPoly && extraPoly.length) {
+      const pts = extraPoly.map(([x,z])=>{ const [sx,sy]=P(x,z); return `${sx.toFixed(2)},${sy.toFixed(2)}`; }).join(' ');
+      p.push(`<polygon points="${pts}" fill="none" stroke="#888" stroke-width="0.3" stroke-dasharray="1.5 1.5"/>`);
+    }
+    rects.forEach(r => {
+      const [x0,y0]=P(r.u0,r.v0), [x1,y1]=P(r.u1,r.v1);
+      const fill = WOOD_COLORS_HEX[r.b.woodType]||'#c8a06e';
+      p.push(`<rect x="${Math.min(x0,x1).toFixed(2)}" y="${Math.min(y0,y1).toFixed(2)}" width="${Math.abs(x1-x0).toFixed(2)}" height="${Math.abs(y1-y0).toFixed(2)}" fill="${fill}" fill-opacity="0.7" stroke="#7a5020" stroke-width="0.2"/>`);
+    });
+    // Gesamtbemaßung (echte Weltmaße), papier-relativ gezeichnet
+    const [dx0,dyB]=P(wU0,wV1), [dx1]=P(wU1,wV1);
+    const by = dyB + 6;
+    const wLbl = wW>=1000 ? (wW/1000).toFixed(2)+' m' : Math.round(wW)+' mm';
+    p.push(`<line x1="${dx0.toFixed(2)}" y1="${by.toFixed(2)}" x2="${dx1.toFixed(2)}" y2="${by.toFixed(2)}" stroke="#e94560" stroke-width="0.25"/>`);
+    p.push(`<line x1="${dx0.toFixed(2)}" y1="${(by-1).toFixed(2)}" x2="${dx0.toFixed(2)}" y2="${(by+1).toFixed(2)}" stroke="#e94560" stroke-width="0.4"/>`);
+    p.push(`<line x1="${dx1.toFixed(2)}" y1="${(by-1).toFixed(2)}" x2="${dx1.toFixed(2)}" y2="${(by+1).toFixed(2)}" stroke="#e94560" stroke-width="0.4"/>`);
+    p.push(`<text x="${((dx0+dx1)/2).toFixed(2)}" y="${(by+3).toFixed(2)}" text-anchor="middle" font-size="2.6" fill="#e94560" font-family="Arial">${wLbl}</text>`);
+    const [dxL,dvy0]=P(wU0,wV0), [,dvy1]=P(wU0,wV1);
+    const lx = MG - 6;
+    const hLbl = wH>=1000 ? (wH/1000).toFixed(2)+' m' : Math.round(wH)+' mm';
+    p.push(`<line x1="${lx.toFixed(2)}" y1="${dvy0.toFixed(2)}" x2="${lx.toFixed(2)}" y2="${dvy1.toFixed(2)}" stroke="#e94560" stroke-width="0.25"/>`);
+    p.push(`<text x="${lx.toFixed(2)}" y="${((dvy0+dvy1)/2).toFixed(2)}" text-anchor="middle" font-size="2.6" fill="#e94560" font-family="Arial" transform="rotate(-90 ${lx.toFixed(2)} ${((dvy0+dvy1)/2).toFixed(2)})">${hLbl}</text>`);
+    p.push(`</svg>`);
+    return p.join('');
+  }
+
+  const _scaleSel = document.getElementById('plan-scale');
+  const _scaleFactor = _scaleSel ? parseFloat(_scaleSel.value) : NaN;
+  const _scaleOn = _scaleSel && _scaleSel.value !== 'auto' && !isNaN(_scaleFactor);
+  const _scaleLbl = _scaleOn ? (_scaleFactor >= 1 ? _scaleFactor + ':1' : '1:' + Math.round(1/_scaleFactor)) : '';
+  const scaledPlansHTML = _scaleOn ? `
+    <div style="page-break-before:always"></div>
+    <div class="parts-section"><h2>Maßstabsgetreue Pläne — Maßstab ${_scaleLbl}</h2></div>
+    <p style="font-size:8pt;color:#666;margin-bottom:8px">Beim Drucken „Tatsächliche Größe" / 100 % wählen (nicht „An Seite anpassen"), damit der Maßstab stimmt.${_scaleFactor===1 ? ' Bei 1:1 kannst du den Ausdruck direkt als Schablone aufs Holz legen.' : ''}</p>
+    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
+      <div><div style="font-size:8pt;font-weight:bold;color:#0f3460;margin-bottom:2px">Draufsicht</div>${makeScaledPlanSVG((x,y,z)=>[x,-z],'Draufsicht',_scaleFactor,_scaleLbl,grundrissPolyTop)}</div>
+      <div><div style="font-size:8pt;font-weight:bold;color:#0f3460;margin-bottom:2px">Vorne</div>${makeScaledPlanSVG((x,y,z)=>[x,-y],'Vorne',_scaleFactor,_scaleLbl)}</div>
+      <div><div style="font-size:8pt;font-weight:bold;color:#0f3460;margin-bottom:2px">Seite</div>${makeScaledPlanSVG((x,y,z)=>[z,-y],'Seite',_scaleFactor,_scaleLbl)}</div>
+    </div>` : '';
+
   // --- Stückliste (grouped by measurements) ---
   const groups = groupBeamsForList();
   let pos=1, totalVol=0;
@@ -5898,6 +5985,8 @@ function printProject() {
     </tfoot>
   </table>
 </div>
+
+${scaledPlansHTML}
 
 </body>
 </html>`;
