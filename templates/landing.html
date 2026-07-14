@@ -263,13 +263,14 @@
       display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px;
     }
     .feature-card {
+      position: relative;
       padding: 28px; background: oklch(0.965 0.01 65);
       border-radius: 10px; border: 1px solid oklch(0.9 0.012 60);
     }
     .feature-icon { margin-bottom: 18px; font-size: 24px; color: oklch(0.48 0.1 40); }
-    .feature-card h3 { font-size:17px;font-weight:600;color:oklch(0.24 0.02 50);margin:0 0 8px; }
+    .feature-card h3 { font-size:17px;font-weight:600;color:oklch(0.24 0.02 50);margin:0 0 8px;padding-right:44px; }
     .feature-card p  { font-size:14px;line-height:1.55;color:oklch(0.45 0.02 50);margin:0; }
-    .feat-new { display:inline-block;font-size:10px;font-weight:700;letter-spacing:.3px;color:#fff;background:oklch(0.48 0.1 40);border-radius:999px;padding:2px 8px;margin-left:6px;vertical-align:middle;text-transform:uppercase; }
+    .feat-new { position:absolute;top:22px;right:22px;font-size:9.5px;font-weight:700;letter-spacing:.4px;color:#fff;background:oklch(0.48 0.1 40);border-radius:999px;padding:3px 9px;text-transform:uppercase;line-height:1; }
 
     /* ── EXAMPLES ── */
     .examples-bg { background: oklch(0.94 0.012 60); }
