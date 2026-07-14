@@ -666,6 +666,30 @@ def ads_txt():
     return app.response_class(body, mimetype='text/plain')
 
 
+def _security_txt_body():
+    # RFC 9116 — klarer Meldeweg für Sicherheitslücken. Expires dynamisch (+1 Jahr),
+    # damit die Datei nie abläuft.
+    expires = (datetime.utcnow() + timedelta(days=365)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    return (
+        '# Sicherheitslücken bitte vertraulich an die Kontaktadresse melden.\n'
+        'Contact: mailto:bohler.david@gmail.com\n'
+        f'Expires: {expires}\n'
+        'Preferred-Languages: de, en, fr\n'
+        f'Canonical: {SITE}/.well-known/security.txt\n'
+    )
+
+
+@app.route('/.well-known/security.txt')
+def security_txt():
+    return app.response_class(_security_txt_body(), mimetype='text/plain')
+
+
+@app.route('/security.txt')
+def security_txt_legacy():
+    # Alt-Pfad, viele Scanner prüfen auch die Wurzel.
+    return app.response_class(_security_txt_body(), mimetype='text/plain')
+
+
 @app.route('/sitemap.xml')
 def sitemap():
     def alts():
