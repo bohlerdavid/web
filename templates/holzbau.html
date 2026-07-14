@@ -7,6 +7,7 @@
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <script src="/static/i18n.js" defer></script>
   <script src="/static/hb_tools.js"></script>
+  <script src="/static/polygon-clipping.umd.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
@@ -1126,10 +1127,10 @@ body {
         </div>
         <div class="panel-section" id="cutout-section" style="display:none">
           <div class="panel-title" style="margin-bottom:6px">🔩 Ausfräsungen / Aussparungen</div>
-          <div style="font-size:10px;color:var(--text-3);margin-bottom:8px;line-height:1.4">Loch in die Platte fräsen. Position = Abstand von der Ecke (Länge/Breite).</div>
+          <div style="font-size:10px;color:var(--text-3);margin-bottom:8px;line-height:1.4">Über die Platte fahren und klicken zum Platzieren, danach Werte fein justieren. Überlappende Löcher verschmelzen.</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
-            <button class="add-btn" onclick="addCutout('rect')" style="background:var(--bg-card);color:var(--accent);border:1px solid var(--accent);font-size:12px">▭ Rechteck</button>
-            <button class="add-btn" onclick="addCutout('circle')" style="background:var(--bg-card);color:var(--accent);border:1px solid var(--accent);font-size:12px">◯ Kreis</button>
+            <button class="add-btn" onclick="startPlaceCutout('rect')" style="background:var(--bg-card);color:var(--accent);border:1px solid var(--accent);font-size:12px">▭ Rechteck</button>
+            <button class="add-btn" onclick="startPlaceCutout('circle')" style="background:var(--bg-card);color:var(--accent);border:1px solid var(--accent);font-size:12px">◯ Kreis</button>
           </div>
           <div id="cutout-list"></div>
         </div>
@@ -1335,6 +1336,7 @@ body {
       <button class="tb-btn green" style="height:26px" onclick="restoreAutosave()">Wiederherstellen</button>
       <button class="tb-btn" style="height:26px" onclick="discardAutosave()" title="Verwerfen">✕</button>
     </div>
+    <div id="place-hint" style="display:none;position:absolute;top:10px;left:50%;transform:translateX(-50%);background:rgba(14,17,23,.92);border:1px solid var(--accent);border-radius:var(--r);padding:5px 14px;font-size:12px;color:var(--text);pointer-events:none;white-space:nowrap;z-index:56"></div>
     <div id="snap-indicator" class="snap-indicator on">Raster: EIN</div>
     <div id="measure-hint" style="display:none;position:absolute;top:10px;left:50%;transform:translateX(-50%);background:rgba(14,17,23,.92);border:1px solid var(--accent);border-radius:var(--r);padding:5px 14px;font-size:12px;color:var(--text);pointer-events:none;white-space:nowrap;z-index:55">📏 Maßband aktiv — 1. Punkt anklicken</div>
     <div id="measure-label" style="display:none;position:absolute;pointer-events:none;z-index:50"></div>
@@ -1728,7 +1730,7 @@ Object.assign(window, {
   openParamTemplate, applyParamTemplate, showSpanAssist, calcSpanAssist,
   showPlattenzuschnitt, renderPlattenzuschnitt, exportPanelCNCDXF,
   toggleLeftPanel, toggleRightPanel,
-  addCutout, updateCutout, deleteCutout,
+  addCutout, updateCutout, deleteCutout, startPlaceCutout,
 });
 
 // ══════════════════════════════════════════════
@@ -1750,16 +1752,41 @@ function buildPanelGeometry(beam, W, H, D) {
 
   const shape = new THREE.Shape();
   shape.moveTo(-A / 2, -B / 2); shape.lineTo(A / 2, -B / 2); shape.lineTo(A / 2, B / 2); shape.lineTo(-A / 2, B / 2); shape.closePath();
-  (beam.cutouts || []).forEach(c => {
-    const path = new THREE.Path();
+  // Ausfräsung → Polygon (zentrierte Koordinaten). Kreis als 48-Eck.
+  const cutPoly = (c) => {
     if (c.shape === 'circle') {
-      path.absarc((c.u || 0) - A / 2, (c.v || 0) - B / 2, Math.max(1, (c.dia || 100) / 2), 0, Math.PI * 2, true);
-    } else {
-      const x0 = (c.u || 0) - A / 2, y0 = (c.v || 0) - B / 2, w = Math.max(1, c.w || 100), h = Math.max(1, c.h || 100);
-      path.moveTo(x0, y0); path.lineTo(x0, y0 + h); path.lineTo(x0 + w, y0 + h); path.lineTo(x0 + w, y0); path.closePath();
+      const cx = (c.u || 0) - A / 2, cy = (c.v || 0) - B / 2, r = Math.max(1, (c.dia || 100) / 2), N = 48, ring = [];
+      for (let i = 0; i <= N; i++) { const a = i / N * 2 * Math.PI; ring.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]); }
+      return [ring];
     }
-    shape.holes.push(path);
-  });
+    const x0 = (c.u || 0) - A / 2, y0 = (c.v || 0) - B / 2, w = Math.max(1, c.w || 100), h = Math.max(1, c.h || 100);
+    return [[[x0, y0], [x0 + w, y0], [x0 + w, y0 + h], [x0, y0 + h], [x0, y0]]];
+  };
+  const cuts = beam.cutouts || [];
+  if (cuts.length) {
+    let merged = null;
+    // Überlappende Ausfräsungen vereinen → komplexe Formen (falls Lib geladen).
+    if (window.polygonClipping && cuts.length > 1) {
+      try { merged = window.polygonClipping.union(...cuts.map(cutPoly)); } catch (e) { merged = null; }
+    }
+    if (merged) {
+      merged.forEach(poly => {
+        const ring = poly[0];  // äußerer Ring = Loch
+        const path = new THREE.Path();
+        ring.forEach(([x, y], i) => i === 0 ? path.moveTo(x, y) : path.lineTo(x, y));
+        path.closePath();
+        shape.holes.push(path);
+      });
+    } else {
+      cuts.forEach(c => {
+        const ring = cutPoly(c)[0];
+        const path = new THREE.Path();
+        ring.forEach(([x, y], i) => i === 0 ? path.moveTo(x, y) : path.lineTo(x, y));
+        path.closePath();
+        shape.holes.push(path);
+      });
+    }
+  }
   const geo = new THREE.ExtrudeGeometry(shape, { depth: T, bevelEnabled: false });
   geo.translate(0, 0, -T / 2);  // entlang Extrude-Achse zentrieren
   const eX = face[0].e.clone(), eY = face[1].e.clone(), eZ = axes[ti].e.clone();
@@ -2449,6 +2476,109 @@ function deleteCutout(i) {
   renderCutoutPanel(b);
 }
 
+// ── Interaktives Platzieren einer Ausfräsung per Maus ──
+let _placingCutout = null;   // { beamId, shape }
+let _cutoutPreview = null;   // THREE.Line Vorschau
+
+// Flächen-Basis der Platte (welche lokalen Achsen die Fläche aufspannen + Dicke).
+function _panelFaceBasis(beam) {
+  let W, H, D;
+  if (beam.axis === 'x') { W = beam.L; H = beam.H; D = beam.B; }
+  else if (beam.axis === 'y') { W = beam.B; H = beam.L; D = beam.H; }
+  else { W = beam.B; H = beam.H; D = beam.L; }
+  const axes = [{ v: W, e: new THREE.Vector3(1, 0, 0) }, { v: H, e: new THREE.Vector3(0, 1, 0) }, { v: D, e: new THREE.Vector3(0, 0, 1) }];
+  let ti = 0; for (let i = 1; i < 3; i++) if (axes[i].v < axes[ti].v) ti = i;
+  const face = axes.filter((_, i) => i !== ti);
+  if (face[1].v > face[0].v) face.reverse();
+  return { A: face[0].v, B: face[1].v, T: axes[ti].v, eA: face[0].e, eB: face[1].e, eT: axes[ti].e };
+}
+
+function _cutoutDefaults(shape, A, B) {
+  if (shape === 'circle') return { dia: Math.min(200, Math.round(Math.min(A, B) * 0.3)) };
+  return { w: Math.min(300, Math.round(A * 0.25)), h: Math.min(300, Math.round(B * 0.25)) };
+}
+
+// Standard-Umriss der Vorschau in Flächen-2D (dA, dB relativ zum Mittelpunkt).
+function _previewOutline(shape, def) {
+  const pts = [];
+  if (shape === 'circle') { const r = def.dia / 2, N = 40; for (let i = 0; i <= N; i++) { const a = i / N * 2 * Math.PI; pts.push([Math.cos(a) * r, Math.sin(a) * r]); } }
+  else { const w = def.w / 2, h = def.h / 2; pts.push([-w, -h], [w, -h], [w, h], [-w, h], [-w, -h]); }
+  return pts;
+}
+
+function startPlaceCutout(shape) {
+  const b = _selectedSheetBeam();
+  if (!b) return;
+  _placingCutout = { beamId: b.id, shape };
+  const hint = document.getElementById('place-hint');
+  if (hint) { hint.textContent = (shape === 'circle' ? '◯' : '▭') + ' Über die Platte fahren und klicken zum Platzieren · Esc = Abbrechen'; hint.style.display = 'block'; }
+}
+
+function _cursorFaceUV(cx, cy) {
+  const b = beams.find(x => x.id === _placingCutout.beamId);
+  if (!b || !b.mesh) return null;
+  const hits = getIntersects(cx, cy).filter(h => {
+    let o = h.object; while (o && o.userData.beamId === undefined && o.parent) o = o.parent;
+    return o && o.userData.beamId === b.id;
+  });
+  if (!hits.length) return null;
+  const fb = _panelFaceBasis(b);
+  const local = b.mesh.worldToLocal(hits[0].point.clone());
+  return { b, fb, u: local.dot(fb.eA) + fb.A / 2, v: local.dot(fb.eB) + fb.B / 2, world: hits[0].point.clone() };
+}
+
+function updateCutoutPreview(cx, cy) {
+  const hit = _cursorFaceUV(cx, cy);
+  if (!hit) { if (_cutoutPreview) _cutoutPreview.visible = false; return; }
+  const def = _cutoutDefaults(_placingCutout.shape, hit.fb.A, hit.fb.B);
+  const outline = _previewOutline(_placingCutout.shape, def);
+  // Weltkoordinaten: Mittelpunkt = Treffer, Ebene aus eA/eB (durch Mesh-Quaternion gedreht)
+  const q = hit.b.mesh.quaternion;
+  const wA = hit.fb.eA.clone().applyQuaternion(q), wB = hit.fb.eB.clone().applyQuaternion(q);
+  const wN = hit.fb.eT.clone().applyQuaternion(q).multiplyScalar(hit.fb.T / 2 + 3);
+  const center = hit.world.clone();
+  const verts = outline.flatMap(([da, db]) => {
+    const p = center.clone().add(wA.clone().multiplyScalar(da)).add(wB.clone().multiplyScalar(db)).add(wN);
+    return [p.x, p.y, p.z];
+  });
+  if (!_cutoutPreview) {
+    const g = new THREE.BufferGeometry();
+    _cutoutPreview = new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0xe94560, linewidth: 2 }));
+    _cutoutPreview.renderOrder = 999;
+    scene.add(_cutoutPreview);
+  }
+  _cutoutPreview.geometry.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  _cutoutPreview.geometry.computeBoundingSphere();
+  _cutoutPreview.visible = true;
+}
+
+function placeCutoutAtCursor(cx, cy) {
+  const hit = _cursorFaceUV(cx, cy);
+  if (!hit) return;  // nicht auf der Platte → ignorieren
+  const b = hit.b, fb = hit.fb, shape = _placingCutout.shape;
+  const def = _cutoutDefaults(shape, fb.A, fb.B);
+  pushHistory();
+  if (!b.cutouts) b.cutouts = [];
+  const clamp = (val, lo, hi) => Math.max(lo, Math.min(hi, val));
+  if (shape === 'circle') {
+    const r = def.dia / 2;
+    b.cutouts.push({ shape: 'circle', u: Math.round(clamp(hit.u, r, fb.A - r)), v: Math.round(clamp(hit.v, r, fb.B - r)), dia: def.dia });
+  } else {
+    const u0 = clamp(hit.u - def.w / 2, 0, fb.A - def.w), v0 = clamp(hit.v - def.h / 2, 0, fb.B - def.h);
+    b.cutouts.push({ shape: 'rect', u: Math.round(u0), v: Math.round(v0), w: def.w, h: def.h });
+  }
+  cancelPlaceCutout();
+  rebuildMesh(b);
+  renderCutoutPanel(b);
+}
+
+function cancelPlaceCutout() {
+  _placingCutout = null;
+  if (_cutoutPreview) { _cutoutPreview.visible = false; }
+  const hint = document.getElementById('place-hint');
+  if (hint) hint.style.display = 'none';
+}
+
 function updateDecoSelPanel() {
   const info = document.getElementById('sel-info');
   const beamEdit = document.getElementById('sel-edit');
@@ -3022,6 +3152,10 @@ function getGroundPoint(clientX, clientY) {
 function onPointerDown(e) {
   if (e.button === 2) e.preventDefault(); // prevent browser context menu for right click only
 
+  // Ausfräsung platzieren: Linksklick setzt das Loch an die Mausposition
+  if (_placingCutout && e.button === 0) { placeCutoutAtCursor(e.clientX, e.clientY); return; }
+  if (_placingCutout && e.button === 2) { cancelPlaceCutout(); return; }
+
   // Säge tool: left click → cut beam at hover position
   if (sawActive && e.button === 0) {
     if (_sawHoverBeamId !== null) {
@@ -3139,6 +3273,9 @@ function onPointerDown(e) {
 function onPointerMove(e) {
   _lastMouseX = e.clientX;
   _lastMouseY = e.clientY;
+
+  // Ausfräsung platzieren: Vorschau an der Mausposition aktualisieren
+  if (_placingCutout) { updateCutoutPreview(e.clientX, e.clientY); return; }
 
   // Säge: update hover indicator (only when not dragging)
   if (sawActive && !isDragging && !isDraggingDeco) {
@@ -3501,6 +3638,7 @@ document.addEventListener('keydown', e => {
   if (inputFocused) return;
 
   if (e.key === 'Delete' || e.key === 'Backspace') { deleteSelected(); return; }
+  if (e.key === 'Escape' && _placingCutout) { cancelPlaceCutout(); return; }
   if (e.key === 'Escape') { closeCtxMenu(); selectBeam(null); if (measureActive) clearMeasure(); updateUI(); return; }
   if (e.key === '?' || (e.shiftKey && e.key === '/')) { toggleHelp(); return; }
   if (e.key === 'f' || e.key === 'F') { resetCamera(); return; }
