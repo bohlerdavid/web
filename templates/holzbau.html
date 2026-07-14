@@ -989,6 +989,21 @@ body {
         <span style="font-size:11px;color:var(--text-2)">Grundriss sichtbar</span>
       </div>
       <button class="add-btn" onclick="updateFloorOutline()" style="margin-top:10px;background:var(--bg-card);color:var(--accent);border:1px solid var(--accent)">↺ Grundriss aktualisieren</button>
+
+      <div class="panel-section" style="margin-top:14px">
+        <div class="panel-title" style="margin-bottom:6px">🗺 Bild-Vorlage (Grundriss/Plan){% if user_plan != 'premium' %} 🔒{% endif %}</div>
+        <div style="font-size:11px;color:var(--text-2);margin-bottom:8px;line-height:1.5">Grundriss-Foto, Scan oder Plan laden, per bekannter Strecke maßhaltig kalibrieren und in der Draufsicht nachzeichnen.</div>
+        <label class="add-btn" style="cursor:pointer;display:block;text-align:center;background:var(--bg-card);color:var(--accent);border:1px solid var(--accent)">📂 Bild laden…<input type="file" id="refimg-input" accept="image/png,image/jpeg,image/webp" style="display:none" onchange="loadRefImage(event)"></label>
+        <div id="refimg-controls" style="display:none;margin-top:10px">
+          <div class="form-row"><label>Deckkraft</label><input type="range" id="refimg-opacity" min="10" max="100" value="55" oninput="setRefImageOpacity(this.value)" style="flex:1"></div>
+          <div class="form-row" style="margin-top:4px"><label>Anzeigen</label><input type="checkbox" id="refimg-visible" checked onchange="toggleRefImageVisible()" style="width:auto;accent-color:var(--accent)"><span style="font-size:11px;color:var(--text-2)">Vorlage sichtbar</span></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px">
+            <button class="tb-btn" style="justify-content:center" onclick="recalibrateRefImage()">↺ Neu kalibrieren</button>
+            <button class="tb-btn" style="justify-content:center;color:var(--red);border-color:var(--red-dim)" onclick="removeRefImage()">✕ Entfernen</button>
+          </div>
+          <div id="refimg-scale" style="font-size:10px;color:var(--text-3);margin-top:6px"></div>
+        </div>
+      </div>
     </div>
 
     <!-- TAB: BALKEN -->
@@ -1503,6 +1518,34 @@ body {
   </div>
 </div>
 
+<!-- BILD-VORLAGE KALIBRIEREN MODAL -->
+<div id="calib-modal" style="display:none;position:fixed;inset:0;z-index:1002;background:rgba(0,0,0,.82);overflow:auto">
+  <div class="schnitt-modal-inner" style="max-width:760px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <span style="font-size:16px;font-weight:700;color:var(--text)">🗺 Vorlage kalibrieren</span>
+      <button class="tb-btn" style="color:var(--red);border-color:var(--red-dim)" onclick="document.getElementById('calib-modal').style.display='none'">✕ Abbrechen</button>
+    </div>
+    <p style="font-size:12px;color:var(--text-2);margin:0 0 10px;line-height:1.5">Zieh die grünen Punkte auf eine Strecke, deren <strong>reale Länge du kennst</strong> (eine ausgemessene Wand, eine Tür = 900 mm, ein Maßstabsbalken auf dem Plan). Dann die Länge eintippen.</p>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+      <span style="font-size:13px;color:var(--text-2)">Reale Länge der grünen Strecke:</span>
+      <input type="number" id="calib-real" value="4000" min="1" step="10" style="width:100px;background:var(--bg-input);border:1px solid var(--border);color:var(--text);border-radius:var(--r-sm);padding:4px 8px;font-size:13px">
+      <span style="font-size:13px;color:var(--text-2)">mm</span>
+      <span id="calib-info" style="font-size:12px;color:var(--text-3)"></span>
+      <button class="tb-btn green" style="margin-left:auto" onclick="applyCalibration()">✓ Als Vorlage übernehmen</button>
+    </div>
+    <div id="calib-stage" style="background:#2a2a2a;border:1px solid var(--border);border-radius:var(--r);padding:8px;display:flex;justify-content:center">
+      <div id="calib-wrap" style="position:relative;display:inline-block;line-height:0">
+        <img id="calib-img" style="display:block;max-width:100%;max-height:58vh;user-select:none;pointer-events:none" draggable="false">
+        <svg id="calib-svg" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none">
+          <line id="calib-l" x1="0" y1="0" x2="0" y2="0" stroke="#1d9e75" stroke-width="3"/>
+          <circle id="calib-p1" r="10" fill="#1d9e75" stroke="#fff" stroke-width="2" style="cursor:grab"/>
+          <circle id="calib-p2" r="10" fill="#1d9e75" stroke="#fff" stroke-width="2" style="cursor:grab"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Three.js + OrbitControls via ES modules -->
 <script type="importmap">
 {
@@ -1731,6 +1774,7 @@ Object.assign(window, {
   showPlattenzuschnitt, renderPlattenzuschnitt, exportPanelCNCDXF,
   toggleLeftPanel, toggleRightPanel,
   addCutout, updateCutout, deleteCutout, startPlaceCutout,
+  loadRefImage, applyCalibration, setRefImageOpacity, toggleRefImageVisible, recalibrateRefImage, removeRefImage,
 });
 
 // ══════════════════════════════════════════════
@@ -2186,6 +2230,144 @@ function updateFloorOutline(s1, s2, s3, s4) {
 
 // Alias for backward compat
 function updateRoofOutline() { updateFloorOutline(); }
+
+// ══════════════════════════════════════════════
+// BILD-VORLAGE (Grundriss/Plan als maßhaltiger Hintergrund)
+// ══════════════════════════════════════════════
+
+let refImage = null;   // { mesh, dataUrl, realW, realD, opacity, visible }
+let _calibDrag = null;
+let _calibHandles = { p1: { x: 0.25, y: 0.5 }, p2: { x: 0.75, y: 0.5 } }; // relativ (0..1) zum Bild
+
+function loadRefImage(ev) {
+  const input = ev.target || ev;
+  if (!requirePremium('🗺 Bild-Vorlage', 'Grundriss-/Plan-Vorlagen sind eine Premium-Funktion.')) { input.value = ''; return; }
+  const file = input.files[0]; input.value = '';
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => openCalibration(e.target.result);
+  reader.readAsDataURL(file);
+}
+
+function openCalibration(dataUrl) {
+  const img = document.getElementById('calib-img');
+  document.getElementById('calib-modal').style.display = 'block';   // erst sichtbar → Wrapper hat Maße
+  img._pendingDataUrl = dataUrl;
+  img.onload = () => {
+    requestAnimationFrame(() => { _positionCalibHandles(); updateCalibLine(); });
+  };
+  img.src = dataUrl;
+  if (img.complete && img.naturalWidth) { requestAnimationFrame(() => { _positionCalibHandles(); updateCalibLine(); }); }
+}
+
+function _positionCalibHandles() {
+  const wrap = document.getElementById('calib-wrap').getBoundingClientRect();
+  const p1 = _calibHandles.p1, p2 = _calibHandles.p2;
+  _setCalibHandle('calib-p1', p1.x * wrap.width, p1.y * wrap.height);
+  _setCalibHandle('calib-p2', p2.x * wrap.width, p2.y * wrap.height);
+}
+function _setCalibHandle(id, x, y) {
+  const c = document.getElementById(id);
+  c.setAttribute('cx', x); c.setAttribute('cy', y);
+}
+function updateCalibLine() {
+  const p1 = document.getElementById('calib-p1'), p2 = document.getElementById('calib-p2');
+  const x1 = +p1.getAttribute('cx'), y1 = +p1.getAttribute('cy'), x2 = +p2.getAttribute('cx'), y2 = +p2.getAttribute('cy');
+  const l = document.getElementById('calib-l');
+  l.setAttribute('x1', x1); l.setAttribute('y1', y1); l.setAttribute('x2', x2); l.setAttribute('y2', y2);
+  const wrap = document.getElementById('calib-wrap').getBoundingClientRect();
+  _calibHandles.p1 = { x: x1 / wrap.width, y: y1 / wrap.height };
+  _calibHandles.p2 = { x: x2 / wrap.width, y: y2 / wrap.height };
+  const lenPx = Math.hypot(x2 - x1, y2 - y1);
+  const real = parseFloat(document.getElementById('calib-real').value) || 0;
+  const info = document.getElementById('calib-info');
+  if (lenPx > 2 && real > 0) {
+    const mmPerPx = real / lenPx;
+    const img = document.getElementById('calib-img');
+    const rw = Math.round(img.clientWidth * mmPerPx), rd = Math.round(img.clientHeight * mmPerPx);
+    info.textContent = `→ Vorlage ≈ ${(rw/1000).toFixed(2)} × ${(rd/1000).toFixed(2)} m`;
+  } else info.textContent = '';
+}
+
+(function initCalibDrag(){
+  const svg = document.getElementById('calib-svg');
+  if (!svg) return;
+  const pt = (e) => { const t = e.touches ? e.touches[0] : e; const r = svg.getBoundingClientRect(); return { x: t.clientX - r.left, y: t.clientY - r.top }; };
+  const down = (e) => { if (e.target.id === 'calib-p1' || e.target.id === 'calib-p2') { _calibDrag = e.target.id; e.preventDefault(); } };
+  const move = (e) => { if (!_calibDrag) return; const p = pt(e); const r = svg.getBoundingClientRect(); _setCalibHandle(_calibDrag, Math.max(0, Math.min(r.width, p.x)), Math.max(0, Math.min(r.height, p.y))); updateCalibLine(); e.preventDefault(); };
+  const up = () => { _calibDrag = null; };
+  svg.addEventListener('mousedown', down); svg.addEventListener('touchstart', down, { passive: false });
+  window.addEventListener('mousemove', move); window.addEventListener('touchmove', move, { passive: false });
+  window.addEventListener('mouseup', up); window.addEventListener('touchend', up);
+  const realIn = document.getElementById('calib-real');
+  if (realIn) realIn.addEventListener('input', updateCalibLine);
+})();
+
+function applyCalibration() {
+  const img = document.getElementById('calib-img');
+  const p1 = document.getElementById('calib-p1'), p2 = document.getElementById('calib-p2');
+  const lenPx = Math.hypot(+p2.getAttribute('cx') - +p1.getAttribute('cx'), +p2.getAttribute('cy') - +p1.getAttribute('cy'));
+  const real = parseFloat(document.getElementById('calib-real').value) || 0;
+  if (lenPx < 2 || real <= 0) { alert('Bitte die grüne Strecke ziehen und eine reale Länge eingeben.'); return; }
+  const mmPerPx = real / lenPx;
+  const realW = img.clientWidth * mmPerPx, realD = img.clientHeight * mmPerPx;
+  const dataUrl = img._pendingDataUrl || img.src;
+  const keepPose = refImage ? { x: refImage.x, z: refImage.z, opacity: refImage.opacity, visible: refImage.visible } : null;
+  _createRefImagePlane(dataUrl, realW, realD, keepPose);
+  document.getElementById('calib-modal').style.display = 'none';
+}
+
+function _createRefImagePlane(dataUrl, realW, realD, pose) {
+  if (refImage && refImage.mesh) { removeMesh(refImage.mesh); }
+  const opacity = pose ? pose.opacity : (parseInt(document.getElementById('refimg-opacity').value) || 55) / 100;
+  const loader = new THREE.TextureLoader();
+  loader.load(dataUrl, (tex) => {
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const geo = new THREE.PlaneGeometry(realW, realD);
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.rotation.x = -Math.PI / 2;   // flach auf den Boden
+    const px = pose ? pose.x : 0, pz = pose ? pose.z : 0;
+    mesh.position.set(px + realW / 2, -2, pz + realD / 2);   // Ecke bei (px,pz), leicht unter Balken
+    mesh.renderOrder = -1;
+    scene.add(mesh);
+    refImage = { mesh, dataUrl, realW, realD, opacity, visible: pose ? pose.visible : true, x: px, z: pz };
+    mesh.visible = refImage.visible;
+    _refreshRefImageUI();
+  });
+}
+
+function _refreshRefImageUI() {
+  const c = document.getElementById('refimg-controls');
+  if (!c) return;
+  if (refImage) {
+    c.style.display = 'block';
+    document.getElementById('refimg-opacity').value = Math.round(refImage.opacity * 100);
+    document.getElementById('refimg-visible').checked = refImage.visible;
+    document.getElementById('refimg-scale').textContent = `Vorlage: ${(refImage.realW/1000).toFixed(2)} × ${(refImage.realD/1000).toFixed(2)} m`;
+  } else c.style.display = 'none';
+}
+
+function setRefImageOpacity(v) {
+  if (!refImage) return;
+  refImage.opacity = (parseInt(v) || 0) / 100;
+  refImage.mesh.material.opacity = refImage.opacity;
+}
+function toggleRefImageVisible() {
+  if (!refImage) return;
+  refImage.visible = document.getElementById('refimg-visible').checked;
+  refImage.mesh.visible = refImage.visible;
+}
+function recalibrateRefImage() {
+  if (!refImage) return;
+  openCalibration(refImage.dataUrl);
+}
+function removeRefImage() {
+  if (!refImage) return;
+  removeMesh(refImage.mesh);
+  refImage = null;
+  _refreshRefImageUI();
+}
 
 function makeSelectionHighlight(mesh, on) {
   if (!mesh) return;
@@ -3808,6 +3990,7 @@ function newProject() {
   decoIdCounter = 1;
   history = [];
   redoStack = [];
+  if (refImage) { removeMesh(refImage.mesh); refImage = null; _refreshRefImageUI(); }
   updateUndoRedoButtons();
   updateUI();
 }
@@ -3828,8 +4011,8 @@ function removeMesh(mesh) {
 }
 
 // Konstruktion als reines Datenobjekt (version 3) — genutzt von Speichern & Auto-Speichern.
-function serializeProject() {
-  return {
+function serializeProject(includeImage) {
+  const out = {
     version: 3,
     groups: groups,
     hiddenGroups: [...hiddenGroups],
@@ -3855,11 +4038,17 @@ function serializeProject() {
       params: d.params || {}
     })),
   };
+  if (refImage) {
+    // Bild-Vorlage: dataUrl nur beim Datei-Speichern mitschreiben (localStorage-Größe!)
+    out.refImage = { realW: refImage.realW, realD: refImage.realD, opacity: refImage.opacity, visible: refImage.visible, x: refImage.x, z: refImage.z };
+    if (includeImage) out.refImage.dataUrl = refImage.dataUrl;
+  }
+  return out;
 }
 
 function saveProject() {
   if (!requirePremium('💾 Projekt speichern', 'Projekte speichern und laden ist eine Premium-Funktion. Upgrade für unbegrenzte Projektverwaltung.')) return;
-  const data = serializeProject();
+  const data = serializeProject(true);   // Bild-Vorlage in Datei mit einbetten
   const json = JSON.stringify(data, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -3928,6 +4117,14 @@ function applyProjectData(data) {
     decos.push(deco);
   });
   if (data.decos && data.decos.length) decoIdCounter = Math.max(...data.decos.map(d=>d.id)) + 1;
+  // Bild-Vorlage wiederherstellen (nur wenn dataUrl mitgespeichert wurde)
+  if (refImage) { removeMesh(refImage.mesh); refImage = null; }
+  if (data.refImage && data.refImage.dataUrl) {
+    _createRefImagePlane(data.refImage.dataUrl, data.refImage.realW, data.refImage.realD,
+      { x: data.refImage.x || 0, z: data.refImage.z || 0, opacity: data.refImage.opacity ?? 0.55, visible: data.refImage.visible !== false });
+  } else {
+    _refreshRefImageUI();
+  }
   renderDekoList();
   updateUI();
 }
