@@ -2835,6 +2835,9 @@ function selectGroup(groupName) {
 function deleteSelected() {
   const ids = [...selectedIds];
   if (ids.length > 0) {
+    // Entf mitten im Ziehen: sonst zeigen die Drag-Snapshots auf geloeschte
+    // Balken und die Deko der Gruppe haengt weiter am Cursor.
+    _endDrag();
     pushHistory();
     ids.forEach(id => {
       const idx = beams.findIndex(b => b.id === id);
@@ -4410,6 +4413,13 @@ function _captureSnapshot() {
   return JSON.stringify({
     beams: beams.map(b => ({ ...b, mesh: null })),
     decos: decos.map(d => ({ ...d, mesh: null })),
+    // Der Gruppen-Zustand gehoerte nie dazu. Folge: nach einem Undo kamen die
+    // Balken zurueck, Schloss und Auge aber nicht — und leere Gruppen fielen
+    // ganz weg, weil sie nur aus den Objekten rekonstruiert wurden.
+    groups: [...groups],
+    hiddenGroups: [...hiddenGroups],
+    lockedGroups: [...lockedGroups],
+    collapsedGroups: [...collapsedGroups],
   });
 }
 
@@ -4426,11 +4436,29 @@ function _applySnapshot(snapStr) {
   clearAllBeams();
   clearAllDecos();
 
+  // Gruppen-Zustand zuerst zuruecksetzen — die Meshes unten brauchen ihn schon,
+  // um sofort mit der richtigen Sichtbarkeit in die Szene zu gehen.
+  // Altbestand: Schnappschuesse ohne groups (Array-Format oder aeltere Version)
+  // behalten das bisherige Verhalten, Namen aus den Objekten zu rekonstruieren.
+  if (!Array.isArray(snap) && Array.isArray(snap.groups)) {
+    groups.length = 0;
+    snap.groups.forEach(g => { if (!groups.includes(g)) groups.push(g); });
+    if (!groups.includes('Standard')) groups.unshift('Standard');
+    hiddenGroups.clear();
+    (snap.hiddenGroups || []).forEach(g => hiddenGroups.add(g));
+    lockedGroups.clear();
+    (snap.lockedGroups || []).forEach(g => lockedGroups.add(g));
+    collapsedGroups.clear();
+    (snap.collapsedGroups || []).forEach(g => collapsedGroups.add(g));
+  }
+
   // Support both new {beams, decos} format and legacy array format
   const snapBeams = Array.isArray(snap) ? snap : (snap.beams || []);
   snapBeams.forEach(s => {
     const beam = { ...s, mesh: null };
     beam.mesh = createBeamMesh(beam);
+    // Ohne diese Zeile tauchten ausgeblendete Gruppen nach jedem Undo wieder auf.
+    if (hiddenGroups.has(beam.group)) beam.mesh.visible = false;
     scene.add(beam.mesh);
     beams.push(beam);
   });
@@ -4447,13 +4475,14 @@ function _applySnapshot(snapStr) {
     deco.mesh.userData.isDecoId = deco.id;
     deco.mesh.position.set(deco.x, deco.y, deco.z);
     deco.mesh.rotation.y = (deco.ry || 0) * Math.PI / 180;
+    if (hiddenGroups.has(deco.group)) deco.mesh.visible = false;
     scene.add(deco.mesh);
     decos.push(deco);
   });
   if (decos.length > 0) decoIdCounter = Math.max(...decos.map(d => d.id)) + 1;
 
-  // Re-register any group names that only exist on restored objects
-  // (e.g. after undoing a group deletion) so they reappear in the sidebar.
+  // Auffangnetz fuer alte Schnappschuesse ohne groups: Namen aus den Objekten
+  // nachtragen, damit sie in der Seitenleiste wieder auftauchen.
   [...beams, ...decos].forEach(o => { if (o.group && !groups.includes(o.group)) groups.push(o.group); });
 
   renderDekoList();
@@ -5872,6 +5901,7 @@ function renderDekoList() {
 }
 
 function deleteDeco(id) {
+  _endDrag();   // falls das Objekt gerade gezogen wird
   const idx = decos.findIndex(d => d.id === id);
   if (idx < 0) return;
   const d = decos[idx];
