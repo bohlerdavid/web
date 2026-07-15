@@ -1089,7 +1089,8 @@ body {
       <button class="add-btn" onclick="addBeam()" style="margin-top:10px">+ Balken hinzufügen</button>
 
       <div class="panel-section">
-        <div class="panel-title" style="margin-bottom:8px">Parallelreihe</div>
+        <div class="panel-title" style="margin-bottom:4px">Parallelreihe</div>
+        <div style="font-size:10px;color:var(--text-3);margin-bottom:8px;line-height:1.4">Balken auswählen → die Reihe entsteht ab dem gewählten Balken (er zählt als Nr. 1). Ohne Auswahl ab dem Nullpunkt.</div>
         <div class="dim-row">
           <div class="dim-cell"><label>Anzahl</label><input type="number" id="par-count" value="3" min="2" max="30" step="1"></div>
           <div class="dim-cell"><label>Abstand mm</label><input type="number" id="par-spacing" value="600" min="1" step="10"></div>
@@ -1621,7 +1622,10 @@ viewport.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xffffff);
-scene.fog = new THREE.FogExp2(0xffffff, 0.00006);
+// Nebel weicht den Horizont der grossen Bodenflaeche auf. Die Dichte wird in
+// updateSceneExtent() an die Szenengroesse angepasst — fix getunt wuerde ein
+// Lageplan ueber 40 m komplett weiss genebelt.
+scene.fog = new THREE.FogExp2(0xffffff, 0.0000125);
 
 // near=10mm statt 1mm: bei far=100000 sonst 1:100.000 → miserable Tiefenpuffer-
 // Präzision und dadurch Z-Fighting am Boden. 10mm ist visuell folgenlos.
@@ -1671,12 +1675,18 @@ gridHelper.position.y = GRID_Y;
 scene.add(gridHelper);
 
 // Rebuild the ground grid so its cell size matches the Rastergröße (snap size).
-// The covered AREA stays constant (~20 m) at every Rastergröße — only the cell
-// density changes — so the grid never shrinks below the Grundriss.
+// Die abgedeckte FLÄCHE richtet sich nach der Szenengröße (mind. 20 m) — nur die
+// Zelldichte hängt an der Rastergröße.
+// Größte Ausdehnung der Szene (Balken + Bild-Vorlage). Steuert Raster, Boden
+// und Nebeldichte — sonst läge ein 40-m-Lageplan außerhalb des Rasters und
+// wäre komplett zugenebelt.
+let _sceneExtent = 20000;
+
 function rebuildGrid() {
   const input = document.getElementById('snap-size');
   const snapSize = Math.max(1, parseFloat(input && input.value) || 10);
-  const EXTENT = 20000;         // fixed ground size (~20 m), independent of snap size
+  // Raster waechst mit dem Inhalt mit (mind. 20 m)
+  const EXTENT = Math.max(20000, Math.ceil(_sceneExtent * 1.2 / 1000) * 1000);
   const MAX_DIVISIONS = 2000;   // safety cap for extremely fine grids (still one draw call)
   let divisions = Math.round(EXTENT / snapSize);
   if (divisions > MAX_DIVISIONS) divisions = MAX_DIVISIONS;
@@ -1703,6 +1713,37 @@ groundPlane.position.y = GROUND_Y;   // klar unter Raster/Grundriss → kein Z-F
 groundPlane.receiveShadow = true;
 groundPlane.visible = true;
 scene.add(groundPlane);
+let _groundSize = 50000;
+
+// Ausdehnung aus Balken + Bild-Vorlage (nur zur Laufzeit aufgerufen — beams und
+// refImage werden weiter unten deklariert).
+function getSceneExtent() {
+  let ext = 15000;   // Minimum ~15 m
+  beams.forEach(b => {
+    const wx = b.axis === 'x' ? b.L : b.B, wz = b.axis === 'z' ? b.L : b.B;
+    ext = Math.max(ext, Math.abs(b.x) + wx, Math.abs(b.z) + wz);
+  });
+  if (refImage) {
+    ext = Math.max(ext, Math.abs(refImage.x || 0) + refImage.realW, Math.abs(refImage.z || 0) + refImage.realD);
+  }
+  return ext;
+}
+
+// Nebel, Raster und Boden an die Szenengröße anpassen. Nebeldichte so, dass am
+// Rand des Inhalts erst ~6 % Nebel liegen (vorher: 76 % schon bei 20 m).
+function updateSceneExtent() {
+  const ext = getSceneExtent();
+  if (Math.abs(ext - _sceneExtent) / Math.max(_sceneExtent, 1) < 0.05) return;  // kaum geändert
+  _sceneExtent = ext;
+  scene.fog.density = 0.25 / Math.max(ext, 1);
+  rebuildGrid();
+  const g = Math.max(50000, ext * 4);
+  if (g !== _groundSize) {
+    _groundSize = g;
+    groundPlane.geometry.dispose();
+    groundPlane.geometry = new THREE.PlaneGeometry(g, g);
+  }
+}
 
 // Axes helper
 const axesHelper = new THREE.AxesHelper(500);
@@ -2498,6 +2539,8 @@ function _createRefImagePlane(dataUrl, realW, realD, pose) {
     refImage = { mesh, dataUrl, realW, realD, opacity, visible: pose ? pose.visible : true, x: px, z: pz };
     mesh.visible = refImage.visible;
     _refreshRefImageUI();
+    updateSceneExtent();   // grosser Plan → Raster/Boden/Nebel mitziehen
+    resetCamera();         // direkt passend einpassen statt weit rauszoomen
   });
 }
 
@@ -3102,6 +3145,7 @@ function updateUI() {
   updateObjList();
   updateSelPanel();
   renderPhaseFilterBar();
+  updateSceneExtent();   // Nebel/Raster/Boden an Szenengröße anpassen
 }
 
 // ══════════════════════════════════════════════
@@ -3418,10 +3462,12 @@ function setView(v) {
 }
 
 function resetCamera() {
-  // Fit all objects
-  if (beams.length === 0) { setView('iso'); return; }
+  // Alles einpassen — Balken UND Bild-Vorlage (sonst müsste man bei einem frisch
+  // geladenen Plan ohne Balken von Hand weit rauszoomen).
   const box = new THREE.Box3();
   beams.forEach(b => box.expandByObject(b.mesh));
+  if (refImage && refImage.mesh && refImage.visible) box.expandByObject(refImage.mesh);
+  if (box.isEmpty()) { setView('iso'); return; }
   const center = new THREE.Vector3();
   const size = new THREE.Vector3();
   box.getCenter(center);
@@ -4955,34 +5001,58 @@ function addBeamRow() {
   const count   = parseInt(document.getElementById('par-count').value)   || 3;
   const spacing = parseFloat(document.getElementById('par-spacing').value) || 600;
   const dir     = document.getElementById('par-dir').value || 'z';
-  const L  = parseFloat(document.getElementById('dim-l').value) || 4000;
-  const B  = parseFloat(document.getElementById('dim-b').value) || 80;
-  const H  = parseFloat(document.getElementById('dim-h').value) || 160;
-  const axis     = document.getElementById('beam-axis').value || 'x';
-  const woodType = document.getElementById('wood-type').value || 'Fichte';
-  const baseName = document.getElementById('beam-name').value || `${woodType} ${L}×${B}×${H}`;
-  const group    = document.getElementById('beam-group-sel')?.value || 'Standard';
-  const phase    = document.getElementById('beam-phase')?.value || '';
-  const rx = parseFloat(document.getElementById('rot-x').value) || 0;
-  const ry = parseFloat(document.getElementById('rot-y').value) || 0;
-  const rz = parseFloat(document.getElementById('rot-z').value) || 0;
+
+  // Ist ein Balken ausgewählt, wird die Reihe VON IHM AUS gebaut (gleiche Maße,
+  // Holzart, Drehung, Gruppe) — sonst wie bisher aus dem Formular ab Nullpunkt.
+  const sel = beams.find(b => b.id === ([...selectedIds][0] ?? null));
+  const base = sel ? {
+    L: sel.L, B: sel.B, H: sel.H, axis: sel.axis, woodType: sel.woodType,
+    rx: sel.rx || 0, ry: sel.ry || 0, rz: sel.rz || 0,
+    group: sel.group || 'Standard', phase: sel.phase || null,
+    x: sel.x, y: sel.y, z: sel.z,
+    name: (sel.name || 'Balken').replace(/\s\d+$/, ''),
+    shape: sel.shape || 'rect',
+  } : {
+    L: parseFloat(document.getElementById('dim-l').value) || 4000,
+    B: parseFloat(document.getElementById('dim-b').value) || 80,
+    H: parseFloat(document.getElementById('dim-h').value) || 160,
+    axis: document.getElementById('beam-axis').value || 'x',
+    woodType: document.getElementById('wood-type').value || 'Fichte',
+    rx: parseFloat(document.getElementById('rot-x').value) || 0,
+    ry: parseFloat(document.getElementById('rot-y').value) || 0,
+    rz: parseFloat(document.getElementById('rot-z').value) || 0,
+    group: document.getElementById('beam-group-sel')?.value || 'Standard',
+    phase: document.getElementById('beam-phase')?.value || null,
+    x: 0, y: 0, z: 0,
+    name: document.getElementById('beam-name').value || 'Balken',
+    shape: 'rect',
+  };
+
   pushHistory();
-  for (let i = 0; i < count; i++) {
+  // Mit Auswahl zählt der gewählte Balken als Nr. 1 → nur count-1 kommen dazu.
+  const startI = sel ? 1 : 0;
+  const newIds = [];
+  for (let i = startI; i < count; i++) {
     const offset = i * spacing;
-    const bx = dir === 'x' ? offset : 0;
-    const by = dir === 'y' ? offset : 0;
-    const bz = dir === 'z' ? offset : 0;
     const beam = {
-      id: idCounter++, name: `${baseName} ${i + 1}`,
-      woodType, shape: 'rect', L, B, H, axis, rx, ry, rz,
-      group, phase: phase || null, x: bx, y: by, z: bz, mesh: null
+      ...base,
+      id: idCounter++,
+      name: `${base.name} ${i + 1}`,
+      x: base.x + (dir === 'x' ? offset : 0),
+      y: base.y + (dir === 'y' ? offset : 0),
+      z: base.z + (dir === 'z' ? offset : 0),
+      mesh: null,
     };
+    if (sel && sel.cutouts) beam.cutouts = JSON.parse(JSON.stringify(sel.cutouts));
     beam.mesh = createBeamMesh(beam);
     if (hiddenGroups.has(beam.group)) beam.mesh.visible = false;
     applyPhaseVisibility(beam);
     scene.add(beam.mesh);
     beams.push(beam);
+    newIds.push(beam.id);
   }
+  // Ganze Reihe markieren → man sieht sofort, was entstanden ist
+  if (newIds.length) selectBeamIds(sel ? [sel.id, ...newIds] : newIds);
   updateUI();
 }
 
