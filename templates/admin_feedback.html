@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Feedback-Tickets — HolzBau 3D{% endblock %}
+{% block content %}
+<style>
+  .fb-card { background:#fff; border:1px solid #e8ddd0; border-radius:12px; padding:18px 20px; margin-bottom:14px; }
+  .fb-pill { font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.4px;
+             padding:3px 10px; border-radius:999px; white-space:nowrap; }
+  .fb-neu       { background:#eff6ff; color:#1d4ed8; }
+  .fb-in_arbeit { background:#fef3c7; color:#92400e; }
+  .fb-erledigt  { background:#dcfce7; color:#15803d; }
+  .fb-abgelehnt { background:#f3f4f6; color:#6b7280; }
+  .fb-meta { font-size:.78rem; color:#9ca3af; }
+  .fb-msg { color:#374151; font-size:.9rem; white-space:pre-wrap; line-height:1.6; }
+  .fb-shot { max-width:100%; border:1px solid #e8ddd0; border-radius:8px; margin-top:10px; cursor:zoom-in; }
+  .fb-filter { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px; }
+  .fb-filter a { font-size:.82rem; padding:5px 12px; border-radius:999px; text-decoration:none;
+                 border:1px solid #e8ddd0; color:#6b7280; background:#fff; }
+  .fb-filter a.on { background:#d97706; color:#fff; border-color:#d97706; }
+  .fb-ctx { font-family:ui-monospace,monospace; font-size:.72rem; color:#9ca3af;
+            background:#faf6f0; border-radius:6px; padding:6px 9px; margin-top:8px; word-break:break-all; }
+</style>
+
+<div class="d-flex align-items-center gap-3 flex-wrap mb-1">
+  <h4 class="mb-0"><i class="bi bi-chat-left-text me-2" style="color:#d97706;"></i>Feedback-Tickets</h4>
+  <a href="{{ url_for('admin_users') }}" class="btn btn-outline-secondary btn-sm ms-auto">Nutzer</a>
+</div>
+<p class="text-muted" style="font-size:.85rem;">Meldungen von Premium-Nutzern. Eine Antwort geht per E-Mail raus.</p>
+
+<div class="fb-filter">
+  <a href="{{ url_for('admin_feedback') }}" class="{% if not filter_status %}on{% endif %}">
+    Alle ({{ zaehler.values()|sum }})</a>
+  {% for s, lab in labels.items() %}
+  <a href="{{ url_for('admin_feedback', status=s) }}" class="{% if filter_status == s %}on{% endif %}">
+    {{ lab }} ({{ zaehler.get(s, 0) }})</a>
+  {% endfor %}
+</div>
+
+{% if not tickets %}
+<div class="fb-card text-center text-muted" style="font-size:.9rem;">Keine Tickets{% if filter_status %} mit diesem Status{% endif %}.</div>
+{% endif %}
+
+{% for t in tickets %}
+<div class="fb-card">
+  <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+    <span class="fb-pill fb-{{ t['status'] }}">{{ labels.get(t['status'], t['status']) }}</span>
+    <span class="fb-meta">{{ '🐞 Fehler' if t['kind'] == 'bug' else '💡 Vorschlag' }}</span>
+    <span class="fb-meta">#{{ t['id'] }}</span>
+    <span class="fb-meta">{{ t['username'] }} &lt;{{ t['email'] }}&gt;</span>
+    <span class="fb-meta ms-auto">{{ t['created'].strftime('%d.%m.%Y %H:%M') if t['created'] else '' }}</span>
+  </div>
+
+  <div style="font-weight:700;color:#1f2937;margin-bottom:4px;">{{ t['subject'] }}</div>
+  <div class="fb-msg">{{ t['message'] }}</div>
+
+  {% if t['ctx'] %}<div class="fb-ctx">{{ t['ctx'] }}</div>{% endif %}
+
+  {% if t['has_shot'] %}
+  <a href="{{ url_for('feedback_screenshot', fid=t['id']) }}" target="_blank">
+    <img class="fb-shot" src="{{ url_for('feedback_screenshot', fid=t['id']) }}" alt="Screenshot zu Ticket {{ t['id'] }}" loading="lazy">
+  </a>
+  {% endif %}
+
+  <form method="POST" action="{{ url_for('admin_feedback_update', fid=t['id'], status=filter_status) }}" class="mt-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="fb-meta d-block mb-1">Antwort an den Nutzer (wird per E-Mail zugestellt)</label>
+    <textarea name="admin_reply" rows="3" class="form-control form-control-sm mb-2"
+              placeholder="Antwort …">{{ t['admin_reply'] or '' }}</textarea>
+    <div class="d-flex gap-2 align-items-center flex-wrap">
+      <select name="status" class="form-select form-select-sm" style="width:auto;">
+        {% for s, lab in labels.items() %}
+        <option value="{{ s }}" {% if t['status'] == s %}selected{% endif %}>{{ lab }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn btn-wood btn-sm">Speichern &amp; antworten</button>
+      {% if t['updated'] %}
+      <span class="fb-meta ms-auto">zuletzt: {{ t['updated'].strftime('%d.%m.%Y %H:%M') }}</span>
+      {% endif %}
+    </div>
+  </form>
+</div>
+{% endfor %}
+{% endblock %}

@@ -84,6 +84,39 @@
   {% endif %}
 </div>
 
+{% if tickets %}
+<div class="info-card" id="feedback">
+  <h5><i class="bi bi-chat-left-text me-2" style="color:#d97706;"></i>Mein Feedback</h5>
+  <p class="text-muted mb-3" style="font-size:.85rem;">Deine Meldungen und unsere Antworten darauf.</p>
+  {% for t in tickets %}
+  <div style="border:1px solid #e8ddd0;border-radius:10px;padding:14px 16px;margin-bottom:10px;background:#fff;">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <span style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:2px 9px;border-radius:999px;
+        {% if t['status'] == 'neu' %}background:#eff6ff;color:#1d4ed8;
+        {% elif t['status'] == 'in_arbeit' %}background:#fef3c7;color:#92400e;
+        {% elif t['status'] == 'erledigt' %}background:#dcfce7;color:#15803d;
+        {% else %}background:#f3f4f6;color:#6b7280;{% endif %}">{{ fb_labels.get(t['status'], t['status']) }}</span>
+      <span style="font-size:.75rem;color:#9ca3af;">{{ '🐞 Fehler' if t['kind'] == 'bug' else '💡 Vorschlag' }}</span>
+      <span style="font-size:.75rem;color:#9ca3af;margin-left:auto;">{{ t['created'].strftime('%d.%m.%Y') if t['created'] else '' }}</span>
+    </div>
+    <div style="font-weight:600;color:#1f2937;margin-top:7px;">{{ t['subject'] }}</div>
+    <div style="color:#6b7280;font-size:.86rem;white-space:pre-wrap;margin-top:3px;">{{ t['message'] }}</div>
+    {% if t['has_shot'] %}
+    <a href="{{ url_for('feedback_screenshot', fid=t['id']) }}" target="_blank"
+       style="display:inline-block;margin-top:8px;font-size:.78rem;color:#d97706;text-decoration:none;">
+      <i class="bi bi-image me-1"></i>Mitgeschickten Screenshot ansehen</a>
+    {% endif %}
+    {% if t['admin_reply'] %}
+    <div style="margin-top:10px;padding:10px 12px;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;">
+      <div style="font-size:.68rem;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.4px;">Unsere Antwort</div>
+      <div style="color:#374151;font-size:.86rem;white-space:pre-wrap;margin-top:3px;">{{ t['admin_reply'] }}</div>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
 <div class="d-flex gap-3 flex-wrap align-items-center">
   <a href="{{ url_for('subscribe') }}" class="btn btn-outline-warning btn-sm"><i class="bi bi-star me-1"></i>Abonnement</a>
   <a href="{{ url_for('holzbau') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-box me-1"></i>Zur App</a>

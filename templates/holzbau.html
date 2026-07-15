@@ -858,6 +858,17 @@ body {
 [data-theme="light"] .view-btn:hover { background: var(--bg-panel); }
 [data-theme="light"] #tooltip { background: rgba(255,255,255,.97); }
 [data-theme="light"] #controls-help { background: rgba(255,255,255,.94); }
+/* ── FEEDBACK ── */
+.fb-kind span {
+  display: block; text-align: center; cursor: pointer;
+  background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--r-sm);
+  padding: 9px 6px; font-size: 12.5px; color: var(--text-2); transition: all .1s;
+}
+.fb-kind input:checked + span {
+  background: var(--accent-dim); border-color: var(--accent); color: var(--accent); font-weight: 600;
+}
+.fb-kind span:hover { border-color: var(--accent); }
+
 /* Hinweisbanner ueber dem Viewport (Massband, Ausfraesung platzieren).
    Hintergrund und Farbe MUESSEN hier stehen, nicht inline: ein Inline-Style
    schlaegt jede Regel, dadurch blieb der Kasten im Hellmodus dunkel waehrend
@@ -935,7 +946,8 @@ body {
   <div class="tb-divider"></div>
   <button class="tb-btn" id="theme-toggle" onclick="toggleTheme()" title="Hell/Dunkel-Modus wechseln" style="font-size:15px;padding:0 6px">🌙</button>
   {% if not show_ads %}
-  <div style="margin-left:auto;display:flex;align-items:center;gap:5px;background:rgba(56,216,156,.1);border:1px solid rgba(56,216,156,.25);border-radius:var(--r-sm);padding:2px 10px;font-size:11px;color:var(--green);font-weight:600;flex-shrink:0">✨ Premium</div>
+  <button class="tb-btn" onclick="openFeedback()" title="Fehler melden oder Vorschlag senden" style="margin-left:auto;flex-shrink:0">💬 Feedback</button>
+  <div style="display:flex;align-items:center;gap:5px;background:rgba(56,216,156,.1);border:1px solid rgba(56,216,156,.25);border-radius:var(--r-sm);padding:2px 10px;font-size:11px;color:var(--green);font-weight:600;flex-shrink:0">✨ Premium</div>
   {% else %}
   <a href="/subscribe" style="margin-left:auto;display:flex;align-items:center;gap:5px;background:rgba(78,140,221,.1);border:1px solid rgba(78,140,221,.25);border-radius:var(--r-sm);padding:2px 10px;font-size:11px;color:var(--accent);font-weight:600;text-decoration:none;flex-shrink:0">⬆ Upgrade</a>
   {% endif %}
@@ -1433,6 +1445,59 @@ body {
   <span style="margin-left:auto;color:var(--text-2);font-size:10px">Strg+Z Rückgängig · Entf Löschen · F Fokus</span>
 </div>
 
+{% if not show_ads %}
+<!-- FEEDBACK (nur Premium) -->
+<div id="fb-modal" onclick="if (event.target === this) closeFeedback()" style="display:none;position:fixed;inset:0;z-index:2100;background:rgba(0,0,0,.55);align-items:center;justify-content:center;padding:20px">
+  <div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--r);max-width:520px;width:100%;max-height:90vh;overflow-y:auto;padding:22px 24px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <span style="font-size:16px;font-weight:700;color:var(--text)">💬 Feedback senden</span>
+      <button class="tb-btn" style="color:var(--red);border-color:var(--red-dim)" onclick="closeFeedback()">✕</button>
+    </div>
+    <p style="font-size:12px;color:var(--text-2);margin:0 0 16px;line-height:1.5">
+      Etwas funktioniert nicht oder dir fehlt eine Funktion? Schreib es uns — wir antworten dir per E-Mail.
+    </p>
+
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <label class="fb-kind" style="flex:1">
+        <input type="radio" name="fb-kind" value="bug" checked style="display:none">
+        <span>🐞 Fehler melden</span>
+      </label>
+      <label class="fb-kind" style="flex:1">
+        <input type="radio" name="fb-kind" value="idea" style="display:none">
+        <span>💡 Vorschlag</span>
+      </label>
+    </div>
+
+    <div class="form-row" style="display:block;margin-bottom:10px">
+      <label style="display:block;font-size:11px;color:var(--text-2);margin-bottom:4px">Betreff</label>
+      <input type="text" id="fb-subject" maxlength="200" placeholder="Kurz in einem Satz"
+             style="width:100%;background:var(--bg-input);border:1px solid var(--border);color:var(--text);border-radius:var(--r-sm);padding:7px 10px;font-size:13px">
+    </div>
+    <div class="form-row" style="display:block;margin-bottom:12px">
+      <label style="display:block;font-size:11px;color:var(--text-2);margin-bottom:4px">Beschreibung</label>
+      <textarea id="fb-message" rows="5" maxlength="5000" placeholder="Was ist passiert? Was hattest du erwartet?"
+                style="width:100%;background:var(--bg-input);border:1px solid var(--border);color:var(--text);border-radius:var(--r-sm);padding:7px 10px;font-size:13px;font-family:var(--font);resize:vertical"></textarea>
+    </div>
+
+    <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text);cursor:pointer;margin-bottom:8px">
+      <input type="checkbox" id="fb-shot" checked>
+      <span>Screenshot meiner aktuellen Ansicht mitschicken</span>
+    </label>
+    <div id="fb-preview" style="display:none;margin-bottom:12px">
+      <img id="fb-preview-img" alt="Vorschau des mitgeschickten Screenshots"
+           style="width:100%;border:1px solid var(--border);border-radius:var(--r-sm);display:block">
+      <div style="font-size:10.5px;color:var(--text-3);margin-top:4px">So kommt er bei uns an.</div>
+    </div>
+
+    <div id="fb-error" style="display:none;font-size:12px;color:var(--red);margin-bottom:10px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="tb-btn" onclick="closeFeedback()">Abbrechen</button>
+      <button class="tb-btn green" id="fb-send" onclick="sendFeedback()">Senden</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <div id="ctx-menu" style="display:none;position:fixed;z-index:500">
   <div id="ctx-single">
     <div style="padding:6px 12px;font-size:10px;color:var(--text-3);border-bottom:1px solid var(--border);font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Drehen</div>
@@ -1896,6 +1961,7 @@ Object.assign(window, {
   showTab, setDims, setAngle, loadTemplate,
   addGroup, renderGroupList, selectGroup, moveBeamToGroup, deleteGroup, toggleGroupVisibility,
   toggleGroupLock, rotateDeco,
+  openFeedback, closeFeedback, sendFeedback,
   addDeco, deleteDeco, clearAllDecos, moveDecoToGroup,
   deleteDecoSelected, applyDecoEdit, updateDecoSelPanel,
   toggleMeasure, clearMeasure,
@@ -4158,6 +4224,118 @@ function rotateSelected(axis, deg) {
   updateUI();
 }
 
+// ══════════════════════════════════════════════
+// FEEDBACK
+// ══════════════════════════════════════════════
+
+const CSRF_TOKEN = '{{ csrf_token|default("") }}';
+let _fbShot = null;   // data:-URL des mitgeschickten Screenshots
+
+// Screenshot der aktuellen 3D-Ansicht. Auf 1280px Breite herunterrechnen und als
+// WebP kodieren — ein 4K-Canvas waere sonst mehrere MB und landet als BLOB in der DB.
+function _grabViewport() {
+  try {
+    renderer.render(scene, camera);   // frischer Frame, nicht der letzte aus dem Loop
+    const src = renderer.domElement;
+    const w = Math.min(1280, src.width);
+    const h = Math.round(src.height * (w / src.width));
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    cv.getContext('2d').drawImage(src, 0, 0, w, h);
+    return cv.toDataURL('image/webp', 0.82);
+  } catch (e) {
+    console.warn('[HolzBAU] Screenshot fehlgeschlagen:', e);
+    return null;
+  }
+}
+
+function openFeedback() {
+  const m = document.getElementById('fb-modal');
+  if (!m) return;
+  document.getElementById('fb-error').style.display = 'none';
+  // Bild sofort aufnehmen: sobald der Dialog offen ist, verdeckt er die Ansicht,
+  // und der Nutzer will genau das melden, was er GERADE sieht.
+  _fbShot = _grabViewport();
+  const box = document.getElementById('fb-preview');
+  if (_fbShot) {
+    document.getElementById('fb-preview-img').src = _fbShot;
+    // Aktiv wieder setzen: ein frueherer Fehlschlag hat den Haken evtl.
+    // abgeraeumt, und er kaeme von selbst nie zurueck.
+    document.getElementById('fb-shot').checked = true;
+    box.style.display = 'block';
+  } else {
+    box.style.display = 'none';
+    document.getElementById('fb-shot').checked = false;
+  }
+  m.style.display = 'flex';
+  document.getElementById('fb-subject').focus();
+}
+
+function closeFeedback() {
+  const m = document.getElementById('fb-modal');
+  if (m) m.style.display = 'none';
+}
+
+async function sendFeedback() {
+  const err = document.getElementById('fb-error');
+  const btn = document.getElementById('fb-send');
+  const subject = document.getElementById('fb-subject').value.trim();
+  const message = document.getElementById('fb-message').value.trim();
+  if (!subject || !message) {
+    err.textContent = 'Bitte Betreff und Beschreibung ausfüllen.';
+    err.style.display = 'block';
+    return;
+  }
+  err.style.display = 'none';
+  btn.disabled = true; btn.textContent = 'Sendet …';
+
+  const fd = new FormData();
+  fd.append('csrf_token', CSRF_TOKEN);
+  fd.append('kind', document.querySelector('input[name="fb-kind"]:checked').value);
+  fd.append('subject', subject);
+  fd.append('message', message);
+  if (document.getElementById('fb-shot').checked && _fbShot) fd.append('screenshot', _fbShot);
+  // Kontext spart Rueckfragen: Fenstergroesse, Browser, Umfang der Konstruktion.
+  fd.append('ctx', [
+    'Objekte: ' + beams.length + ' Balken, ' + decos.length + ' Deko',
+    'Fenster: ' + window.innerWidth + 'x' + window.innerHeight,
+    'Sprache: ' + (document.documentElement.lang || '?'),
+    navigator.userAgent,
+  ].join(' | '));
+
+  try {
+    const r = await fetch('/feedback', { method: 'POST', body: fd });
+    // Nicht blind r.json(): bei abgelaufener Session antwortet der Server mit
+    // einer Weiterleitung auf die Login-Seite (HTML), und der Parserfehler
+    // wuerde dem Nutzer als kryptische Meldung angezeigt — Text futsch.
+    const typ = r.headers.get('content-type') || '';
+    if (!typ.includes('application/json')) {
+      throw new Error(r.status === 413
+        ? 'Der Screenshot ist zu groß. Nimm den Haken raus und sende erneut.'
+        : 'Deine Sitzung ist abgelaufen. Bitte in einem neuen Tab neu anmelden — dein Text bleibt hier stehen.');
+    }
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'Senden fehlgeschlagen.');
+    closeFeedback();
+    document.getElementById('fb-subject').value = '';
+    document.getElementById('fb-message').value = '';
+    alert('Danke! Dein Feedback ist angekommen. Den Status siehst du in deinem Profil.');
+  } catch (e) {
+    err.textContent = e.message || 'Senden fehlgeschlagen. Bitte später erneut versuchen.';
+    err.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Senden';
+  }
+}
+
+// Vorschau mitschalten, wenn der Haken fällt
+document.addEventListener('change', e => {
+  if (e.target && e.target.id === 'fb-shot') {
+    const box = document.getElementById('fb-preview');
+    if (box) box.style.display = (e.target.checked && _fbShot) ? 'block' : 'none';
+  }
+});
+
 // Deko waagerecht um die Hochachse drehen. Nur ry — Deko liegt immer auf dem
 // Boden, Kippen waere hier nie gewollt.
 function rotateDeco(deg) {
@@ -4329,6 +4507,19 @@ viewport.addEventListener('mouseleave', () => {
 
 document.addEventListener('keydown', e => {
   const key = e.key.toLowerCase();
+
+  // Bei offenem Feedback-Dialog KEINE Editor-Kuerzel. Sonst loescht Entf einen
+  // Balken hinter dem Dialog, sobald der Fokus nicht in einem Feld liegt (z.B.
+  // nach einem Klick auf den Text) — der Nutzer sieht es nicht, und der bereits
+  // aufgenommene Screenshot zeigt den Balken noch.
+  const fbOffen = (() => {
+    const m = document.getElementById('fb-modal');
+    return m && getComputedStyle(m).display !== 'none';
+  })();
+  if (fbOffen) {
+    if (e.key === 'Escape') closeFeedback();
+    return;
+  }
 
   // WASD: active whenever no text input is focused
   const tag = document.activeElement.tagName;

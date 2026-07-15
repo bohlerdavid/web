@@ -99,6 +99,7 @@
         {% if session.get('role') == 'admin' %}
         <li><hr class="dropdown-divider my-1"></li>
         <li><a class="dropdown-item" href="{{ url_for('admin_users') }}"><i class="bi bi-people me-2"></i>Admin: Benutzer</a></li>
+        <li><a class="dropdown-item" href="{{ url_for('admin_feedback') }}"><i class="bi bi-chat-left-text me-2"></i>Admin: Feedback</a></li>
         {% endif %}
         <li><hr class="dropdown-divider my-1"></li>
         <li><a class="dropdown-item text-danger" href="{{ url_for('logout') }}"><i class="bi bi-box-arrow-right me-2"></i>Abmelden</a></li>

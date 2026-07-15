@@ -1,6 +1,7 @@
 import os
 import json
 import html
+import base64
 import secrets
 import smtplib
 import time
@@ -35,6 +36,12 @@ if not _secret_key:
 app.secret_key = _secret_key
 
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=1)
+# Harte Obergrenze fuer jeden Request-Body. Ohne sie puffert Werkzeug ein Formular
+# unbegrenzt im RAM — und zwar BEVOR die View ueberhaupt laeuft, also vor CSRF- und
+# Premium-Pruefung. Ein 89-MB-Feld ergab gemessen 336 MB Spitze. Werkzeug 3.0.3
+# (so gepinnt) hat dafuer keinen eigenen Default; 3.1 haette einen.
+# 8 MB reichen fuer Feedback samt Screenshot mit Luft nach oben.
+app.config['MAX_CONTENT_LENGTH'] = 8 * 1024 * 1024
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') != 'development'
@@ -197,6 +204,21 @@ SCHEMA_STATEMENTS = [
         stripe_sub_id      VARCHAR(100),
         current_period_end DATETIME,
         created_at         DATETIME DEFAULT NOW()
+    )""",
+    """CREATE TABLE IF NOT EXISTS feedback (
+        id           INT PRIMARY KEY AUTO_INCREMENT,
+        user_id      INT NOT NULL,
+        kind         VARCHAR(10)  NOT NULL DEFAULT 'bug',
+        subject      VARCHAR(200) NOT NULL,
+        message      TEXT         NOT NULL,
+        screenshot   MEDIUMBLOB   NULL,
+        shot_mime    VARCHAR(20)  NULL,
+        ctx          TEXT         NULL,
+        status       VARCHAR(12)  NOT NULL DEFAULT 'neu',
+        admin_reply  TEXT         NULL,
+        created      DATETIME     NOT NULL,
+        updated      DATETIME     NULL,
+        INDEX (user_id), INDEX (status)
     )""",
 ]
 
@@ -604,6 +626,22 @@ def ping():
 
 SITE = 'https://holzbau3d.app'
 
+
+def _admin_email():
+    """Adresse fuer Admin-Benachrichtigungen. Vorrang hat ADMIN_EMAIL aus der
+    Umgebung; sonst die Adresse des 'admin'-Kontos, das die Rolle definiert
+    (siehe session['role']-Zuweisung beim Login)."""
+    env = os.environ.get('ADMIN_EMAIL', '').strip()
+    if env:
+        return env
+    try:
+        r = query_db("SELECT email FROM app_users WHERE username='admin'", [], one=True)
+        if r and r['email']:
+            return r['email']
+    except Exception:
+        pass
+    return os.environ.get('MAIL_FROM', '') or 'info@holzbau3d.app'
+
 SEO_META = {
     'de': {
         'title': 'Holzbau 3D – Holzkonstruktion planen, 3D Holzdesign | Gratis',
@@ -820,6 +858,160 @@ def widerruf():
     # Widerrufsbelehrung + Muster-Formular. Fehlte bisher komplett — ohne
     # Belehrung laeuft die Widerrufsfrist fuer Verbraucher nicht regulaer an.
     return render_template('widerruf.html')
+
+
+# ---------------------------------------------------------------------------
+# Feedback-Tickets
+# ---------------------------------------------------------------------------
+
+FEEDBACK_STATUS = ('neu', 'in_arbeit', 'erledigt', 'abgelehnt')
+FEEDBACK_STATUS_LABEL = {
+    'neu': 'Neu', 'in_arbeit': 'In Arbeit', 'erledigt': 'Erledigt', 'abgelehnt': 'Abgelehnt',
+}
+# Screenshots kommen als data:-URL aus dem Browser (schon auf 1280px/WebP
+# heruntergerechnet). Grosszuegige Obergrenze, damit ein 4K-Monitor nicht
+# stumm abgelehnt wird, aber MEDIUMBLOB (16 MB) nicht sprengt.
+FEEDBACK_MAX_IMG = 3 * 1024 * 1024
+
+# Liste OHNE den screenshot-BLOB: das Template braucht daraus nur ein Ja/Nein,
+# das Bild selbst holt der Browser ueber /feedback/<id>/screenshot nach.
+# 'f.*' htte pro Aufruf jedes Bild durch MySQL, PyMySQL und Jinja gezogen.
+FB_LIST_SQL = (
+    'SELECT f.id, f.user_id, f.kind, f.subject, f.message, f.ctx, f.status, '
+    'f.admin_reply, f.created, f.updated, f.screenshot IS NOT NULL AS has_shot, '
+    'u.username, u.email FROM feedback f JOIN app_users u ON u.id=f.user_id '
+)
+
+
+@app.route('/feedback', methods=['POST'])
+@login_required
+def feedback_create():
+    if not validate_csrf(request.form.get('csrf_token', '')):
+        abort(403)
+    if get_user_plan(session['user_id']) != 'premium':
+        return jsonify(ok=False, error='Feedback ist eine Premium-Funktion.'), 403
+
+    kind = request.form.get('kind', 'bug')
+    if kind not in ('bug', 'idea'):
+        kind = 'bug'
+    subject = (request.form.get('subject') or '').strip()[:200]
+    message = (request.form.get('message') or '').strip()[:5000]
+    if not subject or not message:
+        return jsonify(ok=False, error='Bitte Betreff und Beschreibung ausfüllen.'), 400
+
+    shot = None
+    shot_mime = None
+    raw = request.form.get('screenshot') or ''
+    if raw.startswith('data:image/'):
+        try:
+            kopf, b64 = raw.split(',', 1)
+            # Erst die Laenge der ROHFORM pruefen, dann dekodieren — sonst liegt
+            # das Bild schon entschluesselt im Speicher, bevor wir es ablehnen.
+            if len(b64) * 3 // 4 <= FEEDBACK_MAX_IMG:
+                # Tatsaechlichen Typ aus dem Kopf lesen: toDataURL('image/webp')
+                # faellt in Browsern ohne WebP-Encoder still auf PNG zurueck.
+                # Fest 'image/webp' auszuliefern waere dann schlicht gelogen.
+                mime = kopf[5:kopf.find(';')] if ';' in kopf else 'image/webp'
+                if mime in ('image/webp', 'image/png', 'image/jpeg'):
+                    shot = base64.b64decode(b64)
+                    shot_mime = mime
+        except Exception:
+            shot = None
+            shot_mime = None
+
+    ctx = (request.form.get('ctx') or '')[:1000]
+    execute_db('INSERT INTO feedback (user_id, kind, subject, message, screenshot, shot_mime, ctx, status, created) '
+               'VALUES (?,?,?,?,?,?,?,?,?)',
+               [session['user_id'], kind, subject, message, shot, shot_mime, ctx, 'neu',
+                datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')])
+
+    # Admin benachrichtigen, damit ein Ticket nicht wochenlang liegen bleibt.
+    try:
+        u = query_db('SELECT username, email FROM app_users WHERE id=?', [session['user_id']], one=True)
+        art = 'Fehler' if kind == 'bug' else 'Vorschlag'
+        # Alles hier kommt aus einem Formular und landet als HTML in einer Mail —
+        # ohne Escapen koennte ein Nutzer beliebiges Markup ins Admin-Postfach
+        # schreiben. Die Jinja-Vorlagen escapen automatisch, dieser f-String nicht.
+        e_subject = html.escape(subject)
+        e_message = html.escape(message[:800]).replace('\n', '<br>')
+        e_user = html.escape(str(u['username']) if u else '?')
+        e_mail = html.escape(str(u['email']) if u else '?')
+        send_email(_admin_email(), f'HolzBau 3D – Neues Feedback ({art}): {subject[:80]}',
+                   _email_shell(
+                       f'<h2 style="margin:0 0 16px;font-size:1.15rem;">Neues Feedback</h2>'
+                       f'<p style="margin:0 0 8px;color:#374151;"><strong>{art}</strong> von '
+                       f'{e_user} ({e_mail})</p>'
+                       f'<p style="margin:0 0 8px;color:#374151;"><strong>{e_subject}</strong></p>'
+                       f'<p style="margin:0 0 16px;color:#374151;">{e_message}</p>'
+                       f'<p style="margin:0;"><a href="{SITE}/admin/feedback">Im Ticket-System öffnen</a></p>'))
+    except Exception as e:
+        logger.error('feedback: Admin-Mail fehlgeschlagen: %s', type(e).__name__)
+
+    return jsonify(ok=True)
+
+
+@app.route('/feedback/<int:fid>/screenshot')
+@login_required
+def feedback_screenshot(fid):
+    row = query_db('SELECT user_id, screenshot, shot_mime FROM feedback WHERE id=?', [fid], one=True)
+    if not row or not row['screenshot']:
+        abort(404)
+    # Nur der Verfasser selbst oder ein Admin — sonst koennte jeder mit einer
+    # geratenen ID fremde Bildschirminhalte abrufen.
+    if row['user_id'] != session['user_id'] and session.get('role') != 'admin':
+        abort(403)
+    return app.response_class(row['screenshot'], mimetype=row['shot_mime'] or 'image/webp')
+
+
+@app.route('/admin/feedback')
+@admin_required
+def admin_feedback():
+    status = request.args.get('status', '')
+    if status and status in FEEDBACK_STATUS:
+        rows = query_db(FB_LIST_SQL + 'WHERE f.status=? ORDER BY f.created DESC', [status])
+    else:
+        # Einfache Anfuehrungszeichen: bei aktivem ANSI_QUOTES-Modus waeren
+        # "neu" & Co. Bezeichner statt Zeichenketten und die Abfrage wuerde brechen.
+        rows = query_db(FB_LIST_SQL +
+            "ORDER BY FIELD(f.status, 'neu', 'in_arbeit', 'erledigt', 'abgelehnt'), f.created DESC", [])
+    zaehler = {s: 0 for s in FEEDBACK_STATUS}
+    for r in query_db('SELECT status, COUNT(*) c FROM feedback GROUP BY status', []):
+        zaehler[r['status']] = r['c']
+    return render_template('admin_feedback.html', tickets=rows, zaehler=zaehler,
+                           filter_status=status, labels=FEEDBACK_STATUS_LABEL,
+                           csrf_token=generate_csrf())
+
+
+@app.route('/admin/feedback/<int:fid>', methods=['POST'])
+@admin_required
+def admin_feedback_update(fid):
+    if not validate_csrf(request.form.get('csrf_token', '')):
+        abort(403)
+    row = query_db('SELECT f.id, f.subject, f.status, f.admin_reply, u.email, u.full_name, u.username, u.lang '
+                   'FROM feedback f JOIN app_users u ON u.id=f.user_id WHERE f.id=?', [fid], one=True)
+    if not row:
+        abort(404)
+    status = request.form.get('status', row['status'])
+    if status not in FEEDBACK_STATUS:
+        status = row['status']
+    reply = (request.form.get('admin_reply') or '').strip()[:5000]
+    reply_neu = reply and reply != (row['admin_reply'] or '')
+
+    execute_db('UPDATE feedback SET status=?, admin_reply=?, updated=? WHERE id=?',
+               [status, reply or None, datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'), fid])
+
+    # Nur bei einer NEUEN Antwort mailen — sonst bekaeme der Nutzer bei jeder
+    # Statusaenderung dieselbe Antwort noch einmal zugeschickt.
+    if reply_neu and row['email']:
+        u_lang = _norm_lang(row['lang'])
+        try:
+            send_email(row['email'], FEEDBACK_I18N[u_lang]['subject'].replace('{subject}', row['subject']),
+                       _email_feedback_html(row['full_name'] or row['username'], row['subject'],
+                                            reply, FEEDBACK_STATUS_LABEL.get(status, status), u_lang))
+        except Exception as e:
+            logger.error('feedback: Antwort-Mail fehlgeschlagen: %s', type(e).__name__)
+    flash('Ticket aktualisiert.' + (' Antwort per E-Mail gesendet.' if reply_neu else ''), 'success')
+    return redirect(url_for('admin_feedback', status=request.args.get('status', '')))
 
 
 # ---------------------------------------------------------------------------
@@ -1274,7 +1466,11 @@ def profile():
         flash('Passwort erfolgreich geändert.', 'success')
         return redirect(url_for('profile'))
 
-    return render_template('profile.html', user=row_to_dict(user), csrf_token=generate_csrf())
+    tickets = query_db('SELECT id, kind, subject, message, status, admin_reply, created, updated, '
+                       'screenshot IS NOT NULL AS has_shot '
+                       'FROM feedback WHERE user_id=? ORDER BY created DESC', [session['user_id']])
+    return render_template('profile.html', user=row_to_dict(user), csrf_token=generate_csrf(),
+                           tickets=tickets, fb_labels=FEEDBACK_STATUS_LABEL)
 
 
 @app.route('/profile/delete', methods=['GET', 'POST'])
@@ -1754,7 +1950,10 @@ def admin_test_reminder():
 @login_required
 def holzbau():
     plan = get_user_plan(session['user_id'])
-    return render_template('holzbau.html', show_ads=(plan == 'free'), user_plan=plan)
+    # csrf_token: der Editor postet Feedback per fetch — ohne Token wuerde
+    # validate_csrf() jede Meldung mit 403 abweisen.
+    return render_template('holzbau.html', show_ads=(plan == 'free'), user_plan=plan,
+                           csrf_token=generate_csrf())
 
 
 # ---------------------------------------------------------------------------
@@ -2261,6 +2460,61 @@ def _activate_premium(user_id, customer_id, sub_id, interval, notify=True):
                        _email_premium_html(u['full_name'] or u['username'], amount_txt, interval,
                                            invoice_url, u_lang, next_txt))
     return True
+
+
+# Antwort auf ein Feedback-Ticket.
+FEEDBACK_I18N = {
+    'de': {
+        'subject': 'HolzBau 3D – Antwort auf dein Feedback: {subject}',
+        'title': 'Antwort auf dein Feedback',
+        'intro': 'du hast uns Feedback geschickt — hier ist unsere Antwort.',
+        'your': 'Dein Feedback', 'answer': 'Unsere Antwort', 'status': 'Status',
+        'button': 'Meine Tickets ansehen',
+        'thanks': 'Danke, dass du dir die Zeit genommen hast. Solche Hinweise machen HolzBau 3D besser.',
+    },
+    'en': {
+        'subject': 'HolzBau 3D – Reply to your feedback: {subject}',
+        'title': 'Reply to your feedback',
+        'intro': 'you sent us feedback — here is our reply.',
+        'your': 'Your feedback', 'answer': 'Our reply', 'status': 'Status',
+        'button': 'View my tickets',
+        'thanks': 'Thank you for taking the time. Reports like yours make HolzBau 3D better.',
+    },
+    'fr': {
+        'subject': 'HolzBau 3D – Réponse à votre retour : {subject}',
+        'title': 'Réponse à votre retour',
+        'intro': 'vous nous avez envoyé un retour — voici notre réponse.',
+        'your': 'Votre retour', 'answer': 'Notre réponse', 'status': 'Statut',
+        'button': 'Voir mes tickets',
+        'thanks': 'Merci d’avoir pris le temps. Ces retours améliorent HolzBau 3D.',
+    },
+}
+
+
+def _email_feedback_html(display_name, subject, reply, status_txt, lang='de'):
+    T = FEEDBACK_I18N.get(_norm_lang(lang), FEEDBACK_I18N['de'])
+    L = EMAIL_I18N.get(_norm_lang(lang), EMAIL_I18N['de'])
+    base_url = os.environ.get('BASE_URL', 'https://holzbau3d.app')
+    # Nutzertexte escapen — sie kommen aus einem Formular und landen hier in HTML.
+    name_e = html.escape(display_name or '')
+    subject_e = html.escape(subject or '')
+    reply_e = html.escape(reply or '').replace('\n', '<br>')
+    return _email_shell(f'''    <h2 style="margin:0 0 16px;font-size:1.15rem;color:#1a1a1a;font-weight:700;">{T['title']}</h2>
+    <p style="margin:0 0 10px;color:#374151;line-height:1.65;font-size:.95rem;">{L['hello']} <strong>{name_e}</strong>,</p>
+    <p style="margin:0 0 20px;color:#374151;line-height:1.65;font-size:.95rem;">{T['intro']}</p>
+    <table cellpadding="0" cellspacing="0" style="width:100%;background:#fff;border:1px solid #e5e7eb;border-radius:10px;margin:0 0 16px;"><tr><td style="padding:14px 18px;">
+      <div style="font-size:.75rem;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">{T['your']}</div>
+      <div style="color:#374151;font-size:.92rem;">{subject_e}</div>
+    </td></tr></table>
+    <table cellpadding="0" cellspacing="0" style="width:100%;background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;margin:0 0 16px;"><tr><td style="padding:14px 18px;">
+      <div style="font-size:.75rem;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">{T['answer']}</div>
+      <div style="color:#374151;font-size:.92rem;line-height:1.6;">{reply_e}</div>
+      <div style="margin-top:10px;font-size:.8rem;color:#9ca3af;">{T['status']}: <strong style="color:#92400e;">{status_txt}</strong></div>
+    </td></tr></table>
+    <table cellpadding="0" cellspacing="0" style="margin:0 0 16px;"><tr><td style="background:linear-gradient(135deg,#d97706,#92400e);border-radius:10px;">
+      <a href="{base_url}/profile#feedback" style="display:inline-block;padding:13px 30px;color:#ffffff;text-decoration:none;font-weight:700;font-size:.95rem;">{T['button']}</a>
+    </td></tr></table>
+    <p style="margin:0;color:#9ca3af;font-size:.8rem;line-height:1.6;">{T['thanks']}</p>''')
 
 
 # Erinnerung eine Woche VOR der naechsten Abbuchung eines AKTIVEN Abos.
