@@ -683,6 +683,9 @@ body {
 .group-header .group-del:hover { color: var(--red); }
 .group-vis { cursor: pointer; user-select: none; font-size: 12px; padding: 0 2px; opacity: 0.55; transition: opacity .1s; }
 .group-vis:hover { opacity: 1; }
+.group-lock { cursor: pointer; user-select: none; font-size: 11px; padding: 0 2px; opacity: 0.3; transition: opacity .1s; }
+.group-lock:hover { opacity: 0.85; }
+.group-lock.lock-on { opacity: 1; }
 .group-vis.vis-off { opacity: 0.2; filter: grayscale(1); }
 .group-items { display: none; }
 .group-items.open { display: block; }
@@ -1368,7 +1371,8 @@ body {
       <div class="ch-row"><b>Umschalt + Klick</b><span>Mehrere auswählen</span></div>
       <div class="ch-row"><b>Rechtsklick</b><span>Drehen / aufrichten &amp; löschen</span></div>
       <div class="ch-row"><b>Gruppe + Rechtsklick</b><span>Ganze Gruppe drehen / spiegeln</span></div>
-      <div class="ch-row"><b>R</b><span>90° drehen (Balken oder Gruppe)</span></div>
+      <div class="ch-row"><b>🔒 in Gruppenliste</b><span>Gruppe sperren — bewegt sich nur noch komplett</span></div>
+      <div class="ch-row"><b>R</b><span>90° drehen (Balken, Gruppe oder Deko)</span></div>
       <div class="ch-row"><b>Entf</b><span>Auswahl löschen</span></div>
       <div class="ch-row"><b>Strg + Z / Y</b><span>Rückgängig / Wiederholen</span></div>
       <div class="ch-row"><b>Strg + D</b><span>Duplizieren</span></div>
@@ -1427,8 +1431,15 @@ body {
     <div class="ctx-item" onclick="mirrorSelection('x')">◄► Spiegeln links/rechts{% if show_ads %} 🔒{% endif %}</div>
     <div class="ctx-item" onclick="mirrorSelection('z')">▲▼ Spiegeln vorne/hinten{% if show_ads %} 🔒{% endif %}</div>
   </div>
+  <div id="ctx-deco" style="display:none">
+    <div style="padding:6px 12px;font-size:10px;color:var(--text-3);border-bottom:1px solid var(--border);font-weight:700;text-transform:uppercase;letter-spacing:0.5px"><span id="ctx-deco-label">Objekt</span></div>
+    <div class="ctx-item" onclick="rotateDeco(90)">⟳ 90° drehen</div>
+    <div class="ctx-item" onclick="rotateDeco(-90)">⟲ 90° zurück drehen</div>
+    <div class="ctx-item" onclick="rotateDeco(180)">↻ 180° umdrehen</div>
+  </div>
   <div style="border-top:1px solid var(--border);margin:2px 0"></div>
-  <div class="ctx-item" style="color:var(--red)" onclick="deleteSelected();closeCtxMenu()">✕ Löschen</div>
+  <div class="ctx-item" id="ctx-del-beam" style="color:var(--red)" onclick="deleteSelected();closeCtxMenu()">✕ Löschen</div>
+  <div class="ctx-item" id="ctx-del-deco" style="color:var(--red);display:none" onclick="deleteDecoSelected();closeCtxMenu()">✕ Löschen</div>
 </div>
 
 <!-- UPGRADE MODAL -->
@@ -1828,6 +1839,9 @@ let selectedIds = new Set(); // multi-selection
 let selectedDecoId = null;
 let groups = ['Standard']; // group names
 const hiddenGroups = new Set();         // group names currently hidden in 3D view
+// Gesperrte Gruppen: ein Klick auf irgendein Teil greift immer die ganze Gruppe,
+// Einzelteile lassen sich nicht mehr herausziehen. Deko der Gruppe laeuft mit.
+const lockedGroups = new Set();
 const collapsedGroups = new Set();      // group names collapsed in the sidebar list
 let decos = [];
 let decoIdCounter = 1;
@@ -1860,6 +1874,7 @@ Object.assign(window, {
   restoreAutosave, discardAutosave,
   showTab, setDims, setAngle, loadTemplate,
   addGroup, renderGroupList, selectGroup, moveBeamToGroup, deleteGroup, toggleGroupVisibility,
+  toggleGroupLock, rotateDeco,
   addDeco, deleteDeco, clearAllDecos, moveDecoToGroup,
   deleteDecoSelected, applyDecoEdit, updateDecoSelPanel,
   toggleMeasure, clearMeasure,
@@ -2709,6 +2724,41 @@ function duplicateSelected() {
   pushHistory();
   const snapSize = parseFloat(document.getElementById('snap-size').value) || 10;
   const offset = snapEnabled ? Math.max(snapSize, 50) : 200;
+  // Gesperrte Gruppe: als Ganzes kopieren und die Kopie in eine eigene, ebenfalls
+  // gesperrte Gruppe legen. Ein einzelnes Teil in die gesperrte Gruppe zu kopieren
+  // wuerde sie um ein Stueck erweitern, das dort nicht hingehoert.
+  if (lockedGroups.has(src.group)) {
+    const alt = src.group;
+    let n = 2; while (groups.includes(alt + ' Kopie ' + n)) n++;
+    const neu = alt + ' Kopie ' + n;
+    groups.push(neu);
+    lockedGroups.add(neu);
+    const neueIds = [];
+    beams.filter(b => b.group === alt).forEach(b => {
+      const k = { ...b, id: idCounter++, group: neu, x: b.x + offset, z: b.z + offset, mesh: null };
+      k.mesh = createBeamMesh(k);
+      scene.add(k.mesh);
+      beams.push(k);
+      neueIds.push(k.id);
+    });
+    decos.filter(d => d.group === alt).forEach(d => {
+      const def = DEKO_DEFS[d.type];
+      if (!def) return;
+      const k = { ...d, id: decoIdCounter++, group: neu, x: d.x + offset, z: d.z + offset,
+                  params: { ...(d.params || {}) }, mesh: null };
+      k.mesh = def.build(k.params);
+      k.mesh.position.set(k.x, k.y, k.z);
+      k.mesh.rotation.y = (k.ry || 0) * Math.PI / 180;
+      k.mesh.userData.isDecoId = k.id;
+      scene.add(k.mesh);
+      decos.push(k);
+    });
+    selectBeamIds(neueIds);
+    renderDekoList();
+    renderGroupList();
+    updateUI();
+    return;
+  }
   const beam = { ...src, id: idCounter++, name: src.name + ' (Kopie)', x: src.x + offset, z: src.z + offset, mesh: null };
   beam.mesh = createBeamMesh(beam);
   scene.add(beam.mesh);
@@ -2756,7 +2806,13 @@ function addToSelection(id) {
 // list so clicking a row shows ALL beams with those measurements in the 3D view.
 function selectBeamIds(ids) {
   beams.forEach(b => makeSelectionHighlight(b.mesh, false));
-  selectedIds = new Set(ids);
+  // Teilmenge einer gesperrten Gruppe (z. B. eine Stücklisten-Zeile) auf die
+  // ganze Gruppe erweitern — sonst reisst die naechste Pfeiltaste sie auseinander.
+  const erweitert = new Set(ids);
+  const sperr = new Set();
+  ids.forEach(id => { const b = beams.find(x => x.id === id); if (b && lockedGroups.has(b.group)) sperr.add(b.group); });
+  if (sperr.size) beams.forEach(b => { if (sperr.has(b.group)) erweitert.add(b.id); });
+  selectedIds = erweitert;
   selectedIds.forEach(id => {
     const b = beams.find(b => b.id === id);
     if (b) makeSelectionHighlight(b.mesh, true);
@@ -3084,17 +3140,37 @@ function deleteDecoSelected() {
   }
 }
 
+// Alle uebrigen Teile einer gesperrten Gruppe um dieselbe Strecke mitschieben.
+function _shiftLockedGroup(groupName, dx, dy, dz, exceptBeamId) {
+  if (!dx && !dy && !dz) return;
+  beams.forEach(b => {
+    if (b.group !== groupName || b.id === exceptBeamId) return;
+    b.x += dx; b.y += dy; b.z += dz;
+    if (b.mesh) b.mesh.position.set(b.x + getBeamHalfW(b), b.y + getBeamHalfH(b), b.z + getBeamHalfD(b));
+  });
+  decos.forEach(d => {
+    if (d.group !== groupName) return;
+    d.x += dx; d.y += dy; d.z += dz;
+    if (d.mesh) d.mesh.position.set(d.x, d.y, d.z);
+  });
+}
+
 function applyEdit() {
   const selectedId = [...selectedIds][0] ?? null;
   if (!selectedId) return;
   const b = beams.find(x => x.id === selectedId);
   if (!b) return;
+  // Bei gesperrter Gruppe verschieben die Positionsfelder die GANZE Gruppe —
+  // sonst waeren sie ein Schleichweg an der Sperre vorbei.
+  const locked = lockedGroups.has(b.group);
+  const ox = b.x, oy = b.y, oz = b.z;
   b.L = parseFloat(document.getElementById('edit-l').value) || b.L;
   b.B = parseFloat(document.getElementById('edit-b').value) || b.B;
   b.H = parseFloat(document.getElementById('edit-h').value) || b.H;
   b.x = parseFloat(document.getElementById('edit-px').value) || 0;
   b.y = parseFloat(document.getElementById('edit-py').value) || 0;
   b.z = parseFloat(document.getElementById('edit-pz').value) || 0;
+  if (locked) _shiftLockedGroup(b.group, b.x - ox, b.y - oy, b.z - oz, b.id);
   b.rx = parseFloat(document.getElementById('edit-rx').value) || 0;
   b.ry = parseFloat(document.getElementById('edit-ry').value) || 0;
   b.rz = parseFloat(document.getElementById('edit-rz').value) || 0;
@@ -3213,6 +3289,7 @@ function renderGroupList() {
     const groupDecos = decos.filter(d => d.group === groupName);
     const totalCount = groupBeams.length + groupDecos.length;
     const isHidden = hiddenGroups.has(groupName);
+    const isLocked = lockedGroups.has(groupName);
     const isCollapsed = collapsedGroups.has(groupName);
     const section = document.createElement('div');
     section.className = 'group-section' + (isHidden ? ' group-hidden' : '') + (isCollapsed ? ' collapsed' : '');
@@ -3223,6 +3300,7 @@ function renderGroupList() {
       <span class="group-chevron">▶</span>
       <span class="group-name" title="${groupName}">${groupName}</span>
       <span class="group-count">${totalCount}</span>
+      <span class="group-lock${isLocked ? ' lock-on' : ''}" title="${isLocked ? 'Gruppe entsperren' : 'Gruppe sperren — bewegt sich dann nur noch komplett'}" onclick="event.stopPropagation();toggleGroupLock('${groupName}')">${isLocked ? '🔒' : '🔓'}</span>
       <span class="group-vis${isHidden ? ' vis-off' : ''}" title="${isHidden ? 'Einblenden' : 'Ausblenden'}" onclick="event.stopPropagation();toggleGroupVisibility('${groupName}')">👁</span>
       ${groupName !== 'Standard' ? `<span class="group-del" title="Gruppe löschen" onclick="event.stopPropagation();deleteGroup('${groupName}')">✕</span>` : ''}
     `;
@@ -3243,6 +3321,11 @@ function renderGroupList() {
           if (idx >= 0) groups[idx] = newName;
           beams.forEach(b => { if (b.group === groupName) b.group = newName; });
           decos.forEach(d => { if (d.group === groupName) d.group = newName; });
+          // Sperre und Sichtbarkeit haengen am Namen — beim Umbenennen mitziehen,
+          // sonst zeigen sie ploetzlich auf eine Gruppe, die es nicht mehr gibt.
+          if (lockedGroups.delete(groupName)) lockedGroups.add(newName);
+          if (hiddenGroups.delete(groupName)) hiddenGroups.add(newName);
+          if (collapsedGroups.delete(groupName)) collapsedGroups.add(newName);
         }
         renderGroupList();
       };
@@ -3335,11 +3418,30 @@ function deleteGroup(groupName) {
   decos = decos.filter(d => d.group !== groupName);
   selectedIds = new Set([...selectedIds].filter(id => !delBeamIds.has(id)));
   hiddenGroups.delete(groupName);
+  lockedGroups.delete(groupName);
   collapsedGroups.delete(groupName);
   const idx = groups.indexOf(groupName);
   if (idx >= 0) groups.splice(idx, 1);
   renderGroupList();
   if (typeof renderDekoList === 'function') renderDekoList();
+  updateUI();
+}
+
+// Sperre umschalten. Beim Sperren wird die Auswahl gleich auf die ganze Gruppe
+// gezogen — sonst haette man noch ein Einzelteil markiert, das sich nicht mehr
+// allein bewegen laesst, was verwirrt.
+function toggleGroupLock(groupName) {
+  if (lockedGroups.has(groupName)) {
+    lockedGroups.delete(groupName);
+  } else {
+    lockedGroups.add(groupName);
+    const sel = [...selectedIds].some(id => {
+      const b = beams.find(x => x.id === id);
+      return b && b.group === groupName;
+    });
+    if (sel) { selectDeco(null); selectGroup(groupName); }
+  }
+  renderGroupList();
   updateUI();
 }
 
@@ -3516,6 +3618,23 @@ let dragBeam = null;
 let isDraggingDeco = false;
 let dragDeco = null;
 let dragDecoStartX = 0, dragDecoStartY_px = 0, dragDecoStartZ = 0, dragDecoStartY_world = 0;
+// Mitlaufende Teile einer gesperrten Gruppe (Startpositionen zum Zeitpunkt des Greifens).
+let dragLockBeams = {};   // {beamId: {x,y,z}}
+let dragLockDecos = {};   // {decoId: {x,y,z}}
+
+// Zieh-Zustand hart beenden. Muss ueberall aufgerufen werden, wo die Objekte
+// unter dem laufenden Drag weggetauscht werden (undo/redo, Projekt laden) oder
+// das mouseup ausbleiben kann (Fensterwechsel). Sonst zeigen die Snapshots auf
+// alte Objekte und die Maus schiebt die Gruppe weiter, ohne dass eine Taste
+// gedrueckt ist.
+function _endDrag() {
+  isDragging = false; dragBeam = null;
+  isDraggingDeco = false; dragDeco = null;
+  dragSelectionSnapshot = {};
+  dragLockBeams = {}; dragLockDecos = {};
+}
+window.addEventListener('blur', _endDrag);
+document.addEventListener('visibilitychange', () => { if (document.hidden) _endDrag(); });
 let dragSelectionSnapshot = {}; // {id: {x,y,z}} snapshot at drag start
 let dragOffset = new THREE.Vector3();
 let dragPlane = new THREE.Plane();
@@ -3616,15 +3735,31 @@ function onPointerDown(e) {
     const hits = getIntersects(e.clientX, e.clientY);
     if (hits.length > 0) {
       let obj = hits[0].object;
-      while (obj.parent && !obj.userData.beamId) obj = obj.parent;
+      // Auch auf Deko pruefen — sonst laeuft die Suche bis zur Szenenwurzel durch
+      // und Deko bekommt nie ein Kontextmenue.
+      while (obj.parent && !obj.userData.beamId && obj.userData.isDecoId === undefined) obj = obj.parent;
       if (obj.userData.beamId) {
         const bid = obj.userData.beamId;
+        const bb = beams.find(x => x.id === bid);
+        const lockedGrp = bb && lockedGroups.has(bb.group) ? bb.group : null;
+        if (lockedGrp) {
+          selectDeco(null);
+          selectGroup(lockedGrp);
+          updateUI();
+          showContextMenu(e.clientX, e.clientY, 'group');
+          return;
+        }
         // Ist der angeklickte Balken Teil einer bestehenden Mehrfach-/Gruppenauswahl?
         // Dann Auswahl NICHT auf ein Objekt reduzieren → ganze Gruppe drehen/spiegeln.
         const isGroupClick = selectedIds.has(bid) && selectedIds.size > 1;
         if (!isGroupClick) selectBeam(bid);
         updateUI();
-        showContextMenu(e.clientX, e.clientY, isGroupClick);
+        showContextMenu(e.clientX, e.clientY, isGroupClick ? 'group' : 'single');
+      } else if (obj.userData.isDecoId !== undefined) {
+        selectDeco(obj.userData.isDecoId);
+        showTab('sel');
+        updateUI();
+        showContextMenu(e.clientX, e.clientY, 'deco');
       }
     }
     return;
@@ -3643,7 +3778,14 @@ function onPointerDown(e) {
     const decoId = obj.userData.isDecoId;
 
     if (beamId) {
-      if (e.shiftKey) {
+      const clicked = beams.find(b => b.id === beamId);
+      const lockedGrp = clicked && lockedGroups.has(clicked.group) ? clicked.group : null;
+      if (lockedGrp) {
+        // Gesperrt: nie ein Einzelteil greifen, immer die ganze Gruppe.
+        selectDeco(null);
+        selectGroup(lockedGrp);
+        updateUI();
+      } else if (e.shiftKey) {
         addToSelection(beamId);
         updateUI();
       } else {
@@ -3653,7 +3795,7 @@ function onPointerDown(e) {
           updateUI();
         }
       }
-      const beam = beams.find(b => b.id === beamId);
+      const beam = clicked;
       if (beam) {
         isDragging = true;
         dragBeam = beam;
@@ -3664,6 +3806,11 @@ function onPointerDown(e) {
         selectedIds.forEach(id => {
           const sb = beams.find(b => b.id === id);
           if (sb) dragSelectionSnapshot[id] = { x: sb.x, y: sb.y, z: sb.z };
+        });
+        // Deko der gesperrten Gruppe laeuft mit — selectGroup erfasst nur Balken.
+        dragLockDecos = {};
+        if (lockedGrp) decos.forEach(d => {
+          if (d.group === lockedGrp) dragLockDecos[d.id] = { x: d.x, y: d.y, z: d.z };
         });
         // (mouse events on document — no pointer capture needed)
         if (!dragAltMode) {
@@ -3676,10 +3823,14 @@ function onPointerDown(e) {
     }
 
     if (decoId !== undefined) {
+      const deco = decos.find(d => d.id === decoId);
+      const lockedGrp = deco && lockedGroups.has(deco.group) ? deco.group : null;
+      // Bewusst KEIN selectGroup hier: dann waeren Deko und Balken gleichzeitig
+      // markiert, und Entf/R wuessten nicht, was gemeint ist. Die Gruppe laeuft
+      // trotzdem mit — ueber dragLockBeams weiter unten.
       selectDeco(decoId);
       showTab('sel');
       updateUI();
-      const deco = decos.find(d => d.id === decoId);
       if (deco) {
         isDraggingDeco = true;
         dragDeco = deco;
@@ -3687,6 +3838,16 @@ function onPointerDown(e) {
         dragDecoStartY_world = deco.y;
         dragDecoStartX = deco.x;
         dragDecoStartZ = deco.z;
+        // Gesperrt: Balken und uebrige Deko der Gruppe laufen mit.
+        dragLockBeams = {}; dragLockDecos = {};
+        if (lockedGrp) {
+          beams.forEach(b => {
+            if (b.group === lockedGrp) dragLockBeams[b.id] = { x: b.x, y: b.y, z: b.z };
+          });
+          decos.forEach(d => {
+            if (d.group === lockedGrp && d.id !== decoId) dragLockDecos[d.id] = { x: d.x, y: d.y, z: d.z };
+          });
+        }
         // (mouse events on document — no pointer capture needed)
         if (!e.altKey) {
           dragPlane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), deco.mesh.position);
@@ -3767,6 +3928,14 @@ function onPointerMove(e) {
         sb.mesh.position.set(sb.x + getBeamHalfW(sb), sb.y + getBeamHalfH(sb), sb.z + getBeamHalfD(sb));
       }
     });
+    // Deko einer gesperrten Gruppe mitziehen
+    for (const key in dragLockDecos) {
+      const d = decos.find(x => x.id === +key), s0 = dragLockDecos[key];
+      if (d && s0) {
+        d.x = s0.x + deltaX; d.y = s0.y + deltaY; d.z = s0.z + deltaZ;
+        d.mesh.position.set(d.x, d.y, d.z);
+      }
+    }
     updateSelPanel();
     return;
   }
@@ -3784,6 +3953,22 @@ function onPointerMove(e) {
       }
     }
     dragDeco.mesh.position.set(dragDeco.x, dragDeco.y, dragDeco.z);
+    // Gesperrte Gruppe: Balken und uebrige Deko um dieselbe Strecke mitziehen
+    const lx = dragDeco.x - dragDecoStartX, ly = dragDeco.y - dragDecoStartY_world, lz = dragDeco.z - dragDecoStartZ;
+    for (const key in dragLockBeams) {
+      const b = beams.find(x => x.id === +key), s0 = dragLockBeams[key];
+      if (b && s0) {
+        b.x = s0.x + lx; b.y = s0.y + ly; b.z = s0.z + lz;
+        b.mesh.position.set(b.x + getBeamHalfW(b), b.y + getBeamHalfH(b), b.z + getBeamHalfD(b));
+      }
+    }
+    for (const key in dragLockDecos) {
+      const d = decos.find(x => x.id === +key), s0 = dragLockDecos[key];
+      if (d && s0) {
+        d.x = s0.x + lx; d.y = s0.y + ly; d.z = s0.z + lz;
+        d.mesh.position.set(d.x, d.y, d.z);
+      }
+    }
     document.getElementById('deco-px') && (document.getElementById('deco-px').value = Math.round(dragDeco.x));
     document.getElementById('deco-py') && (document.getElementById('deco-py').value = Math.round(dragDeco.y));
     document.getElementById('deco-pz') && (document.getElementById('deco-pz').value = Math.round(dragDeco.z));
@@ -3841,8 +4026,7 @@ function onPointerUp(e) {
   }
 
   if (isDragging) {
-    isDragging = false;
-    dragBeam = null;
+    _endDrag();
     // Reset snap indicator
     const ind = document.getElementById('snap-indicator');
     if (ind) {
@@ -3853,8 +4037,8 @@ function onPointerUp(e) {
     updateUI();
   }
   if (isDraggingDeco) {
-    isDraggingDeco = false;
-    dragDeco = null;
+    _endDrag();
+    updateUI();
   }
 }
 
@@ -3875,18 +4059,20 @@ function onContextMenu(e) {
   e.preventDefault(); // prevent browser menu — actual logic is in pointerdown button===2
 }
 
-function showContextMenu(cx, cy, isGroup) {
+// mode: 'single' | 'group' | 'deco'
+function showContextMenu(cx, cy, mode) {
   const menu = document.getElementById('ctx-menu');
-  // Einzel- vs. Gruppen-Menü umschalten
-  const single = document.getElementById('ctx-single');
-  const group  = document.getElementById('ctx-group');
-  if (isGroup) {
-    single.style.display = 'none';
-    group.style.display = 'block';
+  document.getElementById('ctx-single').style.display = mode === 'single' ? 'block' : 'none';
+  document.getElementById('ctx-group').style.display  = mode === 'group'  ? 'block' : 'none';
+  document.getElementById('ctx-deco').style.display   = mode === 'deco'   ? 'block' : 'none';
+  // Deko und Balken brauchen verschiedene Loeschwege — deleteSelected() kennt nur Balken.
+  document.getElementById('ctx-del-beam').style.display = mode === 'deco' ? 'none' : 'block';
+  document.getElementById('ctx-del-deco').style.display = mode === 'deco' ? 'block' : 'none';
+  if (mode === 'group') {
     document.getElementById('ctx-group-label').textContent = 'Gruppe (' + selectedIds.size + ' Teile)';
-  } else {
-    single.style.display = 'block';
-    group.style.display = 'none';
+  } else if (mode === 'deco') {
+    const d = decos.find(x => x.id === selectedDecoId);
+    document.getElementById('ctx-deco-label').textContent = d ? d.label : 'Objekt';
   }
   menu.style.display = 'block';
   menu.style.left = cx + 'px';
@@ -3918,6 +4104,21 @@ function rotateSelected(axis, deg) {
     if (axis === 'y') { const tmp = b.L; b.L = b.B; b.B = tmp; }
   }
   rebuildMesh(b);
+  updateUI();
+}
+
+// Deko waagerecht um die Hochachse drehen. Nur ry — Deko liegt immer auf dem
+// Boden, Kippen waere hier nie gewollt.
+function rotateDeco(deg) {
+  closeCtxMenu();
+  if (selectedDecoId === null) return;
+  const d = decos.find(x => x.id === selectedDecoId);
+  if (!d || !d.mesh) return;
+  pushHistory();
+  d.ry = ((((d.ry || 0) + deg) % 360) + 360) % 360;
+  d.mesh.rotation.y = d.ry * Math.PI / 180;
+  const el = document.getElementById('deco-ry');
+  if (el) el.value = d.ry;
   updateUI();
 }
 
@@ -4001,6 +4202,17 @@ function rotateGroup(deg) {
     b.z = ncz - getBeamHalfD(b);
     rebuildMesh(b);
   });
+  // Deko gesperrter Gruppen um dasselbe Zentrum mitdrehen — sonst bliebe das
+  // Auto neben dem gedrehten Carport stehen.
+  const gsperrt = new Set(sel.filter(b => lockedGroups.has(b.group)).map(b => b.group));
+  if (gsperrt.size) decos.forEach(d => {
+    if (!gsperrt.has(d.group)) return;
+    const dx = d.x - gcx, dz = d.z - gcz;
+    d.x = gcx + (cos * dx + sin * dz);
+    d.z = gcz + (-sin * dx + cos * dz);
+    d.ry = ((((d.ry || 0) + deg) % 360) + 360) % 360;
+    if (d.mesh) { d.mesh.position.set(d.x, d.y, d.z); d.mesh.rotation.y = d.ry * Math.PI / 180; }
+  });
   updateUI();
 }
 
@@ -4036,6 +4248,14 @@ function mirrorSelection(axis) {
       }
     }
     rebuildMesh(b);
+  });
+  // Deko gesperrter Gruppen mitspiegeln
+  const gsperrt = new Set(sel.filter(b => lockedGroups.has(b.group)).map(b => b.group));
+  if (gsperrt.size) decos.forEach(d => {
+    if (!gsperrt.has(d.group)) return;
+    if (axis === 'x') d.x = 2 * gcx - d.x; else d.z = 2 * gcz - d.z;
+    d.ry = (360 - (d.ry || 0)) % 360;
+    if (d.mesh) { d.mesh.position.set(d.x, d.y, d.z); d.mesh.rotation.y = d.ry * Math.PI / 180; }
   });
   updateUI();
 }
@@ -4083,9 +4303,10 @@ document.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); redo(); return; }
   if ((e.ctrlKey || e.metaKey) && e.key === 'z') { undo(); return; }
   if ((e.ctrlKey || e.metaKey) && e.key === 'd') { e.preventDefault(); duplicateSelected(); return; }
-  // R = 90° drehen (bei Mehrfachauswahl die ganze Gruppe, sonst den Balken)
+  // R = 90° drehen (Deko, sonst bei Mehrfachauswahl die ganze Gruppe, sonst der Balken)
   if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey) {
-    if (selectedIds.size > 1) rotateGroup(90);
+    if (selectedDecoId !== null) rotateDeco(90);
+    else if (selectedIds.size > 1) rotateGroup(90);
     else if (selectedIds.size === 1) rotateHorizontal();
     return;
   }
@@ -4102,22 +4323,39 @@ document.addEventListener('keydown', e => {
   const b = beams.find(x => x.id === selectedId);
   if (!b) return;
   const step = snapEnabled ? (parseFloat(document.getElementById('snap-size').value) || 10) : 10;
-  let moved = false;
+  let dx = 0, dy = 0, dz = 0, moved = false;
   if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
     // Alt + ↑/↓ → move along height (Y)
-    b.y += (e.key === 'ArrowUp' ? step : -step);
+    dy = (e.key === 'ArrowUp' ? step : -step);
     moved = true;
   } else {
-    if (e.key === 'ArrowLeft')  { b.x -= step; moved = true; }
-    if (e.key === 'ArrowRight') { b.x += step; moved = true; }
-    if (e.key === 'ArrowUp')    { b.z -= step; moved = true; }
-    if (e.key === 'ArrowDown')  { b.z += step; moved = true; }
-    if (e.key === 'PageUp')     { b.y += step; moved = true; }
-    if (e.key === 'PageDown')   { b.y -= step; moved = true; }
+    if (e.key === 'ArrowLeft')  { dx = -step; moved = true; }
+    if (e.key === 'ArrowRight') { dx =  step; moved = true; }
+    if (e.key === 'ArrowUp')    { dz = -step; moved = true; }
+    if (e.key === 'ArrowDown')  { dz =  step; moved = true; }
+    if (e.key === 'PageUp')     { dy =  step; moved = true; }
+    if (e.key === 'PageDown')   { dy = -step; moved = true; }
   }
   if (moved) {
     e.preventDefault();
-    b.mesh.position.set(b.x + getBeamHalfW(b), b.y + getBeamHalfH(b), b.z + getBeamHalfD(b));
+    // Die ganze Auswahl bewegen, nicht nur das erste Teil — sonst reisst eine
+    // gesperrte Gruppe per Pfeiltaste doch wieder auseinander.
+    selectedIds.forEach(id => {
+      const sb = beams.find(x => x.id === id);
+      if (!sb) return;
+      sb.x += dx; sb.y += dy; sb.z += dz;
+      sb.mesh.position.set(sb.x + getBeamHalfW(sb), sb.y + getBeamHalfH(sb), sb.z + getBeamHalfD(sb));
+    });
+    // Deko gesperrter Gruppen laeuft mit
+    const movedGroups = new Set([...selectedIds].map(id => {
+      const sb = beams.find(x => x.id === id);
+      return sb ? sb.group : null;
+    }).filter(g => g && lockedGroups.has(g)));
+    if (movedGroups.size) decos.forEach(d => {
+      if (!movedGroups.has(d.group)) return;
+      d.x += dx; d.y += dy; d.z += dz;
+      if (d.mesh) d.mesh.position.set(d.x, d.y, d.z);
+    });
     updateSelPanel();
     updatePartsTable();
     document.getElementById('edit-px').value = Math.round(b.x);
@@ -4224,6 +4462,7 @@ function _applySnapshot(snapStr) {
 
 function undo() {
   if (history.length === 0) return;
+  _endDrag();   // Objekte werden gleich ersetzt — laufender Drag zeigt sonst ins Leere
   redoStack.push(_captureSnapshot());   // remember current state so redo can return to it
   _applySnapshot(history.pop());
   updateUndoRedoButtons();
@@ -4231,6 +4470,7 @@ function undo() {
 
 function redo() {
   if (redoStack.length === 0) return;
+  _endDrag();
   history.push(_captureSnapshot());
   _applySnapshot(redoStack.pop());
   updateUndoRedoButtons();
@@ -4251,6 +4491,7 @@ function newProject() {
   clearAllBeams();
   clearAllDecos();
   hiddenGroups.clear();
+  lockedGroups.clear();
   activePhaseFilter = null;
   idCounter = 1;
   decoIdCounter = 1;
@@ -4282,6 +4523,7 @@ function serializeProject(includeImage) {
     version: 3,
     groups: groups,
     hiddenGroups: [...hiddenGroups],
+    lockedGroups: [...lockedGroups],
     beams: beams.map(b => ({
       id: b.id, name: b.name, woodType: b.woodType,
       L: b.L, B: b.B, H: b.H, axis: b.axis,
@@ -4348,6 +4590,7 @@ function handleLoadFile(e) {
 // Konstruktion aus einem Datenobjekt (version 3) in die Szene laden.
 // Genutzt von handleLoadFile und der Auto-Speichern-Wiederherstellung.
 function applyProjectData(data) {
+  _endDrag();
   clearAllBeams();
   clearAllDecos();
   if (Array.isArray(data.groups)) {
@@ -4357,6 +4600,8 @@ function applyProjectData(data) {
   }
   hiddenGroups.clear();
   if (Array.isArray(data.hiddenGroups)) data.hiddenGroups.forEach(g => hiddenGroups.add(g));
+  lockedGroups.clear();
+  if (Array.isArray(data.lockedGroups)) data.lockedGroups.forEach(g => lockedGroups.add(g));
   activePhaseFilter = null;
   (data.beams || []).forEach(s => {
     const beam = { rx:0, ry:0, rz:0, group:'Standard', phase: null, ...s, mesh: null };
