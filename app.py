@@ -44,13 +44,63 @@ Talisman(
     force_https=False,
     strict_transport_security=True,
     strict_transport_security_max_age=31536000,
+    # Die CSP war zu eng fuer die eigenen Einbindungen: Google Fonts, GA4 und
+    # AdSense standen im HTML, wurden aber vom Browser abgewiesen. Konkret hiess
+    # das: keine Messdaten in Analytics, keine Anzeigen (auch fuer Googles Pruefer
+    # nicht -> AdSense-Ablehnung), und die Seite lief in Systemschriften statt in
+    # Newsreader/Work Sans. Jeder Eintrag hier ist gegen die Live-Seite gemessen,
+    # nicht geraten.
     content_security_policy={
         'default-src': ["'self'", 'cdn.jsdelivr.net'],
-        'script-src': ["'self'", "'unsafe-inline'", 'cdn.jsdelivr.net', 'js.stripe.com'],
-        'style-src': ["'self'", "'unsafe-inline'", 'cdn.jsdelivr.net'],
-        'frame-src': ["'none'"],
-        'img-src': ["'self'", 'data:', 'dl.polyhaven.org'],
-        'connect-src': ["'self'", 'dl.polyhaven.org'],
+        'script-src': [
+            "'self'", "'unsafe-inline'",
+            'cdn.jsdelivr.net',            # three.js
+            'js.stripe.com',
+            'www.googletagmanager.com',    # GA4
+            # AdSense laedt seine Bausteine ueber mehrere Google-Hosts nach.
+            '*.googlesyndication.com',
+            '*.googleadservices.com',
+            '*.doubleclick.net',
+            'adservice.google.com',
+            'www.google.com',
+            '*.adtrafficquality.google',   # sodar2.js — Erkennung ungueltiger Klicks
+            'fundingchoicesmessages.google.com',   # Einwilligungs-Banner (CMP)
+        ],
+        'style-src': ["'self'", "'unsafe-inline'", 'cdn.jsdelivr.net', 'fonts.googleapis.com'],
+        # Ohne font-src greift default-src — und gstatic war damit gesperrt.
+        'font-src': ["'self'", 'data:', 'fonts.gstatic.com'],
+        # Anzeigen laufen in iframes; 'none' hat sie vollstaendig unterbunden.
+        'frame-src': [
+            "'self'",
+            '*.googlesyndication.com',
+            '*.doubleclick.net',
+            'www.google.com',
+            '*.adtrafficquality.google',   # Googles Erkennung ungueltiger Klicks
+            'fundingchoicesmessages.google.com',
+        ],
+        # Werbemittel kommen von beliebigen Werbetreibenden — eine Whitelist ist
+        # hier nicht moeglich. https: erlaubt nur Bilder, keine Ausfuehrung.
+        'img-src': ["'self'", 'data:', 'https:'],
+        'connect-src': [
+            "'self'",
+            'dl.polyhaven.org',
+            # GA4 sendet je nach Region an ZWEI verschiedene Domainfamilien:
+            # www.google-analytics.com UND region1.analytics.google.com.
+            # Nur die erste zu erlauben sieht richtig aus, verwirft aber still
+            # genau die Messdaten — gemessen, nicht vermutet.
+            '*.google-analytics.com',
+            '*.analytics.google.com',
+            'www.googletagmanager.com',
+            '*.googlesyndication.com',
+            '*.doubleclick.net',
+            '*.adtrafficquality.google',
+            'fundingchoicesmessages.google.com',
+        ],
+        # Kein fremder Code darf die Seite selbst einbetten (Clickjacking).
+        'frame-ancestors': ["'self'"],
+        'base-uri': ["'self'"],
+        'form-action': ["'self'"],
+        'object-src': ["'none'"],
     },
     referrer_policy='strict-origin-when-cross-origin',
     feature_policy={},
