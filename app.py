@@ -11,7 +11,7 @@ import urllib.error
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from functools import wraps
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse, urljoin
 
 from flask import (
@@ -629,6 +629,46 @@ def ping():
 # ---------------------------------------------------------------------------
 
 SITE = 'https://holzbau3d.app'
+
+# ---------------------------------------------------------------------------
+# Zeitzone
+# ---------------------------------------------------------------------------
+# Gespeichert wird durchgaengig UTC (datetime.utcnow()). Angezeigt wurde der Wert
+# bisher roh — im Sommer also zwei Stunden zu frueh, im Winter eine. Das betraf
+# nicht nur die Optik: ein Periodenende um 23:00 UTC faellt lokal schon auf den
+# NAECHSTEN Tag, die Abo-Mail haette also das falsche Datum genannt.
+LOCAL_TZ_NAME = os.environ.get('LOCAL_TZ', 'Europe/Luxembourg')
+try:
+    from zoneinfo import ZoneInfo
+    LOCAL_TZ = ZoneInfo(LOCAL_TZ_NAME)
+except Exception:  # pragma: no cover — fehlt tzdata, lieber UTC als Absturz
+    LOCAL_TZ = timezone.utc
+    logging.getLogger(__name__).warning('Zeitzone %s nicht ladbar, nutze UTC', LOCAL_TZ_NAME)
+
+
+def to_local(v):
+    """UTC-Wert aus der DB in die lokale Zeit umrechnen. Nimmt datetime oder
+    String, gibt datetime zurueck (oder None)."""
+    d = _to_dt(v) if not isinstance(v, datetime) else v
+    if not d:
+        return None
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=timezone.utc)
+    return d.astimezone(LOCAL_TZ)
+
+
+@app.template_filter('lokal')
+def _filter_lokal(v, fmt='%d.%m.%Y %H:%M'):
+    """Jinja: {{ wert|lokal }} -> '15.07.2026 20:32'. Ein zentraler Filter statt
+    an jeder Anzeigestelle einzeln zu rechnen."""
+    d = to_local(v)
+    return d.strftime(fmt) if d else '—'
+
+
+@app.template_filter('lokal_datum')
+def _filter_lokal_datum(v):
+    d = to_local(v)
+    return d.strftime('%d.%m.%Y') if d else '—'
 
 
 def _admin_email():
@@ -2459,7 +2499,8 @@ def _activate_premium(user_id, customer_id, sub_id, interval, notify=True):
             u_lang = _norm_lang(u.get('lang') if hasattr(u, 'get') else 'de')
             # period_end kommt von Stripe im DB-Format — fuer die Mail lesbar machen.
             pe_dt = _to_dt(period_end)
-            next_txt = pe_dt.strftime('%d.%m.%Y') if pe_dt else None
+            # Lokal formatieren: 23:00 UTC ist lokal schon der Folgetag.
+            next_txt = _filter_lokal_datum(pe_dt) if pe_dt else None
             send_email(u['email'], EMAIL_I18N[u_lang]['p_subject'],
                        _email_premium_html(u['full_name'] or u['username'], amount_txt, interval,
                                            invoice_url, u_lang, next_txt))
@@ -2664,7 +2705,7 @@ def _send_cancel_email(user_id):
         return
     lang = _norm_lang(row['lang'] if not hasattr(row, 'get') else row.get('lang'))
     pe = _to_dt(row['current_period_end'])
-    end_txt = pe.strftime('%d.%m.%Y') if pe else '—'
+    end_txt = _filter_lokal_datum(pe) if pe else '—'
     subj = CANCEL_I18N[lang]['subject'].replace('{date}', end_txt)
     send_email(row['email'], subj, _email_cancel_html(row['full_name'] or row['username'], end_txt, lang))
 
@@ -2677,11 +2718,11 @@ def _send_delete_email(user_id, sub_info=None):
     lang     = _norm_lang(row.get('lang') if hasattr(row, 'get') else 'de')
     name     = row['full_name'] or row['username'] or row['email']
     email    = row['email']
-    now_str  = datetime.utcnow().strftime('%d.%m.%Y %H:%M UTC')
+    now_str  = _filter_lokal(datetime.utcnow()) + ' Uhr'
 
     had_sub  = sub_info and sub_info.get('stripe_sub_id')
     pe       = _to_dt(sub_info['current_period_end']) if sub_info and sub_info.get('current_period_end') else None
-    end_str  = pe.strftime('%d.%m.%Y') if pe else None
+    end_str  = _filter_lokal_datum(pe) if pe else None
 
     SUBJ = {'de': 'Dein HolzBau 3D Konto wurde gelöscht',
             'en': 'Your HolzBau 3D account has been deleted',
@@ -2799,7 +2840,7 @@ def _run_renewal_notices():
             continue   # fuer genau diese Periode schon erinnert
         interval = r['plan_interval'] or 'monthly'
         u_lang = _norm_lang(r['lang'])
-        date_txt = pe.strftime('%d.%m.%Y')
+        date_txt = _filter_lokal_datum(pe)
         amount_txt = _price_text(interval)
         subject = (RENEWAL_I18N[u_lang]['subject']
                    .replace('{date}', date_txt).replace('{amount}', amount_txt))
@@ -2846,7 +2887,7 @@ def _run_subscription_reminders():
         subj_days = EXPIRY_I18N[u_lang]['d2'] if send_stage == '2d' else EXPIRY_I18N[u_lang]['d7']
         subject = EXPIRY_I18N[u_lang]['subject'].replace('{days}', subj_days)
         ok = send_email(r['email'], subject,
-                        _email_expiry_html(r['full_name'] or r['username'], pe.strftime('%d.%m.%Y'), send_stage, u_lang))
+                        _email_expiry_html(r['full_name'] or r['username'], _filter_lokal_datum(pe), send_stage, u_lang))
         if ok:
             execute_db('UPDATE subscriptions SET reminder_stage=? WHERE user_id=?', [send_stage, r['user_id']])
             out.append(f"user {r['user_id']}: {send_stage}-Erinnerung gesendet (Ablauf in {days_left:.1f}d)")

@@ -24,8 +24,8 @@
   <div class="info-row"><span class="label">Benutzername</span><span class="value">{{ user.get('username', '—') }}</span></div>
   <div class="info-row"><span class="label">Name</span><span class="value">{{ user.get('full_name') or '—' }}</span></div>
   <div class="info-row"><span class="label">E-Mail</span><span class="value">{{ user.get('email') or '—' }}</span></div>
-  <div class="info-row"><span class="label">Registriert</span><span class="value" style="font-size:.85rem;color:#6b7280;">{{ user.get('created_at', '—') }}</span></div>
-  <div class="info-row"><span class="label">Letzter Login</span><span class="value" style="font-size:.85rem;color:#6b7280;">{{ user.get('last_login') or 'Unbekannt' }}</span></div>
+  <div class="info-row"><span class="label">Registriert</span><span class="value" style="font-size:.85rem;color:#6b7280;">{{ user.get('created_at')|lokal }}</span></div>
+  <div class="info-row"><span class="label">Letzter Login</span><span class="value" style="font-size:.85rem;color:#6b7280;">{{ user.get('last_login')|lokal if user.get('last_login') else 'Unbekannt' }}</span></div>
   <div class="info-row">
     <span class="label">Plan</span>
     <span class="value">
@@ -97,7 +97,7 @@
         {% elif t['status'] == 'erledigt' %}background:#dcfce7;color:#15803d;
         {% else %}background:#f3f4f6;color:#6b7280;{% endif %}">{{ fb_labels.get(t['status'], t['status']) }}</span>
       <span style="font-size:.75rem;color:#9ca3af;">{{ '🐞 Fehler' if t['kind'] == 'bug' else '💡 Vorschlag' }}</span>
-      <span style="font-size:.75rem;color:#9ca3af;margin-left:auto;">{{ t['created'].strftime('%d.%m.%Y') if t['created'] else '' }}</span>
+      <span style="font-size:.75rem;color:#9ca3af;margin-left:auto;">{{ t['created']|lokal_datum }}</span>
     </div>
     <div style="font-weight:600;color:#1f2937;margin-top:7px;">{{ t['subject'] }}</div>
     <div style="color:#6b7280;font-size:.86rem;white-space:pre-wrap;margin-top:3px;">{{ t['message'] }}</div>

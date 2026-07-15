@@ -52,25 +52,48 @@
 
     <div class="card shadow-sm">
       <div class="table-responsive">
-        <table class="table table-hover mb-0 align-middle">
+        
+  <style>
+    /* Sortierbare + in der Breite verstellbare Spalten. Bewusst ohne Fremd-Bibliothek:
+       die CSP erlaubt nur wenige Hosts, und fuer so wenig lohnt kein Nachladen. */
+    /* min-width ist Pflicht: mit table-layout:fixed teilen sich die Spalten OHNE
+       feste Breite nur den Rest. Ist der Container schmaler als die Summe der
+       festen Breiten, fallen sie auf 0 zusammen und die Tabelle wirkt leer.
+       Mit min-width scrollt stattdessen der .table-responsive-Container. */
+    #user-table { table-layout: fixed; width: 100%; min-width: 1180px; }
+    #user-table th { position: relative; user-select: none; }
+    #user-table th[data-sort] { cursor: pointer; }
+    #user-table th[data-sort]:hover { background: #f3ede3; }
+    #user-table th[data-sort]::after { content: '↕'; opacity: .25; margin-left: 5px; font-size: .8em; }
+    #user-table th.asc::after  { content: '↑'; opacity: 1; color: #d97706; }
+    #user-table th.desc::after { content: '↓'; opacity: 1; color: #d97706; }
+    /* Lange E-Mails umbrechen statt die Tabelle aufzublaehen — genau das Problem,
+       wegen dem rechts nichts mehr sichtbar war. */
+    #user-table td { overflow-wrap: anywhere; }
+    .col-grip { position: absolute; top: 0; right: 0; width: 6px; height: 100%; cursor: col-resize; user-select: none; }
+    .col-grip:hover, .col-grip.aktiv { background: #d97706; opacity: .5; }
+    #tbl-hinweis { font-size: .78rem; color: #9ca3af; margin-bottom: 6px; }
+  </style>
+  <div id="tbl-hinweis">Spaltenkopf klicken = sortieren · Trennlinie zwischen den Köpfen ziehen = Breite ändern</div>
+<table id="user-table" class="table table-hover mb-0 align-middle">
           <thead class="table-light">
             <tr>
-              <th>#</th>
-              <th>Benutzername</th>
-              <th>Name</th>
-              <th>E-Mail</th>
-              <th>Plan</th>
-              <th>Abo-Laufzeit</th>
-              <th>Plan setzen</th>
-              <th>Registriert</th>
-              <th>Letzter Login</th>
-              <th></th>
+              <th data-sort="num" style="width:56px">#</th>
+              <th data-sort="text">Benutzername</th>
+              <th data-sort="text">Name</th>
+              <th data-sort="text">E-Mail</th>
+              <th data-sort="text" style="width:96px">Plan</th>
+              <th data-sort="text">Abo-Laufzeit</th>
+              <th style="width:150px">Plan setzen</th>
+              <th data-sort="date" style="width:150px">Registriert</th>
+              <th data-sort="date" style="width:150px">Letzter Login</th>
+              <th style="width:44px"></th>
             </tr>
           </thead>
           <tbody>
             {% for u in users %}
             <tr>
-              <td class="text-muted">{{ u.id }}</td>
+              <td class="text-muted" data-v="{{ u.id }}">{{ u.id }}</td>
               <td><strong>{{ u.username }}</strong></td>
               <td>{{ u.full_name or '—' }}</td>
               <td>{{ u.email or '—' }}</td>
@@ -83,7 +106,7 @@
                 {% if u.plan == 'premium' %}
                   <span style="font-weight:600;">{% if u.plan_interval == 'yearly' %}Jährlich{% else %}Monatlich{% endif %}</span><br>
                   <span class="text-muted" style="white-space:nowrap;">
-                    {{ (u.sub_started|string)[:10] if u.sub_started else '?' }} &rarr; {{ (u.current_period_end|string)[:10] if u.current_period_end else '?' }}
+                    {{ u.sub_started|lokal_datum if u.sub_started else '?' }} &rarr; {{ u.current_period_end|lokal_datum if u.current_period_end else '?' }}
                   </span>
                   {% if u.sub_status == 'cancelled' %}<br><span class="text-danger" style="font-size:.72rem;">gekündigt</span>{% endif %}
                 {% else %}
@@ -101,8 +124,8 @@
                   <button type="submit">Setzen</button>
                 </form>
               </td>
-              <td class="text-muted small">{{ u.created_at or '—' }}</td>
-              <td class="text-muted small">{{ u.last_login or 'Noch nie' }}</td>
+              <td class="text-muted small" data-v="{{ u.created_at|string }}">{{ u.created_at|lokal }}</td>
+              <td class="text-muted small" data-v="{{ u.last_login|string if u.last_login else '' }}">{{ u.last_login|lokal if u.last_login else 'Noch nie' }}</td>
               <td>
                 {% if u.username != 'admin' %}
                 <button class="btn-delete"
@@ -162,6 +185,72 @@
     document.getElementById('del-stripe-hint').style.display = hasPremium ? 'block' : 'none';
     new bootstrap.Modal(document.getElementById('deleteModal')).show();
   }
+  </script>
+
+  <script>
+  (function () {
+    var tbl = document.getElementById('user-table');
+    if (!tbl) return;
+    var koepfe = tbl.tHead.rows[0].cells;
+
+    // ── Sortieren ──
+    function wert(zelle, art) {
+      // data-v hat Vorrang: sonst wuerde die ANZEIGE sortiert ("15.07.2026"),
+      // nicht der echte Wert — Datumsspalten laegen dann alphabetisch.
+      var v = zelle.getAttribute('data-v');
+      if (v === null) v = zelle.textContent.trim();
+      if (art === 'num') return parseFloat(String(v).replace(',', '.')) || 0;
+      if (art === 'date') return v || '';   // ISO aus der DB sortiert sich als Text korrekt
+      return String(v).toLowerCase();
+    }
+    function sortiere(idx, art, auf) {
+      var koerper = tbl.tBodies[0];
+      var zeilen = Array.prototype.slice.call(koerper.rows)
+        .filter(function (r) { return r.cells.length === koepfe.length; });
+      zeilen.sort(function (a, b) {
+        var x = wert(a.cells[idx], art), y = wert(b.cells[idx], art);
+        if (x < y) return auf ? -1 : 1;
+        if (x > y) return auf ? 1 : -1;
+        return 0;
+      });
+      zeilen.forEach(function (r) { koerper.appendChild(r); });
+    }
+    Array.prototype.forEach.call(koepfe, function (th, idx) {
+      var art = th.getAttribute('data-sort');
+      if (!art) return;
+      th.addEventListener('click', function (e) {
+        if (e.target.classList.contains('col-grip')) return;   // Ziehen ist kein Klick
+        var auf = !th.classList.contains('asc');
+        Array.prototype.forEach.call(koepfe, function (o) { o.classList.remove('asc', 'desc'); });
+        th.classList.add(auf ? 'asc' : 'desc');
+        sortiere(idx, art, auf);
+      });
+    });
+
+    // ── Breite ziehen ──
+    var zieht = null, startX = 0, startB = 0;
+    Array.prototype.forEach.call(koepfe, function (th, idx) {
+      if (idx === koepfe.length - 1) return;
+      var grip = document.createElement('span');
+      grip.className = 'col-grip';
+      grip.addEventListener('mousedown', function (e) {
+        zieht = th; startX = e.pageX; startB = th.offsetWidth;
+        grip.classList.add('aktiv');
+        e.preventDefault();   // sonst markiert der Browser beim Ziehen Text
+      });
+      th.appendChild(grip);
+    });
+    document.addEventListener('mousemove', function (e) {
+      if (!zieht) return;
+      zieht.style.width = Math.max(48, startB + (e.pageX - startX)) + 'px';
+    });
+    document.addEventListener('mouseup', function () {
+      if (!zieht) return;
+      var g = zieht.querySelector('.col-grip');
+      if (g) g.classList.remove('aktiv');
+      zieht = null;
+    });
+  })();
   </script>
 </body>
 </html>

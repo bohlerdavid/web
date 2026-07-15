@@ -7226,35 +7226,38 @@ try {
 // ONBOARDING TOUR (DE / EN / FR)
 // ══════════════════════════════════════════════
 (function(){
-  var SEL = [null, '#tab-balken', '#snap-size', '#view-controls', '#btn-help', '#right-panel', '#tab-list', null];
+  var SEL = [null, '#tab-balken', '#tab-vorlagen', '#snap-size', '#view-controls', '#btn-help', '#right-panel', '#tab-list', null];
   var TXT = {
     de:{ next:'Weiter', prev:'Zurück', skip:'Überspringen', done:'Fertig', start:'Tour starten', no:'Kein Tutorial', dont:'Nicht mehr anzeigen', of:'von', steps:[
       {t:'Willkommen bei HolzBau 3D 👋', b:'Diese kurze Tour zeigt dir in ~30 Sekunden die wichtigsten Funktionen.'},
       {t:'Bauteile hinzufügen', b:'Im Reiter „Balken" legst du Maße, Holzart und Ausrichtung fest und fügst Balken zur Konstruktion hinzu.'},
+      {t:'Fertige Vorlagen', b:'Schneller als Balken einzeln setzen: Carport, Pergola, Gartenhaus oder Terrassendach nach deinen Maßen erzeugen lassen — oder eine fertige Wand laden.'},
       {t:'Raster & Fang', b:'Hier stellst du die Rastergröße (in mm) ein. Objekte rasten beim Bewegen auf dieses Maß ein.'},
       {t:'Ansichten', b:'Wechsle zwischen Oben, Vorne, Seite und 3D – oder setze den Zoom zurück.'},
       {t:'Bewegen & Drehen', b:'Objekt ziehen = bewegen, Alt+Ziehen = Höhe, Rechtsklick = drehen. Dieser Knopf zeigt jederzeit alle Steuerungen.'},
-      {t:'Gruppen', b:'Organisiere Bauteile in Gruppen: ein-/ausblenden, umbenennen oder eine ganze Gruppe löschen.'},
+      {t:'Gruppen & Schloss', b:'Organisiere Bauteile in Gruppen: ein-/ausblenden, umbenennen, löschen. Mit dem Schloss 🔒 sperrst du eine Gruppe — sie lässt sich dann nur noch komplett bewegen, kein Teil rutscht mehr einzeln weg.'},
       {t:'Stückliste & Export', b:'Automatische Stückliste, Export und Drucken/PDF findest du hier oben.'},
       {t:'Fertig! 🎉', b:'Du kannst diese Tour jederzeit über den ❔-Knopf oben rechts neu starten. Viel Erfolg beim Planen!'}
     ]},
     en:{ next:'Next', prev:'Back', skip:'Skip', done:'Done', start:'Start tour', no:'No tutorial', dont:'Don\'t show again', of:'of', steps:[
       {t:'Welcome to HolzBau 3D 👋', b:'This short tour shows you the most important features in ~30 seconds.'},
       {t:'Add components', b:'In the “Balken” (beams) tab you set dimensions, wood type and orientation, then add beams to your structure.'},
+      {t:'Ready-made templates', b:'Faster than placing beams one by one: generate a carport, pergola, garden house or patio roof to your dimensions — or load a ready-made wall.'},
       {t:'Grid & snapping', b:'Set the grid size (in mm) here. Objects snap to this step while you move them.'},
       {t:'Views', b:'Switch between top, front, side and 3D – or reset the zoom.'},
       {t:'Move & rotate', b:'Drag an object = move, Alt+drag = height, right-click = rotate. This button always shows all controls.'},
-      {t:'Groups', b:'Organize components into groups: show/hide, rename or delete an entire group.'},
+      {t:'Groups & lock', b:'Organize components into groups: show/hide, rename, delete. The lock 🔒 keeps a group together — it then only moves as a whole and no single part slips away.'},
       {t:'Parts list & export', b:'Automatic parts list, export and print/PDF are up here.'},
       {t:'All set! 🎉', b:'You can restart this tour anytime via the ❔ button at the top right. Happy building!'}
     ]},
     fr:{ next:'Suivant', prev:'Retour', skip:'Passer', done:'Terminé', start:'Démarrer', no:'Pas de tutoriel', dont:'Ne plus afficher', of:'sur', steps:[
       {t:'Bienvenue sur HolzBau 3D 👋', b:'Cette courte visite présente les fonctions essentielles en ~30 secondes.'},
       {t:'Ajouter des éléments', b:'Dans l’onglet « Balken » (poutres), définissez dimensions, essence et orientation, puis ajoutez des poutres.'},
+      {t:'Modèles prêts à l’emploi', b:'Plus rapide que poser chaque poutre : générez un carport, une pergola, un abri de jardin ou une couverture de terrasse à vos dimensions — ou chargez un mur tout prêt.'},
       {t:'Grille & aimantation', b:'Réglez ici la taille de la grille (en mm). Les objets s’y aimantent lors du déplacement.'},
       {t:'Vues', b:'Basculez entre dessus, face, côté et 3D – ou réinitialisez le zoom.'},
       {t:'Déplacer & tourner', b:'Glisser = déplacer, Alt+glisser = hauteur, clic droit = tourner. Ce bouton affiche toutes les commandes.'},
-      {t:'Groupes', b:'Organisez les éléments en groupes : afficher/masquer, renommer ou supprimer un groupe entier.'},
+      {t:'Groupes & verrou', b:'Organisez les éléments en groupes : afficher/masquer, renommer, supprimer. Le verrou 🔒 maintient un groupe ensemble — il ne se déplace plus qu’en bloc, aucune pièce ne s’échappe.'},
       {t:'Liste & export', b:'Liste de pièces automatique, export et impression/PDF se trouvent ici en haut.'},
       {t:'Terminé ! 🎉', b:'Vous pouvez relancer la visite via le bouton ❔ en haut à droite. Bonne conception !'}
     ]}

@@ -46,7 +46,7 @@
     <span class="fb-meta">{{ '🐞 Fehler' if t['kind'] == 'bug' else '💡 Vorschlag' }}</span>
     <span class="fb-meta">#{{ t['id'] }}</span>
     <span class="fb-meta">{{ t['username'] }} &lt;{{ t['email'] }}&gt;</span>
-    <span class="fb-meta ms-auto">{{ t['created'].strftime('%d.%m.%Y %H:%M') if t['created'] else '' }}</span>
+    <span class="fb-meta ms-auto">{{ t['created']|lokal }}</span>
   </div>
 
   <div style="font-weight:700;color:#1f2937;margin-bottom:4px;">{{ t['subject'] }}</div>
@@ -73,7 +73,7 @@
       </select>
       <button type="submit" class="btn btn-wood btn-sm">Speichern &amp; antworten</button>
       {% if t['updated'] %}
-      <span class="fb-meta ms-auto">zuletzt: {{ t['updated'].strftime('%d.%m.%Y %H:%M') }}</span>
+      <span class="fb-meta ms-auto">zuletzt: {{ t['updated']|lokal }}</span>
       {% endif %}
     </div>
   </form>
