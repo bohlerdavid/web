@@ -1591,7 +1591,9 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xffffff);
 scene.fog = new THREE.FogExp2(0xffffff, 0.00006);
 
-const camera = new THREE.PerspectiveCamera(45, 1, 1, 100000);
+// near=10mm statt 1mm: bei far=100000 sonst 1:100.000 → miserable Tiefenpuffer-
+// Präzision und dadurch Z-Fighting am Boden. 10mm ist visuell folgenlos.
+const camera = new THREE.PerspectiveCamera(45, 1, 10, 100000);
 camera.position.set(3000, 3000, 4000);
 camera.lookAt(0, 0, 0);
 
@@ -1629,8 +1631,11 @@ fillLight.position.set(-2000, 1000, -2000);
 scene.add(fillLight);
 
 // ── GROUND GRID ──
+// Höhen-Staffelung gegen Z-Fighting (von unten nach oben):
+// Boden -15 · Raster -5 · Bild-Vorlage -2 · Balken/Grundriss 0
+const GRID_Y = -5, GROUND_Y = -15;
 let gridHelper = new THREE.GridHelper(20000, 200, 0x999999, 0xbbbbbb);
-gridHelper.position.y = 0;
+gridHelper.position.y = GRID_Y;
 scene.add(gridHelper);
 
 // Rebuild the ground grid so its cell size matches the Rastergröße (snap size).
@@ -1648,7 +1653,7 @@ function rebuildGrid() {
   gridHelper.geometry.dispose();
   gridHelper.material.dispose();
   gridHelper = new THREE.GridHelper(EXTENT, divisions, 0x999999, 0xbbbbbb);
-  gridHelper.position.y = 0;
+  gridHelper.position.y = GRID_Y;
   scene.add(gridHelper);
 }
 {
@@ -1662,6 +1667,7 @@ const groundGeo = new THREE.PlaneGeometry(50000, 50000);
 const groundMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 1 });
 const groundPlane = new THREE.Mesh(groundGeo, groundMat);
 groundPlane.rotation.x = -Math.PI / 2;
+groundPlane.position.y = GROUND_Y;   // klar unter Raster/Grundriss → kein Z-Fighting
 groundPlane.receiveShadow = true;
 groundPlane.visible = true;
 scene.add(groundPlane);
