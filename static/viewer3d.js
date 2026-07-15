@@ -16,10 +16,13 @@
   var THREE_URL = 'three';
   var OC_URL = 'three/addons/controls/OrbitControls.js';
 
+  // 1:1 die Palette aus templates/holzbau.html. Weicht sie ab, zeigt die Landing
+  // Page andere Farben als der Editor — beim ersten Bauen hatte ich fuenf Werte
+  // aus dem Gedaechtnis geschrieben und danebengelegen.
   var WOOD_COLORS = {
-    'Fichte': 0xd4a96a, 'Kiefer': 0xe0b878, 'Lärche': 0xc98a4b, 'Eiche': 0xa9743f,
-    'Buche': 0xdcb08a, 'Douglasie': 0xa0522d, 'Brettschichtholz (BSH)': 0xe8c090,
-    'Sperrholz': 0xdcc9a0, 'OSB': 0xc4a882, 'Benutzerdefiniert': 0x888888,
+    'Fichte': 0xd4a96a, 'Kiefer': 0xc8864c, 'Lärche': 0xb87333, 'Eiche': 0x8b6914,
+    'Buche': 0xd49b63, 'Douglasie': 0xa0522d, 'Brettschichtholz (BSH)': 0xe8c090,
+    'Sperrholz': 0xf5deb3, 'OSB': 0xcdc294, 'Benutzerdefiniert': 0x888888,
   };
   var SHEET = { 'Sperrholz': 1, 'OSB': 1 };
 

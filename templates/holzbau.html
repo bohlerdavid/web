@@ -1795,7 +1795,12 @@ const WOOD_COLORS = {
   'Douglasie':            0xa0522d,
   'Brettschichtholz (BSH)': 0xe8c090,
   'Sperrholz':            0xf5deb3,
-  'OSB':                  0xc4a882,
+  // OSB bewusst graugelb statt warmbraun: der helle Braunbereich ist mit Fichte,
+  // Buche, BSH und Sperrholz voll, ein weiterer Braunton waere von den Staendern
+  // kaum zu unterscheiden. Der Farbtonwechsel (R~G statt R>G>B) trennt besser als
+  // jeder Helligkeitsunterschied — und trifft OSB auch besser: Spanplatte ist
+  // graeuer und weniger orange als Vollholz.
+  'OSB':                  0xcdc294,
   'Benutzerdefiniert':    0x888888,
 };
 
