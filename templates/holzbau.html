@@ -427,15 +427,22 @@ body {
   font-size: 11px;
   color: var(--text-2);
   max-height: calc(100% - 20px);
-  overflow-y: auto;
+  /* Kopf fest, nur .ch-body scrollt. Ein sticky Kopf bräuchte einen eigenen
+     Hintergrund — der würde sich über dem halbtransparenten Panel aufaddieren
+     und als dunkler Balken sichtbar werden. */
+  display: flex; flex-direction: column;
+  overflow: hidden;
 }
 #controls-help.hidden { display: none; }
 #controls-help .ch-head {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
   font-weight: 700; color: var(--text); margin-bottom: 6px;
   font-size: 11px; letter-spacing: .3px;
-  position: sticky; top: -8px; background: rgba(14,17,23,.98); padding: 2px 0;
+  flex: 0 0 auto;
 }
+#controls-help .ch-head svg { flex: 0 0 auto; }
+#controls-help .ch-head .ch-title { display: flex; align-items: center; gap: 6px; }
+#controls-help .ch-body { overflow-y: auto; min-height: 0; }
 #controls-help .ch-sub {
   font-size: 9.5px; font-weight: 700; color: var(--text-3);
   text-transform: uppercase; letter-spacing: .5px;
@@ -1341,9 +1348,10 @@ body {
     <div id="tooltip"></div>
     <div id="controls-help">
       <div class="ch-head">
-        <span>⌨ Steuerung</span>
+        <span class="ch-title"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/></svg>Steuerung</span>
         <span class="ch-close" onclick="toggleHelp()" title="Ausblenden">✕</span>
       </div>
+      <div class="ch-body">
       <div class="ch-sub">Navigation (Kamera)</div>
       <div class="ch-row"><b>Pfeiltasten</b><span>Kamera bewegen (ohne Auswahl)</span></div>
       <div class="ch-row"><b>W A S D</b><span>Kamera vor / links / zurück / rechts</span></div>
@@ -1365,6 +1373,7 @@ body {
       <div class="ch-row"><b>Strg + Z / Y</b><span>Rückgängig / Wiederholen</span></div>
       <div class="ch-row"><b>Strg + D</b><span>Duplizieren</span></div>
       <div class="ch-row"><b>Esc · ?</b><span>Abbrechen · Hilfe ein/aus</span></div>
+      </div>
     </div>
     <div id="autosave-banner" style="display:none;position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:60;background:var(--bg-card);border:1px solid var(--accent);border-radius:var(--r);padding:9px 14px;box-shadow:0 6px 24px rgba(0,0,0,.35);align-items:center;gap:12px;font-size:12.5px;color:var(--text);max-width:92%;">
       <span>💾 Nicht gespeicherter Stand gefunden <span id="autosave-info" style="color:var(--text-3)"></span></span>
@@ -1545,7 +1554,7 @@ body {
       <span style="font-size:16px;font-weight:700;color:var(--text)">🗺 Vorlage kalibrieren</span>
       <button class="tb-btn" style="color:var(--red);border-color:var(--red-dim)" onclick="document.getElementById('calib-modal').style.display='none'">✕ Abbrechen</button>
     </div>
-    <p id="calib-hint" style="font-size:12px;color:var(--text-2);margin:0 0 10px;line-height:1.5">Zieh die grünen Marker auf eine Strecke, deren <strong>reale Länge du kennst</strong> (eine ausgemessene Wand, eine Tür = 900 mm, ein Maßstabsbalken auf dem Plan). Dann die Länge eintippen. Tipp: <strong>zoomen</strong> für mehr Präzision, <strong>Zuschneiden</strong> blendet Rahmen/Schriftfeld aus.</p>
+    <p id="calib-hint" style="font-size:12px;color:var(--text-2);margin:0 0 10px;line-height:1.5">Zieh die pinken Marker auf eine Strecke, deren <strong>reale Länge du kennst</strong> (eine ausgemessene Wand, eine Tür = 900 mm, ein Maßstabsbalken auf dem Plan). Dann die Länge eintippen. Tipp: <strong>zoomen</strong> für mehr Präzision, <strong>Zuschneiden</strong> blendet Rahmen/Schriftfeld aus.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
       <button class="tb-btn" onclick="calibZoomBy(-1)" title="Verkleinern">−</button>
       <span id="calib-zoom-lbl" style="font-size:12px;color:var(--text-2);min-width:44px;text-align:center">100 %</span>
@@ -1557,7 +1566,7 @@ body {
       <button class="tb-btn" id="calib-crop-reset" style="display:none" onclick="resetCalibCrop()" title="Originalbild wiederherstellen">↺ Original</button>
     </div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
-      <span style="font-size:13px;color:var(--text-2)">Reale Länge der grünen Strecke:</span>
+      <span style="font-size:13px;color:var(--text-2)">Reale Länge der Mess-Strecke:</span>
       <input type="number" id="calib-real" value="4000" min="1" step="10" style="width:100px;background:var(--bg-input);border:1px solid var(--border);color:var(--text);border-radius:var(--r-sm);padding:4px 8px;font-size:13px">
       <span style="font-size:13px;color:var(--text-2)">mm</span>
       <span id="calib-info" style="font-size:12px;color:var(--text-3)"></span>
@@ -1571,9 +1580,10 @@ body {
           <rect id="calib-crop-dim" x="0" y="0" width="100%" height="100%" fill="rgba(0,0,0,.55)" mask="url(#calib-crop-mask)" style="display:none;pointer-events:none"/>
           <rect id="calib-crop-rect" fill="none" stroke="#e94560" stroke-width="2" stroke-dasharray="6 4" style="display:none;pointer-events:none"/>
           <g id="calib-cal-g">
-            <line id="calib-l" x1="0" y1="0" x2="0" y2="0" stroke="#1d9e75" stroke-width="2"/>
-            <g id="calib-m1"><line class="tick" stroke="#1d9e75" stroke-width="2"/><line class="tick2" stroke="#fff" stroke-width="4" opacity=".55"/><circle class="grab" r="14" fill="transparent" style="cursor:grab"/></g>
-            <g id="calib-m2"><line class="tick" stroke="#1d9e75" stroke-width="2"/><line class="tick2" stroke="#fff" stroke-width="4" opacity=".55"/><circle class="grab" r="14" fill="transparent" style="cursor:grab"/></g>
+            <line id="calib-l-halo" x1="0" y1="0" x2="0" y2="0" stroke="#fff" stroke-width="5" opacity=".9"/>
+            <line id="calib-l" x1="0" y1="0" x2="0" y2="0" stroke="#e5007d" stroke-width="2"/>
+            <g id="calib-m1"><line class="tick2" stroke="#fff" stroke-width="6" opacity=".9"/><line class="tick" stroke="#e5007d" stroke-width="2"/><circle class="grab" r="14" fill="transparent" style="cursor:grab"/></g>
+            <g id="calib-m2"><line class="tick2" stroke="#fff" stroke-width="6" opacity=".9"/><line class="tick" stroke="#e5007d" stroke-width="2"/><circle class="grab" r="14" fill="transparent" style="cursor:grab"/></g>
           </g>
         </svg>
       </div>
@@ -1687,11 +1697,19 @@ let _sceneExtent = 20000;
 function rebuildGrid() {
   const input = document.getElementById('snap-size');
   const snapSize = Math.max(1, parseFloat(input && input.value) || 10);
-  // Raster waechst mit dem Inhalt mit (mind. 20 m)
-  const EXTENT = Math.max(20000, Math.ceil(_sceneExtent * 1.2 / 1000) * 1000);
-  const MAX_DIVISIONS = 2000;   // safety cap for extremely fine grids (still one draw call)
-  let divisions = Math.round(EXTENT / snapSize);
-  if (divisions > MAX_DIVISIONS) divisions = MAX_DIVISIONS;
+  // Das Raster ist am NULLPUNKT ZENTRIERT (±EXTENT/2), Inhalt liegt aber ab dem
+  // Nullpunkt in +X/+Z → Ausdehnung muss gut das Doppelte der Reichweite sein.
+  const EXTENT = Math.ceil(Math.max(10000, _sceneExtent) * 2.2 / 1000) * 1000;
+  // Zellgröße: kleinstes "rundes" Vielfaches der Rastergröße, das noch lesbar
+  // bleibt. Ohne das werden aus 10-mm-Zellen über 30 m ~3000 Linien, die zu
+  // einer massiven grauen Fläche verschmelzen und den Plan verdecken.
+  const MAX_LINES = 240;
+  const MULT = [1, 2, 5];
+  let cell = snapSize;
+  for (let i = 1; EXTENT / cell > MAX_LINES && i < 40; i++) {
+    cell = snapSize * MULT[i % 3] * Math.pow(10, Math.floor(i / 3));
+  }
+  let divisions = Math.round(EXTENT / cell);
   if (divisions < 1) divisions = 1;
   scene.remove(gridHelper);
   gridHelper.geometry.dispose();
@@ -1720,7 +1738,7 @@ let _groundSize = 50000;
 // Ausdehnung aus Balken + Bild-Vorlage (nur zur Laufzeit aufgerufen — beams und
 // refImage werden weiter unten deklariert).
 function getSceneExtent() {
-  let ext = 15000;   // Minimum ~15 m
+  let ext = 10000;   // Minimum ~10 m Reichweite ab Nullpunkt
   beams.forEach(b => {
     const wx = b.axis === 'x' ? b.L : b.B, wz = b.axis === 'z' ? b.L : b.B;
     ext = Math.max(ext, Math.abs(b.x) + wx, Math.abs(b.z) + wz);
@@ -2390,16 +2408,21 @@ function _drawMarker(id, p, nx, ny) {
   const x1 = p.x + nx * T, y1 = p.y + ny * T, x2 = p.x - nx * T, y2 = p.y - ny * T;
   const t1 = g.querySelector('.tick'), t2 = g.querySelector('.tick2'), gr = g.querySelector('.grab');
   [t2, t1].forEach(l => { l.setAttribute('x1', x1); l.setAttribute('y1', y1); l.setAttribute('x2', x2); l.setAttribute('y2', y2); });
-  t1.setAttribute('stroke-width', 1.5 / _calibZoom);
-  t2.setAttribute('stroke-width', 4 / _calibZoom);
+  t1.setAttribute('stroke-width', 1.6 / _calibZoom);
+  t2.setAttribute('stroke-width', 6 / _calibZoom);   // weißer Halo darunter → auf jedem Untergrund lesbar
   gr.setAttribute('cx', p.x); gr.setAttribute('cy', p.y); gr.setAttribute('r', 14 / _calibZoom);
 }
 
 function updateCalibLine() {
   const a = _calibPts.m1, b = _calibPts.m2;
+  const halo = document.getElementById('calib-l-halo');
   const l = document.getElementById('calib-l');
-  l.setAttribute('x1', a.x); l.setAttribute('y1', a.y); l.setAttribute('x2', b.x); l.setAttribute('y2', b.y);
-  l.setAttribute('stroke-width', 1.5 / _calibZoom);
+  [halo, l].forEach(el => {
+    el.setAttribute('x1', a.x); el.setAttribute('y1', a.y);
+    el.setAttribute('x2', b.x); el.setAttribute('y2', b.y);
+  });
+  halo.setAttribute('stroke-width', 5 / _calibZoom);
+  l.setAttribute('stroke-width', 1.6 / _calibZoom);
   let dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
   const nx = -dy / len, ny = dx / len;       // Normale = quer zur Messlinie
   _drawMarker('calib-m1', a, nx, ny);
@@ -2432,7 +2455,7 @@ function _syncCropUI() {
   document.getElementById('calib-crop-reset').style.display = cropped ? '' : 'none';
   document.getElementById('calib-hint').innerHTML = on
     ? 'Zieh ein Rechteck über den Bereich, den du behalten willst — dann <strong>Zuschnitt anwenden</strong>.'
-    : 'Zieh die grünen Marker auf eine Strecke, deren <strong>reale Länge du kennst</strong> (eine ausgemessene Wand, eine Tür = 900 mm, ein Maßstabsbalken auf dem Plan). Dann die Länge eintippen. Tipp: <strong>zoomen</strong> für mehr Präzision, <strong>Zuschneiden</strong> blendet Rahmen/Schriftfeld aus.';
+    : 'Zieh die pinken Marker auf eine Strecke, deren <strong>reale Länge du kennst</strong> (eine ausgemessene Wand, eine Tür = 900 mm, ein Maßstabsbalken auf dem Plan). Dann die Länge eintippen. Tipp: <strong>zoomen</strong> für mehr Präzision, <strong>Zuschneiden</strong> blendet Rahmen/Schriftfeld aus.';
 }
 function _drawCropRect() {
   if (!_calibCropRect) return;
@@ -2515,7 +2538,7 @@ function applyCalibration() {
   const img = document.getElementById('calib-img');
   const lenPx = Math.hypot(_calibPts.m2.x - _calibPts.m1.x, _calibPts.m2.y - _calibPts.m1.y);
   const real = parseFloat(document.getElementById('calib-real').value) || 0;
-  if (lenPx < 2 || real <= 0) { alert('Bitte die grüne Strecke ziehen und eine reale Länge eingeben.'); return; }
+  if (lenPx < 2 || real <= 0) { alert('Bitte die Mess-Strecke ziehen und eine reale Länge eingeben.'); return; }
   const mmPerPx = real / lenPx;
   const realW = img.clientWidth * mmPerPx, realD = img.clientHeight * mmPerPx;
   const dataUrl = img._pendingDataUrl || img.src;
