@@ -75,7 +75,11 @@ Talisman(
         ],
         'style-src': ["'self'", "'unsafe-inline'", 'cdn.jsdelivr.net', 'fonts.googleapis.com'],
         # Ohne font-src greift default-src — und gstatic war damit gesperrt.
-        'font-src': ["'self'", 'data:', 'fonts.gstatic.com'],
+        # cdn.jsdelivr.net MUSS mit rein: dort liegt die Bootstrap-Icons-Schrift.
+        # Vorher gab es kein font-src, die Regel fiel auf default-src zurueck und
+        # dort steht jsdelivr — die praezisere Regel hat die Icons ausgesperrt,
+        # jedes <i class="bi …"> wurde zum leeren Rechteck.
+        'font-src': ["'self'", 'data:', 'fonts.gstatic.com', 'cdn.jsdelivr.net'],
         # Anzeigen laufen in iframes; 'none' hat sie vollstaendig unterbunden.
         'frame-src': [
             "'self'",
