@@ -215,6 +215,13 @@ SCHEMA_MIGRATIONS = [
     "ALTER TABLE app_users ADD COLUMN marketing_opt_out TINYINT NOT NULL DEFAULT 0",
     "ALTER TABLE app_users ADD COLUMN unsub_token VARCHAR(64) NULL",
     "ALTER TABLE app_users ADD COLUMN last_upsell_sent DATETIME NULL",
+    # Verlaengerungs-Erinnerung: speichert das Periodenende, fuer das bereits
+    # gemailt wurde. Als Schluessel bewusst das Datum und kein Flag — bei der
+    # naechsten Periode aendert sich current_period_end, damit passt der
+    # gespeicherte Wert nicht mehr und es wird von selbst erneut erinnert.
+    # (reminder_stage taugt dafuer nicht: _activate_premium setzt es bei jeder
+    #  Verlaengerung auf '' zurueck.)
+    "ALTER TABLE subscriptions ADD COLUMN renewal_notice_for DATETIME NULL",
 ]
 
 
@@ -370,6 +377,13 @@ EMAIL_I18N = {
         'p_plan_m':  'Monats-Abo',
         'p_features': '✅ Unbegrenzte Balken &amp; Projekte<br>✅ Vollständig werbefrei<br>✅ PDF Export &amp; Druckpläne<br>✅ Säge-Tool &amp; Schnittplan-Optimierung',
         'p_invoice': '📄 Rechnung ansehen &amp; herunterladen',
+        'p_box_title': 'Deine Vertragsdaten',
+        'p_box_plan': 'Abo',
+        'p_box_amount': 'Preis',
+        'p_box_next': 'Nächste Abbuchung',
+        'p_box_next_none': 'wird dir von Stripe angezeigt',
+        'p_renew': '<strong>Wichtig:</strong> Dein Abo verlängert sich automatisch und wird immer wieder abgebucht, bis du kündigst. Es gibt keine Mindestlaufzeit — du kannst jederzeit kündigen, ohne Frist.',
+        'p_cancel_hint': 'Kündigen kannst du jederzeit mit einem Klick unter „Mein Abonnement“. Nach der Kündigung behältst du Premium bis zum Ende des bereits bezahlten Zeitraums, danach wird nichts mehr abgebucht.',
         'p_manage':  'Du kannst dein Abo jederzeit unter „Mein Abonnement" verwalten oder kündigen.',
         'per_year':  ' / Jahr',
         'per_month': ' / Monat',
@@ -393,6 +407,13 @@ EMAIL_I18N = {
         'p_plan_m':  'monthly plan',
         'p_features': '✅ Unlimited beams &amp; projects<br>✅ Completely ad-free<br>✅ PDF export &amp; construction plans<br>✅ Saw tool &amp; cutting plan optimisation',
         'p_invoice': '📄 View &amp; download invoice',
+        'p_box_title': 'Your contract details',
+        'p_box_plan': 'Plan',
+        'p_box_amount': 'Price',
+        'p_box_next': 'Next charge',
+        'p_box_next_none': 'shown to you by Stripe',
+        'p_renew': '<strong>Important:</strong> your subscription renews automatically and is charged again and again until you cancel. There is no minimum term — you can cancel at any time, with no notice period.',
+        'p_cancel_hint': 'You can cancel any time with one click under “My subscription”. After cancelling you keep Premium until the end of the period you already paid for; nothing further will be charged.',
         'p_manage':  'You can manage or cancel your subscription at any time under "My subscription".',
         'per_year':  ' / year',
         'per_month': ' / month',
@@ -416,6 +437,13 @@ EMAIL_I18N = {
         'p_plan_m':  'abonnement mensuel',
         'p_features': '✅ Poutres &amp; projets illimités<br>✅ Sans aucune publicité<br>✅ Export PDF &amp; plans d’impression<br>✅ Outil scie &amp; optimisation du plan de coupe',
         'p_invoice': '📄 Voir &amp; télécharger la facture',
+        'p_box_title': 'Vos données contractuelles',
+        'p_box_plan': 'Abonnement',
+        'p_box_amount': 'Prix',
+        'p_box_next': 'Prochain prélèvement',
+        'p_box_next_none': 'affiché par Stripe',
+        'p_renew': '<strong>Important :</strong> votre abonnement se renouvelle automatiquement et est prélevé encore et encore jusqu’à votre résiliation. Aucune durée minimale — vous pouvez résilier à tout moment, sans préavis.',
+        'p_cancel_hint': 'Vous pouvez résilier à tout moment en un clic sous « Mon abonnement ». Après résiliation, vous conservez Premium jusqu’à la fin de la période déjà payée ; plus rien ne sera prélevé.',
         'p_manage':  'Vous pouvez gérer ou résilier votre abonnement à tout moment sous « Mon abonnement ».',
         'per_year':  ' / an',
         'per_month': ' / mois',
@@ -777,6 +805,7 @@ def sitemap():
   <url><loc>{SITE}/impressum</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
   <url><loc>{SITE}/datenschutz</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
   <url><loc>{SITE}/nutzungsbedingungen</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
+  <url><loc>{SITE}/widerruf</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
 </urlset>'''
     return app.response_class(body, mimetype='application/xml')
 
@@ -784,6 +813,13 @@ def sitemap():
 @app.route('/nutzungsbedingungen')
 def nutzungsbedingungen():
     return render_template('nutzungsbedingungen.html')
+
+
+@app.route('/widerruf')
+def widerruf():
+    # Widerrufsbelehrung + Muster-Formular. Fehlte bisher komplett — ohne
+    # Belehrung laeuft die Widerrufsfrist fuer Verbraucher nicht regulaer an.
+    return render_template('widerruf.html')
 
 
 # ---------------------------------------------------------------------------
@@ -1971,7 +2007,8 @@ def stripe_webhook():
 def cron_subscription_reminders():
     """Täglich von einem Cron aufzurufen. Schützt per CRON_SECRET.
     1) synct alle Stripe-Abos (sperrt abgelaufene automatisch),
-    2) sendet 7-Tage- und 2-Tage-Ablauf-Erinnerungen."""
+    2) sendet 7-Tage- und 2-Tage-Ablauf-Erinnerungen (gekündigte Abos),
+    3) erinnert eine Woche vor der nächsten Abbuchung (aktive Abos)."""
     secret = os.environ.get('CRON_SECRET', '')
     given = request.args.get('key') or request.headers.get('X-Cron-Key', '')
     if not secret or given != secret:
@@ -1983,7 +2020,9 @@ def cron_subscription_reminders():
         synced += 1
     # 2) Erinnerungen verschicken
     log = _run_subscription_reminders()
-    return jsonify(ok=True, synced=synced, reminders=log)
+    # 3) Verlängerungs-Erinnerungen (aktive Abos, ~7 Tage vor Abbuchung)
+    renewals = _run_renewal_notices()
+    return jsonify(ok=True, synced=synced, reminders=log, renewals=renewals)
 
 
 @app.route('/cron/premium-upsell', methods=['GET', 'POST'])
@@ -2058,7 +2097,7 @@ a{{display:inline-block;background:#9a5b2c;color:#fff;text-decoration:none;paddi
     return page, (200 if done else 404)
 
 
-def _email_premium_html(display_name, amount_txt, interval, invoice_url, lang='de'):
+def _email_premium_html(display_name, amount_txt, interval, invoice_url, lang='de', next_billing=None):
     T = EMAIL_I18N.get(_norm_lang(lang), EMAIL_I18N['de'])
     interval_txt = T['p_plan_y'] if interval == 'yearly' else T['p_plan_m']
     invoice_block = ''
@@ -2070,13 +2109,35 @@ def _email_premium_html(display_name, amount_txt, interval, invoice_url, lang='d
         )
     amount_display = amount_txt + (T['per_year'] if interval == 'yearly' else T['per_month'])
     thanks = T['p_thanks'].replace('{plan}', interval_txt).replace('{amount}', amount_display)
+    # Vertragskasten: Was genau wurde abgeschlossen, was kostet es, wann wird das
+    # naechste Mal abgebucht. Vorher stand in der Mail weder die automatische
+    # Verlaengerung noch ein Datum — der Kaeufer hatte es nirgends schriftlich.
+    zeile = ('<tr><td style="padding:3px 0;color:#6b7280;">{k}</td>'
+             '<td style="padding:3px 0;color:#1a1a1a;font-weight:700;text-align:right;">{v}</td></tr>')
+    next_txt = next_billing or T['p_box_next_none']
+    box = (
+        '<table cellpadding="0" cellspacing="0" style="width:100%;background:#fff;border:1px solid #e5e7eb;'
+        'border-radius:10px;margin:0 0 20px;"><tr><td style="padding:16px 20px;">'
+        f'<div style="font-size:.78rem;font-weight:700;color:#92400e;text-transform:uppercase;'
+        f'letter-spacing:.5px;margin-bottom:8px;">{T["p_box_title"]}</div>'
+        '<table cellpadding="0" cellspacing="0" style="width:100%;font-size:.9rem;">'
+        + zeile.format(k=T['p_box_plan'], v=interval_txt)
+        + zeile.format(k=T['p_box_amount'], v=amount_display)
+        + zeile.format(k=T['p_box_next'], v=next_txt)
+        + '</table></td></tr></table>'
+    )
     return _email_shell(f'''    <h2 style="margin:0 0 16px;font-size:1.15rem;color:#1a1a1a;font-weight:700;">{T['p_title']}</h2>
     <p style="margin:0 0 10px;color:#374151;line-height:1.65;font-size:.95rem;">{T['hello']} <strong>{display_name}</strong>,</p>
     <p style="margin:0 0 20px;color:#374151;line-height:1.65;font-size:.95rem;">{thanks}</p>
+    {box}
+    <table cellpadding="0" cellspacing="0" style="width:100%;background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;margin:0 0 20px;"><tr><td style="padding:14px 20px;font-size:.9rem;color:#374151;line-height:1.6;">
+      {T['p_renew']}
+    </td></tr></table>
     <table cellpadding="0" cellspacing="0" style="width:100%;background:#fef9f0;border:1px solid #fde68a;border-radius:10px;margin:0 0 24px;"><tr><td style="padding:16px 20px;font-size:.88rem;color:#374151;line-height:2;">
       {T['p_features']}
     </td></tr></table>
     {invoice_block}
+    <p style="margin:0 0 10px;color:#6b7280;font-size:.85rem;line-height:1.6;">{T['p_cancel_hint']}</p>
     <p style="margin:0;color:#9ca3af;font-size:.8rem;line-height:1.6;">{T['p_manage']}</p>''')
 
 
@@ -2193,10 +2254,50 @@ def _activate_premium(user_id, customer_id, sub_id, interval, notify=True):
         u = query_db('SELECT email, full_name, username, lang FROM app_users WHERE id=?', [user_id], one=True)
         if u and u['email']:
             u_lang = _norm_lang(u.get('lang') if hasattr(u, 'get') else 'de')
+            # period_end kommt von Stripe im DB-Format — fuer die Mail lesbar machen.
+            pe_dt = _to_dt(period_end)
+            next_txt = pe_dt.strftime('%d.%m.%Y') if pe_dt else None
             send_email(u['email'], EMAIL_I18N[u_lang]['p_subject'],
-                       _email_premium_html(u['full_name'] or u['username'], amount_txt, interval, invoice_url, u_lang))
+                       _email_premium_html(u['full_name'] or u['username'], amount_txt, interval,
+                                           invoice_url, u_lang, next_txt))
     return True
 
+
+# Erinnerung eine Woche VOR der naechsten Abbuchung eines AKTIVEN Abos.
+# Bewusst nuechtern und ohne Verkaufsdruck: der Zweck ist, dass niemand von einer
+# Abbuchung ueberrascht wird. Datum und Betrag stehen drin, der Kuendigungsweg auch.
+RENEWAL_I18N = {
+    'de': {
+        'subject': 'HolzBau 3D – Dein Abo verlängert sich am {date} ({amount})',
+        'title': 'Erinnerung: dein Abo verlängert sich',
+        'body': 'nur damit du Bescheid weißt: dein <strong>{plan}</strong> ist aktiv und verlängert sich '
+                'automatisch am <strong>{date}</strong>. Dann werden <strong>{amount}</strong> über Stripe abgebucht.',
+        'nothing': 'Du musst nichts tun — wenn du Premium weiter nutzen willst, läuft alles von selbst weiter.',
+        'cancel': 'Möchtest du nicht verlängern? Dann kündige einfach vorher unter „Mein Abonnement“. '
+                  'Du behältst Premium bis zum {date} und es wird nichts mehr abgebucht.',
+        'button': 'Abo ansehen oder kündigen',
+    },
+    'en': {
+        'subject': 'HolzBau 3D – Your subscription renews on {date} ({amount})',
+        'title': 'Reminder: your subscription renews',
+        'body': 'just so you know: your <strong>{plan}</strong> is active and will renew automatically on '
+                '<strong>{date}</strong>. <strong>{amount}</strong> will then be charged via Stripe.',
+        'nothing': 'You do not need to do anything — if you want to keep Premium, it simply continues.',
+        'cancel': 'Do not want to renew? Just cancel beforehand under “My subscription”. '
+                  'You keep Premium until {date} and nothing further will be charged.',
+        'button': 'View or cancel subscription',
+    },
+    'fr': {
+        'subject': 'HolzBau 3D – Votre abonnement se renouvelle le {date} ({amount})',
+        'title': 'Rappel : votre abonnement se renouvelle',
+        'body': 'pour information : votre <strong>{plan}</strong> est actif et se renouvellera automatiquement le '
+                '<strong>{date}</strong>. <strong>{amount}</strong> seront alors prélevés via Stripe.',
+        'nothing': 'Vous n’avez rien à faire — si vous souhaitez conserver Premium, tout continue automatiquement.',
+        'cancel': 'Vous ne souhaitez pas renouveler ? Résiliez simplement avant, sous « Mon abonnement ». '
+                  'Vous conservez Premium jusqu’au {date} et plus rien ne sera prélevé.',
+        'button': 'Voir ou résilier l’abonnement',
+    },
+}
 
 EXPIRY_I18N = {
     'de': {
@@ -2224,6 +2325,23 @@ EXPIRY_I18N = {
         'note': 'Vous souhaitez conserver Premium ? Vous pouvez le réactiver à tout moment en un clic — vos projets existants sont bien sûr conservés.',
     },
 }
+
+
+def _email_renewal_html(display_name, date_txt, amount_txt, interval, lang='de'):
+    T = RENEWAL_I18N.get(_norm_lang(lang), RENEWAL_I18N['de'])
+    L = EMAIL_I18N.get(_norm_lang(lang), EMAIL_I18N['de'])
+    plan_txt = L['p_plan_y'] if interval == 'yearly' else L['p_plan_m']
+    base_url = os.environ.get('BASE_URL', 'https://holzbau3d.app')
+    body = T['body'].replace('{date}', date_txt).replace('{amount}', amount_txt).replace('{plan}', plan_txt)
+    cancel = T['cancel'].replace('{date}', date_txt)
+    return _email_shell(f'''    <h2 style="margin:0 0 16px;font-size:1.15rem;color:#1a1a1a;font-weight:700;">{T['title']}</h2>
+    <p style="margin:0 0 10px;color:#374151;line-height:1.65;font-size:.95rem;">{L['hello']} <strong>{display_name}</strong>,</p>
+    <p style="margin:0 0 16px;color:#374151;line-height:1.65;font-size:.95rem;">{body}</p>
+    <p style="margin:0 0 16px;color:#374151;line-height:1.65;font-size:.95rem;">{T['nothing']}</p>
+    <p style="margin:0 0 24px;color:#374151;line-height:1.65;font-size:.95rem;">{cancel}</p>
+    <table cellpadding="0" cellspacing="0" style="margin:0 0 8px;"><tr><td style="background:linear-gradient(135deg,#d97706,#92400e);border-radius:10px;">
+      <a href="{base_url}/subscribe" style="display:inline-block;padding:13px 30px;color:#ffffff;text-decoration:none;font-weight:700;font-size:.95rem;">{T['button']}</a>
+    </td></tr></table>''')
 
 
 def _email_expiry_html(display_name, end_date, stage, lang='de'):
@@ -2382,6 +2500,62 @@ def _send_delete_email(user_id, sub_info=None):
         f'</h2>' + BODY[lang]
     )
     send_email(email, SUBJ[lang], html)
+
+
+def _price_text(interval):
+    """Angezeigter Betrag je Intervall. Quelle sind dieselben Env-Variablen wie
+    auf der Kaufseite, damit Mail und Seite nie auseinanderlaufen."""
+    if interval == 'yearly':
+        return os.environ.get('PRICE_YEARLY_TEXT', '99,99 €')
+    return os.environ.get('PRICE_MONTHLY_TEXT', '9,99 €')
+
+
+def _run_renewal_notices():
+    """Erinnert eine Woche vor der naechsten Abbuchung eines AKTIVEN Abos.
+    Damit weiss jeder, dass sein Abo laeuft, und wird von der Abbuchung nicht
+    ueberrascht. Nur fuer nicht gekuendigte Abos — gekuendigte bekommen die
+    Ablaufwarnung aus _run_subscription_reminders().
+    Idempotent ueber renewal_notice_for (= das Periodenende, fuer das bereits
+    gemailt wurde). Gibt eine Log-Liste zurueck."""
+    out = []
+    rows = query_db(
+        "SELECT s.user_id, s.current_period_end, s.plan_interval, s.renewal_notice_for, "
+        "u.email, u.full_name, u.username, u.lang "
+        "FROM subscriptions s JOIN app_users u ON u.id = s.user_id "
+        "WHERE s.plan='premium' AND s.status='active'", []
+    )
+    now = datetime.utcnow()
+    for r in rows:
+        pe = _to_dt(r['current_period_end'])
+        if not pe or not r['email']:
+            continue
+        days_left = (pe - now).total_seconds() / 86400.0
+        # Ab 8 Tagen vorher, nicht als enges Fenster: faellt der Cron mal mehrere
+        # Tage aus, wuerde ein enges Fenster die Erinnerung still verschlucken.
+        # So kommt sie notfalls spaeter — spaet ist besser als eine ueberraschende
+        # Abbuchung. Doppelt kann sie durch renewal_notice_for nicht kommen.
+        if not (0 < days_left <= 8.0):
+            continue
+        already = _to_dt(r['renewal_notice_for'])
+        if already and abs((already - pe).total_seconds()) < 3600:
+            continue   # fuer genau diese Periode schon erinnert
+        interval = r['plan_interval'] or 'monthly'
+        u_lang = _norm_lang(r['lang'])
+        date_txt = pe.strftime('%d.%m.%Y')
+        amount_txt = _price_text(interval)
+        subject = (RENEWAL_I18N[u_lang]['subject']
+                   .replace('{date}', date_txt).replace('{amount}', amount_txt))
+        ok = send_email(r['email'], subject,
+                        _email_renewal_html(r['full_name'] or r['username'],
+                                            date_txt, amount_txt, interval, u_lang))
+        if ok:
+            execute_db('UPDATE subscriptions SET renewal_notice_for=? WHERE user_id=?',
+                       [pe.strftime('%Y-%m-%d %H:%M:%S'), r['user_id']])
+            out.append(f"user {r['user_id']}: Verlaengerungs-Erinnerung gesendet "
+                       f"(Abbuchung {date_txt}, {amount_txt}, in {days_left:.1f}d)")
+        else:
+            out.append(f"user {r['user_id']}: Mail-Versand fehlgeschlagen")
+    return out
 
 
 def _run_subscription_reminders():

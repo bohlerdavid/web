@@ -212,18 +212,18 @@
       <form method="POST" action="{{ url_for('subscribe_create_checkout') }}" style="margin-top:auto;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="plan_type" value="monthly">
-        <button type="submit" class="btn-upgrade-outline"><i class="bi bi-credit-card"></i> Monatlich starten</button>
+        <button type="submit" class="btn-upgrade-outline"><i class="bi bi-credit-card"></i> Zahlungspflichtig abonnieren — 9,99 €/Monat</button>
       </form>
     </div>
     <div class="plan-card featured">
       <div class="save-badge">🎉 Spare 19,89 € — 2 Monate gratis</div>
       <div class="plan-card-title">Jährlich</div>
       <div class="plan-card-price">99,99 <span>€</span></div>
-      <div class="plan-card-sub"><s>119,88 €/Jahr</s> &nbsp;<strong>= 8,33 €/Monat</strong></div>
+      <div class="plan-card-sub"><s>119,88 €/Jahr</s> &nbsp;<strong>= 8,33 €/Monat</strong><br>pro Jahr · jederzeit kündbar</div>
       <form method="POST" action="{{ url_for('subscribe_create_checkout') }}" style="margin-top:auto;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="plan_type" value="yearly">
-        <button type="submit" class="btn-upgrade-big"><i class="bi bi-credit-card"></i> Jährlich starten</button>
+        <button type="submit" class="btn-upgrade-big"><i class="bi bi-credit-card"></i> Zahlungspflichtig abonnieren — 99,99 €/Jahr</button>
       </form>
     </div>
   </div>
@@ -231,7 +231,7 @@
   <form method="POST" action="{{ url_for('subscribe_create_checkout') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="plan_type" value="monthly">
-    <button type="submit" class="btn-upgrade-big"><i class="bi bi-credit-card"></i> Jetzt upgraden — 9,99 €/Monat</button>
+    <button type="submit" class="btn-upgrade-big"><i class="bi bi-credit-card"></i> Zahlungspflichtig abonnieren — 9,99 €/Monat</button>
   </form>
   {% if session.get('role') == 'admin' %}
   <div style="margin-top:14px;padding:11px 14px;background:#fff7ed;border:1px dashed #fdba74;border-radius:10px;font-size:.78rem;color:#9a3412;">
@@ -241,8 +241,17 @@
   </div>
   {% endif %}
   {% endif %}
+  <div style="margin-top:14px;padding:12px 15px;background:#fff;border:1px solid #fcd34d;border-radius:10px;font-size:.82rem;color:#374151;line-height:1.6;">
+    <strong>Automatische Verlängerung:</strong> Dein Abo verlängert sich nach Ablauf automatisch
+    und wird erneut abgebucht — so lange, bis du kündigst. Es gibt keine Mindestlaufzeit und keine
+    Kündigungsfrist; du kannst jederzeit hier auf dieser Seite mit einem Klick kündigen und behältst
+    Premium bis zum Ende des bezahlten Zeitraums. Eine Woche vor jeder Abbuchung erinnern wir dich
+    per E-Mail.
+  </div>
   <p style="color:#9ca3af;font-size:.78rem;margin-top:12px;text-align:center;">
-    <i class="bi bi-lock me-1"></i>Sichere Zahlung über Stripe · Jederzeit kündbar
+    <i class="bi bi-lock me-1"></i>Sichere Zahlung über Stripe ·
+    <a href="{{ url_for('nutzungsbedingungen') }}" style="color:#9ca3af;text-decoration:underline;">Nutzungsbedingungen</a> ·
+    <a href="{{ url_for('widerruf') }}" style="color:#9ca3af;text-decoration:underline;">Widerrufsrecht</a>
   </p>
 </div>
 {% endif %}
