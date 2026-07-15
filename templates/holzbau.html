@@ -1542,7 +1542,17 @@ body {
       <span style="font-size:16px;font-weight:700;color:var(--text)">🗺 Vorlage kalibrieren</span>
       <button class="tb-btn" style="color:var(--red);border-color:var(--red-dim)" onclick="document.getElementById('calib-modal').style.display='none'">✕ Abbrechen</button>
     </div>
-    <p style="font-size:12px;color:var(--text-2);margin:0 0 10px;line-height:1.5">Zieh die grünen Punkte auf eine Strecke, deren <strong>reale Länge du kennst</strong> (eine ausgemessene Wand, eine Tür = 900 mm, ein Maßstabsbalken auf dem Plan). Dann die Länge eintippen.</p>
+    <p id="calib-hint" style="font-size:12px;color:var(--text-2);margin:0 0 10px;line-height:1.5">Zieh die grünen Marker auf eine Strecke, deren <strong>reale Länge du kennst</strong> (eine ausgemessene Wand, eine Tür = 900 mm, ein Maßstabsbalken auf dem Plan). Dann die Länge eintippen. Tipp: <strong>zoomen</strong> für mehr Präzision, <strong>Zuschneiden</strong> blendet Rahmen/Schriftfeld aus.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+      <button class="tb-btn" onclick="calibZoomBy(-1)" title="Verkleinern">−</button>
+      <span id="calib-zoom-lbl" style="font-size:12px;color:var(--text-2);min-width:44px;text-align:center">100 %</span>
+      <button class="tb-btn" onclick="calibZoomBy(1)" title="Vergrößern">+</button>
+      <button class="tb-btn" onclick="calibZoomFit()" title="Ganzes Bild zeigen">⤢ Einpassen</button>
+      <span style="width:1px;height:18px;background:var(--border)"></span>
+      <button class="tb-btn" id="calib-crop-btn" onclick="toggleCalibCrop()" title="Bereich auswählen und zuschneiden">✂ Zuschneiden</button>
+      <button class="tb-btn green" id="calib-crop-apply" style="display:none" onclick="applyCalibCrop()">✓ Zuschnitt anwenden</button>
+      <button class="tb-btn" id="calib-crop-reset" style="display:none" onclick="resetCalibCrop()" title="Originalbild wiederherstellen">↺ Original</button>
+    </div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
       <span style="font-size:13px;color:var(--text-2)">Reale Länge der grünen Strecke:</span>
       <input type="number" id="calib-real" value="4000" min="1" step="10" style="width:100px;background:var(--bg-input);border:1px solid var(--border);color:var(--text);border-radius:var(--r-sm);padding:4px 8px;font-size:13px">
@@ -1550,13 +1560,18 @@ body {
       <span id="calib-info" style="font-size:12px;color:var(--text-3)"></span>
       <button class="tb-btn green" style="margin-left:auto" onclick="applyCalibration()">✓ Als Vorlage übernehmen</button>
     </div>
-    <div id="calib-stage" style="background:#2a2a2a;border:1px solid var(--border);border-radius:var(--r);padding:8px;display:flex;justify-content:center">
-      <div id="calib-wrap" style="position:relative;display:inline-block;line-height:0">
-        <img id="calib-img" style="display:block;max-width:100%;max-height:58vh;user-select:none;pointer-events:none" draggable="false">
-        <svg id="calib-svg" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none">
-          <line id="calib-l" x1="0" y1="0" x2="0" y2="0" stroke="#1d9e75" stroke-width="3"/>
-          <circle id="calib-p1" r="10" fill="#1d9e75" stroke="#fff" stroke-width="2" style="cursor:grab"/>
-          <circle id="calib-p2" r="10" fill="#1d9e75" stroke="#fff" stroke-width="2" style="cursor:grab"/>
+    <div id="calib-stage" style="background:#2a2a2a;border:1px solid var(--border);border-radius:var(--r);padding:8px;max-height:58vh;overflow:auto">
+      <div id="calib-wrap" style="position:relative;display:inline-block;line-height:0;transform-origin:0 0">
+        <img id="calib-img" style="display:block;max-width:none;user-select:none;pointer-events:none" draggable="false">
+        <svg id="calib-svg" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair">
+          <defs><mask id="calib-crop-mask"><rect id="calib-mask-all" x="0" y="0" width="100%" height="100%" fill="#fff"/><rect id="calib-mask-hole" x="0" y="0" width="0" height="0" fill="#000"/></mask></defs>
+          <rect id="calib-crop-dim" x="0" y="0" width="100%" height="100%" fill="rgba(0,0,0,.55)" mask="url(#calib-crop-mask)" style="display:none;pointer-events:none"/>
+          <rect id="calib-crop-rect" fill="none" stroke="#e94560" stroke-width="2" stroke-dasharray="6 4" style="display:none;pointer-events:none"/>
+          <g id="calib-cal-g">
+            <line id="calib-l" x1="0" y1="0" x2="0" y2="0" stroke="#1d9e75" stroke-width="2"/>
+            <g id="calib-m1"><line class="tick" stroke="#1d9e75" stroke-width="2"/><line class="tick2" stroke="#fff" stroke-width="4" opacity=".55"/><circle class="grab" r="14" fill="transparent" style="cursor:grab"/></g>
+            <g id="calib-m2"><line class="tick" stroke="#1d9e75" stroke-width="2"/><line class="tick2" stroke="#fff" stroke-width="4" opacity=".55"/><circle class="grab" r="14" fill="transparent" style="cursor:grab"/></g>
+          </g>
         </svg>
       </div>
     </div>
@@ -1798,6 +1813,7 @@ Object.assign(window, {
   toggleLeftPanel, toggleRightPanel,
   addCutout, updateCutout, deleteCutout, startPlaceCutout,
   loadRefImage, applyCalibration, setRefImageOpacity, toggleRefImageVisible, recalibrateRefImage, removeRefImage,
+  calibZoomBy, calibZoomFit, toggleCalibCrop, applyCalibCrop, resetCalibCrop,
 });
 
 // ══════════════════════════════════════════════
@@ -2259,8 +2275,13 @@ function updateRoofOutline() { updateFloorOutline(); }
 // ══════════════════════════════════════════════
 
 let refImage = null;   // { mesh, dataUrl, realW, realD, opacity, visible }
-let _calibDrag = null;
-let _calibHandles = { p1: { x: 0.25, y: 0.5 }, p2: { x: 0.75, y: 0.5 } }; // relativ (0..1) zum Bild
+let _calibDrag = null;          // 'm1' | 'm2' | 'crop'
+let _calibZoom = 1;             // Zoomfaktor der Kalibrier-Ansicht
+let _calibCropMode = false;
+let _calibCropRect = null;      // {x,y,w,h} in ungezoomten Anzeige-Pixeln
+let _calibOrigDataUrl = null;   // Originalbild (für „↺ Original")
+// Messpunkte in ungezoomten Anzeige-Pixeln des Bildes
+let _calibPts = { m1: { x: 0, y: 0 }, m2: { x: 0, y: 0 } };
 
 function loadRefImage(ev) {
   const input = ev.target || ev;
@@ -2268,68 +2289,188 @@ function loadRefImage(ev) {
   const file = input.files[0]; input.value = '';
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = e => openCalibration(e.target.result);
+  reader.onload = e => openCalibration(e.target.result, true);
   reader.readAsDataURL(file);
 }
 
-function openCalibration(dataUrl) {
-  const img = document.getElementById('calib-img');
-  document.getElementById('calib-modal').style.display = 'block';   // erst sichtbar → Wrapper hat Maße
-  img._pendingDataUrl = dataUrl;
-  img.onload = () => {
-    requestAnimationFrame(() => { _positionCalibHandles(); updateCalibLine(); });
-  };
-  img.src = dataUrl;
-  if (img.complete && img.naturalWidth) { requestAnimationFrame(() => { _positionCalibHandles(); updateCalibLine(); }); }
+// Bild einpassen: Zoom 100 % = ganzes Bild sichtbar.
+function _calibNaturalFit(img) {
+  const stage = document.getElementById('calib-stage');
+  const maxW = Math.max(200, stage.clientWidth - 24);
+  const maxH = Math.max(200, Math.round(window.innerHeight * 0.58) - 24);
+  const s = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight, 1);
+  img.style.width = Math.round(img.naturalWidth * s) + 'px';
+  img.style.height = Math.round(img.naturalHeight * s) + 'px';
 }
 
-function _positionCalibHandles() {
-  const wrap = document.getElementById('calib-wrap').getBoundingClientRect();
-  const p1 = _calibHandles.p1, p2 = _calibHandles.p2;
-  _setCalibHandle('calib-p1', p1.x * wrap.width, p1.y * wrap.height);
-  _setCalibHandle('calib-p2', p2.x * wrap.width, p2.y * wrap.height);
+function openCalibration(dataUrl, isNew) {
+  const img = document.getElementById('calib-img');
+  document.getElementById('calib-modal').style.display = 'block';
+  img._pendingDataUrl = dataUrl;
+  if (isNew || !_calibOrigDataUrl) _calibOrigDataUrl = dataUrl;
+  _calibCropMode = false; _calibCropRect = null;
+  const ready = () => requestAnimationFrame(() => {
+    _calibNaturalFit(img);
+    _calibSetZoom(1);
+    _calibPts.m1 = { x: img.clientWidth * 0.25, y: img.clientHeight * 0.5 };
+    _calibPts.m2 = { x: img.clientWidth * 0.75, y: img.clientHeight * 0.5 };
+    _syncCropUI(); updateCalibLine();
+  });
+  img.onload = ready;
+  img.src = dataUrl;
+  if (img.complete && img.naturalWidth) ready();
 }
-function _setCalibHandle(id, x, y) {
-  const c = document.getElementById(id);
-  c.setAttribute('cx', x); c.setAttribute('cy', y);
+
+function _calibSetZoom(z) {
+  _calibZoom = Math.max(0.2, Math.min(8, z));
+  document.getElementById('calib-wrap').style.transform = 'scale(' + _calibZoom + ')';
+  document.getElementById('calib-zoom-lbl').textContent = Math.round(_calibZoom * 100) + ' %';
 }
+function calibZoomBy(dir) {
+  _calibSetZoom(_calibZoom * (dir > 0 ? 1.35 : 1 / 1.35));
+  updateCalibLine();
+  if (_calibCropRect) _drawCropRect();
+}
+function calibZoomFit() {
+  _calibSetZoom(1);
+  const s = document.getElementById('calib-stage');
+  s.scrollLeft = 0; s.scrollTop = 0;
+  updateCalibLine();
+  if (_calibCropRect) _drawCropRect();
+}
+
+// Marker: Strich quer zur Messlinie — der exakte Punkt liegt auf der Linie
+// (bei waagerechter Messung also ein senkrechter Strich).
+function _drawMarker(id, p, nx, ny) {
+  const g = document.getElementById(id);
+  const T = 13 / _calibZoom;                 // Strichlänge bleibt optisch konstant
+  const x1 = p.x + nx * T, y1 = p.y + ny * T, x2 = p.x - nx * T, y2 = p.y - ny * T;
+  const t1 = g.querySelector('.tick'), t2 = g.querySelector('.tick2'), gr = g.querySelector('.grab');
+  [t2, t1].forEach(l => { l.setAttribute('x1', x1); l.setAttribute('y1', y1); l.setAttribute('x2', x2); l.setAttribute('y2', y2); });
+  t1.setAttribute('stroke-width', 1.5 / _calibZoom);
+  t2.setAttribute('stroke-width', 4 / _calibZoom);
+  gr.setAttribute('cx', p.x); gr.setAttribute('cy', p.y); gr.setAttribute('r', 14 / _calibZoom);
+}
+
 function updateCalibLine() {
-  const p1 = document.getElementById('calib-p1'), p2 = document.getElementById('calib-p2');
-  const x1 = +p1.getAttribute('cx'), y1 = +p1.getAttribute('cy'), x2 = +p2.getAttribute('cx'), y2 = +p2.getAttribute('cy');
+  const a = _calibPts.m1, b = _calibPts.m2;
   const l = document.getElementById('calib-l');
-  l.setAttribute('x1', x1); l.setAttribute('y1', y1); l.setAttribute('x2', x2); l.setAttribute('y2', y2);
-  const wrap = document.getElementById('calib-wrap').getBoundingClientRect();
-  _calibHandles.p1 = { x: x1 / wrap.width, y: y1 / wrap.height };
-  _calibHandles.p2 = { x: x2 / wrap.width, y: y2 / wrap.height };
-  const lenPx = Math.hypot(x2 - x1, y2 - y1);
+  l.setAttribute('x1', a.x); l.setAttribute('y1', a.y); l.setAttribute('x2', b.x); l.setAttribute('y2', b.y);
+  l.setAttribute('stroke-width', 1.5 / _calibZoom);
+  let dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len, ny = dx / len;       // Normale = quer zur Messlinie
+  _drawMarker('calib-m1', a, nx, ny);
+  _drawMarker('calib-m2', b, nx, ny);
   const real = parseFloat(document.getElementById('calib-real').value) || 0;
   const info = document.getElementById('calib-info');
-  if (lenPx > 2 && real > 0) {
-    const mmPerPx = real / lenPx;
+  if (len > 2 && real > 0) {
+    const mmPerPx = real / len;
     const img = document.getElementById('calib-img');
     const rw = Math.round(img.clientWidth * mmPerPx), rd = Math.round(img.clientHeight * mmPerPx);
-    info.textContent = `→ Vorlage ≈ ${(rw/1000).toFixed(2)} × ${(rd/1000).toFixed(2)} m`;
+    info.textContent = '→ Vorlage ≈ ' + (rw / 1000).toFixed(2) + ' × ' + (rd / 1000).toFixed(2) + ' m';
   } else info.textContent = '';
+}
+
+// ── Zuschneiden ──
+function toggleCalibCrop() {
+  _calibCropMode = !_calibCropMode;
+  _calibCropRect = null;
+  _syncCropUI();
+}
+function _syncCropUI() {
+  const on = _calibCropMode;
+  document.getElementById('calib-crop-btn').classList.toggle('green', on);
+  document.getElementById('calib-cal-g').style.display = on ? 'none' : '';
+  document.getElementById('calib-crop-rect').style.display = (on && _calibCropRect) ? '' : 'none';
+  document.getElementById('calib-crop-dim').style.display = (on && _calibCropRect) ? '' : 'none';
+  document.getElementById('calib-crop-apply').style.display = (on && _calibCropRect) ? '' : 'none';
+  const img = document.getElementById('calib-img');
+  const cropped = _calibOrigDataUrl && img._pendingDataUrl && img._pendingDataUrl !== _calibOrigDataUrl;
+  document.getElementById('calib-crop-reset').style.display = cropped ? '' : 'none';
+  document.getElementById('calib-hint').innerHTML = on
+    ? 'Zieh ein Rechteck über den Bereich, den du behalten willst — dann <strong>Zuschnitt anwenden</strong>.'
+    : 'Zieh die grünen Marker auf eine Strecke, deren <strong>reale Länge du kennst</strong> (eine ausgemessene Wand, eine Tür = 900 mm, ein Maßstabsbalken auf dem Plan). Dann die Länge eintippen. Tipp: <strong>zoomen</strong> für mehr Präzision, <strong>Zuschneiden</strong> blendet Rahmen/Schriftfeld aus.';
+}
+function _drawCropRect() {
+  if (!_calibCropRect) return;
+  const r = _calibCropRect;
+  const rect = document.getElementById('calib-crop-rect');
+  rect.setAttribute('x', r.x); rect.setAttribute('y', r.y);
+  rect.setAttribute('width', r.w); rect.setAttribute('height', r.h);
+  rect.setAttribute('stroke-width', 2 / _calibZoom);
+  const hole = document.getElementById('calib-mask-hole');
+  hole.setAttribute('x', r.x); hole.setAttribute('y', r.y);
+  hole.setAttribute('width', r.w); hole.setAttribute('height', r.h);
+}
+function applyCalibCrop() {
+  const img = document.getElementById('calib-img');
+  const r = _calibCropRect;
+  if (!r || r.w < 5 || r.h < 5) { alert('Bitte einen Bereich aufziehen.'); return; }
+  // Anzeige-Pixel → natürliche Bildpixel: verlustfrei in Originalauflösung schneiden
+  const k = img.naturalWidth / img.clientWidth;
+  const sx = Math.max(0, Math.round(r.x * k)), sy = Math.max(0, Math.round(r.y * k));
+  const sw = Math.min(img.naturalWidth - sx, Math.round(r.w * k));
+  const sh = Math.min(img.naturalHeight - sy, Math.round(r.h * k));
+  const cv = document.createElement('canvas'); cv.width = sw; cv.height = sh;
+  cv.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+  const out = cv.toDataURL('image/png');
+  _calibCropMode = false; _calibCropRect = null;
+  openCalibration(out, false);   // Original bleibt für „↺ Original" erhalten
+}
+function resetCalibCrop() {
+  if (_calibOrigDataUrl) openCalibration(_calibOrigDataUrl, false);
 }
 
 (function initCalibDrag(){
   const svg = document.getElementById('calib-svg');
   if (!svg) return;
-  const pt = (e) => { const t = e.touches ? e.touches[0] : e; const r = svg.getBoundingClientRect(); return { x: t.clientX - r.left, y: t.clientY - r.top }; };
-  const down = (e) => { if (e.target.id === 'calib-p1' || e.target.id === 'calib-p2') { _calibDrag = e.target.id; e.preventDefault(); } };
-  const move = (e) => { if (!_calibDrag) return; const p = pt(e); const r = svg.getBoundingClientRect(); _setCalibHandle(_calibDrag, Math.max(0, Math.min(r.width, p.x)), Math.max(0, Math.min(r.height, p.y))); updateCalibLine(); e.preventDefault(); };
+  // Clientkoordinaten → ungezoomte Bildkoordinaten
+  const pt = (e) => {
+    const t = e.touches ? e.touches[0] : e;
+    const r = svg.getBoundingClientRect();
+    return { x: (t.clientX - r.left) / _calibZoom, y: (t.clientY - r.top) / _calibZoom };
+  };
+  const clamp = (p) => {
+    const img = document.getElementById('calib-img');
+    return { x: Math.max(0, Math.min(img.clientWidth, p.x)), y: Math.max(0, Math.min(img.clientHeight, p.y)) };
+  };
+  const down = (e) => {
+    if (_calibCropMode) {
+      const p = clamp(pt(e));
+      _calibDrag = 'crop';
+      _calibCropRect = { x: p.x, y: p.y, w: 0, h: 0, _ox: p.x, _oy: p.y };
+      _syncCropUI(); _drawCropRect(); e.preventDefault(); return;
+    }
+    const g = e.target.closest && e.target.closest('#calib-m1, #calib-m2');
+    if (g) { _calibDrag = g.id === 'calib-m1' ? 'm1' : 'm2'; e.preventDefault(); }
+  };
+  const move = (e) => {
+    if (!_calibDrag) return;
+    const p = clamp(pt(e));
+    if (_calibDrag === 'crop') {
+      const r = _calibCropRect;
+      r.x = Math.min(r._ox, p.x); r.y = Math.min(r._oy, p.y);
+      r.w = Math.abs(p.x - r._ox); r.h = Math.abs(p.y - r._oy);
+      _syncCropUI(); _drawCropRect();
+    } else {
+      _calibPts[_calibDrag] = p;
+      updateCalibLine();
+    }
+    e.preventDefault();
+  };
   const up = () => { _calibDrag = null; };
   svg.addEventListener('mousedown', down); svg.addEventListener('touchstart', down, { passive: false });
   window.addEventListener('mousemove', move); window.addEventListener('touchmove', move, { passive: false });
   window.addEventListener('mouseup', up); window.addEventListener('touchend', up);
   const realIn = document.getElementById('calib-real');
   if (realIn) realIn.addEventListener('input', updateCalibLine);
+  const stage = document.getElementById('calib-stage');
+  if (stage) stage.addEventListener('wheel', (e) => { e.preventDefault(); calibZoomBy(e.deltaY < 0 ? 1 : -1); }, { passive: false });
 })();
 
 function applyCalibration() {
   const img = document.getElementById('calib-img');
-  const p1 = document.getElementById('calib-p1'), p2 = document.getElementById('calib-p2');
-  const lenPx = Math.hypot(+p2.getAttribute('cx') - +p1.getAttribute('cx'), +p2.getAttribute('cy') - +p1.getAttribute('cy'));
+  const lenPx = Math.hypot(_calibPts.m2.x - _calibPts.m1.x, _calibPts.m2.y - _calibPts.m1.y);
   const real = parseFloat(document.getElementById('calib-real').value) || 0;
   if (lenPx < 2 || real <= 0) { alert('Bitte die grüne Strecke ziehen und eine reale Länge eingeben.'); return; }
   const mmPerPx = real / lenPx;
