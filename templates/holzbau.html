@@ -424,13 +424,22 @@ body {
   padding: 8px 10px;
   font-size: 11px;
   color: var(--text-2);
+  max-height: calc(100% - 20px);
+  overflow-y: auto;
 }
 #controls-help.hidden { display: none; }
 #controls-help .ch-head {
   display: flex; align-items: center; justify-content: space-between;
   font-weight: 700; color: var(--text); margin-bottom: 6px;
   font-size: 11px; letter-spacing: .3px;
+  position: sticky; top: -8px; background: rgba(14,17,23,.98); padding: 2px 0;
 }
+#controls-help .ch-sub {
+  font-size: 9.5px; font-weight: 700; color: var(--text-3);
+  text-transform: uppercase; letter-spacing: .5px;
+  margin: 7px 0 3px; border-bottom: 1px solid var(--border-2); padding-bottom: 2px;
+}
+#controls-help .ch-sub:first-of-type { margin-top: 2px; }
 #controls-help .ch-close { cursor: pointer; color: var(--text-3); padding: 0 3px; line-height: 1; }
 #controls-help .ch-close:hover { color: var(--red); }
 #controls-help .ch-row { display: flex; gap: 8px; line-height: 1.55; }
@@ -1332,11 +1341,19 @@ body {
         <span>⌨ Steuerung</span>
         <span class="ch-close" onclick="toggleHelp()" title="Ausblenden">✕</span>
       </div>
+      <div class="ch-sub">Navigation (Kamera)</div>
+      <div class="ch-row"><b>Pfeiltasten</b><span>Kamera bewegen (ohne Auswahl)</span></div>
+      <div class="ch-row"><b>W A S D</b><span>Kamera vor / links / zurück / rechts</span></div>
+      <div class="ch-row"><b>Q / E</b><span>Kamera runter / hoch</span></div>
+      <div class="ch-row"><b>Bild ↑ / ↓</b><span>Kamera hoch / runter (ohne Auswahl)</span></div>
+      <div class="ch-row"><b>Maus ziehen</b><span>Ansicht drehen</span></div>
+      <div class="ch-row"><b>Mausrad</b><span>Zoomen</span></div>
+      <div class="ch-row"><b>F</b><span>Auf Konstruktion zoomen (Fokus)</span></div>
+      <div class="ch-sub">Bearbeiten</div>
       <div class="ch-row"><b>Ziehen</b><span>Objekt bewegen (XZ-Ebene)</span></div>
       <div class="ch-row"><b>Alt + Ziehen</b><span>Objekt in der Höhe bewegen (Y)</span></div>
-      <div class="ch-row"><b>Pfeiltasten</b><span>Bewegen in XZ (Schritt = Raster)</span></div>
-      <div class="ch-row"><b>Alt + ↑ / ↓</b><span>Höhe (Y) verändern</span></div>
-      <div class="ch-row"><b>Bild ↑ / ↓</b><span>Höhe (Y) verändern</span></div>
+      <div class="ch-row"><b>Pfeiltasten</b><span>Objekt bewegen (Schritt = Raster)</span></div>
+      <div class="ch-row"><b>Alt + ↑ / ↓</b><span>Objekt-Höhe (Y) verändern</span></div>
       <div class="ch-row"><b>Umschalt + Klick</b><span>Mehrere auswählen</span></div>
       <div class="ch-row"><b>Rechtsklick</b><span>Drehen / aufrichten &amp; löschen</span></div>
       <div class="ch-row"><b>Gruppe + Rechtsklick</b><span>Ganze Gruppe drehen / spiegeln</span></div>
@@ -1344,7 +1361,7 @@ body {
       <div class="ch-row"><b>Entf</b><span>Auswahl löschen</span></div>
       <div class="ch-row"><b>Strg + Z / Y</b><span>Rückgängig / Wiederholen</span></div>
       <div class="ch-row"><b>Strg + D</b><span>Duplizieren</span></div>
-      <div class="ch-row"><b>F · Esc · ?</b><span>Fokus · Abbrechen · Hilfe</span></div>
+      <div class="ch-row"><b>Esc · ?</b><span>Abbrechen · Hilfe ein/aus</span></div>
     </div>
     <div id="autosave-banner" style="display:none;position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:60;background:var(--bg-card);border:1px solid var(--accent);border-radius:var(--r);padding:9px 14px;box-shadow:0 6px 24px rgba(0,0,0,.35);align-items:center;gap:12px;font-size:12.5px;color:var(--text);max-width:92%;">
       <span>💾 Nicht gespeicherter Stand gefunden <span id="autosave-info" style="color:var(--text-3)"></span></span>
@@ -3217,10 +3234,27 @@ function smartSnapY(rawY, dragged) {
 
 function toggleHelp() {
   const panel = document.getElementById('controls-help');
+  if (!panel) return;
+  _applyHelpVisible(panel.classList.contains('hidden'));   // umschalten
+}
+
+// Steuerung ein-/ausblenden + Zustand merken (⌨-Icon oben rechts spiegelt ihn).
+function _applyHelpVisible(visible) {
+  const panel = document.getElementById('controls-help');
   const btn = document.getElementById('btn-help');
   if (!panel) return;
-  const hidden = panel.classList.toggle('hidden');
-  if (btn) btn.classList.toggle('active', !hidden);
+  panel.classList.toggle('hidden', !visible);
+  if (btn) {
+    btn.classList.toggle('active', visible);
+    btn.title = visible ? 'Steuerung ausblenden' : 'Steuerung einblenden';
+  }
+  try { localStorage.setItem('hb_help_visible', visible ? '1' : '0'); } catch (e) {}
+}
+
+function initHelpPanel() {
+  let visible = true;
+  try { const v = localStorage.getItem('hb_help_visible'); if (v !== null) visible = v === '1'; } catch (e) {}
+  _applyHelpVisible(visible);
 }
 
 // ══════════════════════════════════════════════
@@ -3801,6 +3835,9 @@ function mirrorSelection(axis) {
 // WASD camera movement state
 const wasd = { w:false, a:false, s:false, d:false, q:false, e:false };
 const WASD_KEYS = new Set(['w','a','s','d','q','e']);
+// Ohne Auswahl navigieren die Pfeiltasten die Kamera — auf dieselben WASD-Flags
+// gemappt, damit die Bewegung frame-basiert und flüssig bleibt.
+const ARROW_TO_WASD = { ArrowUp:'w', ArrowDown:'s', ArrowLeft:'a', ArrowRight:'d' };
 
 // Release WASD keys when mouse leaves viewport
 viewport.addEventListener('mouseleave', () => {
@@ -3841,9 +3878,15 @@ document.addEventListener('keydown', e => {
     return;
   }
 
-  // Arrow key: move selected beam
+  // Ohne Auswahl: Pfeiltasten navigieren die Kamera (wie WASD, gleiche flüssige Bewegung)
   const selectedId = [...selectedIds][0] ?? null;
-  if (!selectedId) return;
+  if (!selectedId) {
+    const nav = ARROW_TO_WASD[e.key];
+    if (nav) { wasd[nav] = true; e.preventDefault(); }
+    else if (e.key === 'PageUp')   { wasd.e = true; e.preventDefault(); }
+    else if (e.key === 'PageDown') { wasd.q = true; e.preventDefault(); }
+    return;
+  }
   const b = beams.find(x => x.id === selectedId);
   if (!b) return;
   const step = snapEnabled ? (parseFloat(document.getElementById('snap-size').value) || 10) : 10;
@@ -3877,6 +3920,11 @@ document.addEventListener('keydown', e => {
 document.addEventListener('keyup', e => {
   const key = e.key.toLowerCase();
   if (WASD_KEYS.has(key)) wasd[key] = false;
+  // Pfeiltasten-/Bild-Navigation wieder freigeben
+  const nav = ARROW_TO_WASD[e.key];
+  if (nav) wasd[nav] = false;
+  if (e.key === 'PageUp') wasd.e = false;
+  if (e.key === 'PageDown') wasd.q = false;
 });
 
 // WASD movement applied each frame in animate()
@@ -6343,6 +6391,7 @@ try {
   updateUI();
   updateUndoRedoButtons();
   initPanelToggles();
+  initHelpPanel();
   checkAutosaveOnLoad();
   // Auto-Speichern alle 8s + beim Verlassen der Seite (Free — verhindert Datenverlust)
   setInterval(autosaveNow, 8000);
