@@ -750,7 +750,7 @@ def _security_txt_body():
     expires = (datetime.utcnow() + timedelta(days=365)).strftime('%Y-%m-%dT%H:%M:%SZ')
     return (
         '# Sicherheitslücken bitte vertraulich an die Kontaktadresse melden.\n'
-        'Contact: mailto:bohler.david@gmail.com\n'
+        'Contact: mailto:info@holzbau3d.app\n'
         f'Expires: {expires}\n'
         'Preferred-Languages: de, en, fr\n'
         f'Canonical: {SITE}/.well-known/security.txt\n'

@@ -858,7 +858,18 @@ body {
 [data-theme="light"] .view-btn:hover { background: var(--bg-panel); }
 [data-theme="light"] #tooltip { background: rgba(255,255,255,.97); }
 [data-theme="light"] #controls-help { background: rgba(255,255,255,.94); }
-[data-theme="light"] #measure-hint { background: rgba(255,255,255,.97); }
+/* Hinweisbanner ueber dem Viewport (Massband, Ausfraesung platzieren).
+   Hintergrund und Farbe MUESSEN hier stehen, nicht inline: ein Inline-Style
+   schlaegt jede Regel, dadurch blieb der Kasten im Hellmodus dunkel waehrend
+   die Schrift auf dunkelgrau umschaltete — schwarz auf schwarz. */
+.hb-hint {
+  position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+  background: rgba(14,17,23,.92); color: var(--text);
+  border: 1px solid var(--accent); border-radius: var(--r);
+  padding: 5px 14px; font-size: 12px;
+  pointer-events: none; white-space: nowrap; z-index: 55;
+}
+[data-theme="light"] .hb-hint { background: rgba(255,255,255,.97); }
 </style>
 </head>
 <body>
@@ -1389,9 +1400,9 @@ body {
       <button class="tb-btn green" style="height:26px" onclick="restoreAutosave()">Wiederherstellen</button>
       <button class="tb-btn" style="height:26px" onclick="discardAutosave()" title="Verwerfen">✕</button>
     </div>
-    <div id="place-hint" style="display:none;position:absolute;top:10px;left:50%;transform:translateX(-50%);background:rgba(14,17,23,.92);border:1px solid var(--accent);border-radius:var(--r);padding:5px 14px;font-size:12px;color:var(--text);pointer-events:none;white-space:nowrap;z-index:56"></div>
+    <div id="place-hint" class="hb-hint" style="display:none;z-index:56"></div>
     <div id="snap-indicator" class="snap-indicator on">Raster: EIN</div>
-    <div id="measure-hint" style="display:none;position:absolute;top:10px;left:50%;transform:translateX(-50%);background:rgba(14,17,23,.92);border:1px solid var(--accent);border-radius:var(--r);padding:5px 14px;font-size:12px;color:var(--text);pointer-events:none;white-space:nowrap;z-index:55">📏 Maßband aktiv — 1. Punkt anklicken</div>
+    <div id="measure-hint" class="hb-hint" style="display:none">📏 Maßband aktiv — 1. Punkt anklicken</div>
     <div id="measure-label" style="display:none;position:absolute;pointer-events:none;z-index:50"></div>
     <canvas id="measure-canvas" style="position:absolute;inset:0;pointer-events:none;z-index:49"></canvas>
     <div id="deco-loading" style="display:none">
@@ -1626,7 +1637,7 @@ import { clone as skeletonClone } from 'three/addons/utils/SkeletonUtils.js';
 // ── PLAN (injected by Flask) ──
 const USER_PLAN = '{{ user_plan|default("free") }}';
 const IS_PREMIUM = USER_PLAN === 'premium';
-const MAX_FREE_BEAMS = 15;
+const MAX_FREE_BEAMS = 20;
 
 function requirePremium(featureName, featureDesc) {
   if (IS_PREMIUM) return true;
