@@ -3080,7 +3080,7 @@ function updateDecoSelPanel() {
     const dp = def.defaultParams;
     paramsDiv.innerHTML = Object.entries(dp).map(([key, defVal]) => {
       const val = p[key] !== undefined ? p[key] : defVal;
-      const labelMap = { W:'Breite (mm)', H:'Höhe (mm)', T:'Dicke (mm)', scale:'Maßstab (%)' };
+      const labelMap = { L:'Länge (mm)', W:'Breite (mm)', H:'Höhe (mm)', T:'Dicke (mm)', scale:'Maßstab (%)' };
       const label = labelMap[key] || key;
       return `<div class="form-row"><label>${label}</label><input type="number" id="deco-param-${key}" value="${val}" step="${key==='scale'?5:50}" min="${key==='scale'?5:50}" onchange="applyDecoEdit()"></div>`;
     }).join('');
@@ -5547,7 +5547,79 @@ const DEKO_DEFS = {
       return grp;
     }
   },
-  car:       makeGLTFDef('Auto',   'https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/covered_car/covered_car_2k.gltf', 1400),
+  // PKW, prozedural und masshaltig. Vorher lag hier das Poly-Haven-Modell
+  // 'covered_car' — ein Auto unter einer Plane. Als dunkler Klumpen taugte es
+  // weder als Massstab noch fuer die eigentliche Frage "passt mein Auto in den
+  // Carport?". Referenzform 4500 x 1820 x 1460 mm, wird auf L/W/H skaliert.
+  // Laenge liegt auf Z, Breite auf X, Raeder stehen auf y = 0.
+  car: {
+    label: 'Auto',
+    defaultParams: { L: 4500, W: 1820, H: 1460 },
+    build(p = {}) {
+      const L = Math.max(2000, p.L || 4500);
+      const W = Math.max(1000, p.W || 1820);
+      const H = Math.max(1000, p.H || 1460);
+      const grp = new THREE.Group();
+      const body  = new THREE.MeshStandardMaterial({ color: 0x2f4a6d, roughness: 0.42, metalness: 0.25 });
+      const glass = new THREE.MeshStandardMaterial({ color: 0x1a2430, roughness: 0.12, metalness: 0.55 });
+      const tyre  = new THREE.MeshStandardMaterial({ color: 0x16181c, roughness: 0.95 });
+      const rim   = new THREE.MeshStandardMaterial({ color: 0xb8bcc4, roughness: 0.35, metalness: 0.8 });
+
+      // Profil in Z/Y aufbauen und quer zur Fahrtrichtung extrudieren.
+      const ext = (pts, depth, mat, bevel) => {
+        const s = new THREE.Shape();
+        pts.forEach(([x, y], i) => i === 0 ? s.moveTo(x, y) : s.lineTo(x, y));
+        s.closePath();
+        const g = new THREE.ExtrudeGeometry(s, {
+          depth, bevelEnabled: !!bevel, bevelThickness: bevel || 0,
+          bevelSize: bevel || 0, bevelSegments: 2, curveSegments: 6,
+        });
+        g.translate(0, 0, -depth / 2);   // in Extrusionsrichtung zentrieren
+        g.rotateY(-Math.PI / 2);         // Profil-X -> Welt-Z, Extrusion -> Welt-X
+        const m = new THREE.Mesh(g, mat);
+        m.castShadow = true; m.receiveShadow = true;
+        return m;
+      };
+
+      const Wb = 1700;   // Karosserie etwas schmaler als die Spur, Raeder stehen vor
+      // Karosserie bis Guertellinie. 900 Ueberhang vorn, 2650 Radstand, 950 hinten
+      // und eine hohe Bugfront — flach und langnasig liest sich die Silhouette
+      // sofort als Keilcoupe statt als Alltagswagen.
+      grp.add(ext([
+        [-2250, 280], [-2250, 700], [-2210, 830], [-1980, 890], [-1400, 930],
+        [-780, 965], [1850, 1000], [2130, 955], [2250, 810], [2250, 280],
+      ], Wb, body, 28));
+      // Glashaus, Windschutzscheibe steil
+      grp.add(ext([
+        [-780, 960], [-30, 1430], [900, 1450], [1350, 1430], [1850, 995],
+      ], Wb - 90, glass, 12));
+      // Dachschale — kuerzer als das Glashaus, sonst steht vorne eine Lippe vor
+      const roof = new THREE.Mesh(new THREE.BoxGeometry(Wb - 40, 55, 1200), body);
+      roof.position.set(0, 1440, 660); roof.castShadow = true;
+      grp.add(roof);
+
+      const r = 350, tw = 225;
+      [[-800, -1350], [800, -1350], [-800, 1300], [800, 1300]].forEach(([wx, wz]) => {
+        const t = new THREE.Mesh(new THREE.CylinderGeometry(r, r, tw, 20), tyre);
+        t.rotation.z = Math.PI / 2; t.position.set(wx, r, wz); t.castShadow = true;
+        grp.add(t);
+        const d = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.6, r * 0.6, tw + 8, 16), rim);
+        d.rotation.z = Math.PI / 2; d.position.set(wx * 1.006, r, wz);
+        grp.add(d);
+      });
+      // Leuchten: vorne warmweiss, hinten rot
+      [[-1, 0xf4f2e2, 620], [1, 0xd23b2e, 860]].forEach(([sgn, col, y]) => {
+        [-1, 1].forEach(side => {
+          const l = new THREE.Mesh(new THREE.BoxGeometry(300, 130, 60),
+            new THREE.MeshStandardMaterial({ color: col, roughness: 0.3, emissive: col, emissiveIntensity: 0.25 }));
+          l.position.set(side * 570, y, sgn * 2245);
+          grp.add(l);
+        });
+      });
+      grp.scale.set(W / 1820, H / 1460, L / 4500);
+      return grp;
+    }
+  },
 
   // ─── Pflanzen (Poly Haven CC0, echte Scans) ───
   bush:      makeGLTFDef('Busch',      'https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/shrub_01/shrub_01_2k.gltf',                 600),
