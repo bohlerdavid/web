@@ -55,19 +55,24 @@ body {
 }
 
 /* ═══ TOPBAR ═══ */
+/* Die Leiste bricht um, statt seitlich wegzuscrollen.
+   Vorher: feste Hoehe + overflow-x:auto. Ihr Inhalt braucht aber ~1900px —
+   auf einem 1280er-Laptop lagen damit die letzten Knoepfe (Saege, Fräsen,
+   Foto, Drucken) ausserhalb des Bildes, erreichbar nur durch seitliches
+   Scrollen, von dem niemand weiss. Mit Umbruch ist immer alles sichtbar;
+   #main nimmt per flex:1 einfach die Resthoehe, das Layout bleibt heil. */
 #topbar {
-  height: var(--topbar-h);
   min-height: var(--topbar-h);
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
-  padding: 0 10px;
+  padding: 3px 10px;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 1px;
+  row-gap: 3px;
   flex-shrink: 0;
   z-index: 100;
-  overflow-x: auto;
-  overflow-y: hidden;
 }
 #topbar::-webkit-scrollbar { display: none; }
 
@@ -82,12 +87,19 @@ body {
 }
 .logo span { color: var(--accent); }
 
-.tb-divider {
-  width: 1px;
-  height: 20px;
-  background: var(--border);
-  margin: 0 5px;
-  flex-shrink: 0;
+/* Die Trennstriche waren eigenstaendige Flex-Kinder und brachen darum als
+   nackte Striche auf eigene Zeilen um, seit die Leiste umbricht. Die Linie
+   sitzt jetzt am linken Rand der Gruppe (siehe .tb-group) und wandert
+   zwangslaeufig mit ihr. Das Markup behaelt die Elemente — sie werden nur
+   nicht mehr gezeichnet. */
+.tb-divider { display: none; }
+.tb-group,
+#theme-toggle {   /* der 7. Strich stand vor dem Theme-Knopf — der ist KEINE
+                     .tb-group und haette die Linie sonst ersatzlos verloren,
+                     der Abstand waere von 13px auf 1px gefallen. */
+  border-left: 1px solid var(--border);
+  margin-left: 5px;
+  padding-left: 6px;
 }
 .tb-group {
   display: flex;
@@ -814,6 +826,38 @@ body {
 #saw-panel .saw-angle-btn:hover { background: var(--orange); color: #fff; }
 #btn-saw.active { background: rgba(245,153,63,.12); border-color: var(--orange); color: var(--orange); }
 
+/* ── Fraes-Leiste — wie die Saege, aber in Akzentfarbe und ohne Blinken.
+   Das Blinken der Saege warnt vor dem Schnitt; hier waehlt man nur eine Form. */
+#fraes-panel {
+  display: none;
+  align-items: center;
+  gap: 5px;
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+  border-radius: var(--r);
+  padding: 3px 10px;
+  font-size: 11px;
+  color: var(--accent);
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+#fraes-panel .fraes-form {
+  background: var(--bg-input);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-family: var(--font);
+  transition: all .1s;
+}
+#fraes-panel .fraes-form:hover:not(:disabled) { background: var(--accent); color: #fff; }
+/* Ohne ausgewaehlte Platte gibt es nichts zu fraesen — dann sagt der Hinweis
+   daneben, was fehlt, statt dass ein Klick wortlos nichts tut. */
+#fraes-panel .fraes-form:disabled { opacity: .4; cursor: not-allowed; border-color: var(--border); color: var(--text-3); }
+#btn-fraes.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+
 /* ── FLOOR PLAN ── */
 #floor-preview { display: block; margin: 0 auto 10px; background: var(--bg-input); border-radius: var(--r); border: 1px solid var(--border); }
 #fp-info { font-size: 11px; color: var(--green); text-align: center; min-height: 16px; margin: 3px 0; }
@@ -980,6 +1024,7 @@ body {
     <button class="tb-btn" id="btn-measure" onclick="toggleMeasure()" title="Maßband: 2 Punkte anklicken">📏 Maßband</button>
     <button class="tb-btn" id="btn-measure-clear" onclick="clearMeasure()" style="display:none;color:var(--red);border-color:var(--red-dim)">✕</button>
     <button class="tb-btn" id="btn-saw" onclick="toggleSaw()" title="Säge — Balken schneiden">🪚 Säge{% if show_ads %} 🔒{% endif %}</button>
+    <button class="tb-btn" id="btn-fraes" onclick="toggleFraes()" title="Fräsen — Aussparung in eine Platte (OSB/Sperrholz)">🔩 Fräsen</button>
     <button class="tb-btn" onclick="screenshotPNG()" title="Screenshot als PNG speichern">📷 Foto</button>
     <button class="tb-btn" onclick="printProject()" title="Drucken / PDF">🖨 Drucken{% if show_ads %} 🔒{% endif %}</button>
   </div>
@@ -1036,6 +1081,16 @@ body {
     <button class="saw-angle-btn" onclick="document.getElementById('saw-angle').value=45">45°</button>
     <button class="saw-angle-btn" onclick="document.getElementById('saw-angle').value=-45">-45°</button>
     <button class="tb-btn" style="color:var(--red);border-color:var(--red-dim);margin-left:4px" onclick="toggleSaw()">✕ Beenden</button>
+  </div>
+
+  {# Fraesen lag frueher nur im Panel "Auswahl bearbeiten" und tauchte dort erst
+     auf, wenn zufaellig eine Platte gewaehlt war — praktisch unauffindbar.
+     Jetzt wie die Saege: Knopf oben, Leiste klappt auf. #}
+  <div id="fraes-panel">
+    <span id="fraes-hint">🔩 Fräsen</span>
+    <button class="fraes-form" id="fraes-rect" onclick="startPlaceCutout('rect')">▭ Rechteck</button>
+    <button class="fraes-form" id="fraes-circle" onclick="startPlaceCutout('circle')">◯ Kreis</button>
+    <button class="tb-btn" style="color:var(--red);border-color:var(--red-dim);margin-left:4px" onclick="toggleFraes()">✕ Beenden</button>
   </div>
 </div>
 
@@ -1238,13 +1293,15 @@ body {
             <button class="add-btn" onclick="deleteSelected();updateUI()" style="background:var(--red-dim);color:var(--red);border:1px solid var(--red);font-size:12px">✕ Löschen</button>
           </div>
         </div>
+        {# Neue Aussparungen legt man jetzt oben ueber "🔩 Fräsen" an. Hier
+           bleibt nur die Liste zum Feinjustieren der Masse — das ist eine
+           Eigenschaft des ausgewaehlten Teils und gehoert in dieses Panel. #}
         <div class="panel-section" id="cutout-section" style="display:none">
           <div class="panel-title" style="margin-bottom:6px">🔩 Ausfräsungen / Aussparungen</div>
-          <div style="font-size:10px;color:var(--text-3);margin-bottom:8px;line-height:1.4">Über die Platte fahren und klicken zum Platzieren, danach Werte fein justieren. Überlappende Löcher verschmelzen.</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
-            <button class="add-btn" onclick="startPlaceCutout('rect')" style="background:var(--bg-card);color:var(--accent);border:1px solid var(--accent);font-size:12px">▭ Rechteck</button>
-            <button class="add-btn" onclick="startPlaceCutout('circle')" style="background:var(--bg-card);color:var(--accent);border:1px solid var(--accent);font-size:12px">◯ Kreis</button>
-          </div>
+          {# Ein einziger Textknoten, kein <strong> darin: die Uebersetzung
+             schlaegt ganze Textknoten nach — mit Markup mittendrin zerfiele
+             der Satz in Bruchstuecke und keines faende einen Schluessel. #}
+          <div style="font-size:10px;color:var(--text-3);margin-bottom:8px;line-height:1.4">Neue Aussparung: oben über „🔩 Fräsen“. Hier die Maße fein justieren. Überlappende Löcher verschmelzen.</div>
           <div id="cutout-list"></div>
         </div>
       </div>
@@ -2032,7 +2089,7 @@ Object.assign(window, {
   openParamTemplate, applyParamTemplate, showSpanAssist, calcSpanAssist,
   showPlattenzuschnitt, renderPlattenzuschnitt, exportPanelCNCDXF,
   toggleLeftPanel, toggleRightPanel,
-  addCutout, updateCutout, deleteCutout, startPlaceCutout,
+  addCutout, updateCutout, deleteCutout, startPlaceCutout, toggleFraes,
   loadRefImage, applyCalibration, setRefImageOpacity, toggleRefImageVisible, recalibrateRefImage, removeRefImage,
   calibZoomBy, calibZoomFit, toggleCalibCrop, applyCalibCrop, resetCalibCrop,
 });
@@ -3028,6 +3085,11 @@ function deleteSelected() {
 // ══════════════════════════════════════════════
 
 function updateSelPanel() {
+  // GANZ oben, vor jedem return: die Fraes-Leiste haengt an der Auswahl und
+  // muss auch mitbekommen, wenn NICHTS mehr gewaehlt ist (Escape, Klick ins
+  // Leere, Löschen). Stuende der Aufruf erst weiter unten, nennte die Leiste
+  // weiter die alte — womoeglich geloeschte — Platte.
+  renderFraesPanel();
   const info = document.getElementById('sel-info');
   const editDiv = document.getElementById('sel-edit');
   const selectedId = [...selectedIds][0] ?? null;
@@ -3067,6 +3129,7 @@ function _selectedSheetBeam() {
   return (b && SHEET_MATERIALS.has(b.woodType)) ? b : null;
 }
 function renderCutoutPanel(b) {
+  renderFraesPanel();   // Hinweis oben zieht mit der Auswahl mit
   const sec = document.getElementById('cutout-section');
   if (!sec) return;
   if (!b || !SHEET_MATERIALS.has(b.woodType)) { sec.style.display = 'none'; return; }
@@ -3074,6 +3137,10 @@ function renderCutoutPanel(b) {
   const list = document.getElementById('cutout-list');
   const cuts = b.cutouts || [];
   if (!cuts.length) { list.innerHTML = '<div style="font-size:11px;color:var(--text-3);padding:2px 0">Noch keine Aussparung.</div>'; return; }
+  // Die Liste baut ihre Titel selbst zusammen ("▭ Rechteck 1"). Als Ganzes ist
+  // das kein Woerterbuch-Schluessel — ohne dieses T stuende die Leiste oben
+  // englisch und die Liste darunter deutsch.
+  const T = (s) => (window.t ? window.t(s) : s);
   list.innerHTML = cuts.map((c, i) => {
     const dims = c.shape === 'circle'
       ? `<label style="font-size:10px;color:var(--text-3)">Ø<input type="number" value="${c.dia || 100}" min="1" step="5" style="width:56px" onchange="updateCutout(${i},'dia',this.value)"></label>`
@@ -3081,7 +3148,7 @@ function renderCutoutPanel(b) {
          <label style="font-size:10px;color:var(--text-3)">H<input type="number" value="${c.h || 100}" min="1" step="5" style="width:52px" onchange="updateCutout(${i},'h',this.value)"></label>`;
     return `<div style="border:1px solid var(--border);border-radius:var(--r-sm);padding:6px;margin-bottom:6px;background:var(--bg-card)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-        <strong style="font-size:11px;color:var(--text-2)">${c.shape === 'circle' ? '◯ Kreis' : '▭ Rechteck'} ${i + 1}</strong>
+        <strong style="font-size:11px;color:var(--text-2)">${T(c.shape === 'circle' ? '◯ Kreis' : '▭ Rechteck')} ${i + 1}</strong>
         <span style="cursor:pointer;color:var(--red);font-size:12px" onclick="deleteCutout(${i})" title="Entfernen">✕</span>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
@@ -3151,9 +3218,61 @@ function _previewOutline(shape, def) {
   return pts;
 }
 
+// ── Fraes-Leiste oben (Knopf 🔩 Fräsen) ──
+let fraesActive = false;
+
+function toggleFraes() {
+  fraesActive = !fraesActive;
+  if (fraesActive) _exitTools('cutout');   // Saege/Massband beenden
+  else cancelPlaceCutout();                // Vorschau weg, wenn man zumacht
+  renderFraesPanel();
+  // Die Leiste bricht dadurch evtl. auf eine Zeile mehr um und #viewport
+  // schrumpft. Ohne Nachmessen behielte das Canvas seine alte Hoehe und der
+  // untere Rand der 3D-Ansicht waere abgeschnitten — ausgerechnet waehrend man
+  // auf die Platte klicken soll. Wie in _applyPanelToggle.
+  resize();
+}
+
+// Haelt Hinweis und Knoepfe der Leiste am Auswahlzustand. Wird auch bei jeder
+// Auswahl-Aenderung gerufen (aus renderCutoutPanel), damit der Text mitzieht.
+function renderFraesPanel() {
+  const p = document.getElementById('fraes-panel');
+  if (!p) return;
+  p.style.display = fraesActive ? 'flex' : 'none';
+  document.getElementById('btn-fraes')?.classList.toggle('active', fraesActive);
+  if (!fraesActive) return;
+  // Uebersetzen wie ueberall: der deutsche Text ist der Schluessel. {platte}
+  // bleibt ein Platzhalter, damit der Satzbau je Sprache frei ist — die
+  // Anfuehrungszeichen unterscheiden sich ja auch („“ / "" / « »).
+  const T = (s) => (window.t ? window.t(s) : s);
+  const b = _selectedSheetBeam();
+
+  // Wechselt die Auswahl WEG von der Platte, in die gerade platziert wird, muss
+  // die Vorschau weg. Sonst behauptet die Leiste "erst eine Platte auswaehlen",
+  // waehrend der naechste Klick klaglos weiter in die alte Platte fraest.
+  if (_placingCutout && (!b || b.id !== _placingCutout.beamId)) cancelPlaceCutout();
+
+  const hinweis = document.getElementById('fraes-hint');
+  const rect = document.getElementById('fraes-rect');
+  const kreis = document.getElementById('fraes-circle');
+  if (b) {
+    // Ersatz als FUNKTION: der Name ist freier Nutzertext, und $&, $', $` sind
+    // Ersetzungsmuster von String.replace. Ein Balken namens "Wand $' 2" haette
+    // den halben Satz verdoppelt. Eine Funktion setzt stur ein, was sie liefert.
+    hinweis.textContent = T('🔩 Fräsen in „{platte}“ — Form wählen, dann auf die Platte klicken')
+      .replace('{platte}', () => b.name);
+    rect.disabled = false; kreis.disabled = false;
+  } else {
+    // Der haeufigste Fall beim ersten Klick: nichts oder ein Balken gewaehlt.
+    // Frueher tat startPlaceCutout dann wortlos gar nichts.
+    hinweis.textContent = T('🔩 Fräsen — dazu erst eine Platte auswählen (OSB oder Sperrholz)');
+    rect.disabled = true; kreis.disabled = true;
+  }
+}
+
 function startPlaceCutout(shape) {
   const b = _selectedSheetBeam();
-  if (!b) return;
+  if (!b) { renderFraesPanel(); return; }   // Leiste sagt, was fehlt
   _exitTools('cutout');   // Saege/Massband beenden, sonst faengt deren Klick vor
   _placingCutout = { beamId: b.id, shape };
   const hint = document.getElementById('place-hint');
@@ -3231,7 +3350,12 @@ function cancelPlaceCutout() {
 // zu beenden, faengt der naechste Klick noch das alte ab. Genau das war der Bug:
 // Massband angeklickt, aber der Klick hat noch gefraest.
 function _exitTools(keep) {
-  if (keep !== 'cutout' && _placingCutout) cancelPlaceCutout();
+  if (keep !== 'cutout') {
+    if (_placingCutout) cancelPlaceCutout();
+    // Auch die Fraes-Leiste zu: sonst behauptet sie weiter, sie sei aktiv,
+    // waehrend der naechste Klick laengst saegt oder misst.
+    if (fraesActive) { fraesActive = false; renderFraesPanel(); }
+  }
   if (keep !== 'saw' && sawActive) {
     sawActive = false;
     document.getElementById('btn-saw').classList.remove('active');
@@ -5290,6 +5414,7 @@ function toggleSaw() {
     _exitTools('saw');    // Massband UND Ausfraesung beenden
     viewport.style.cursor = 'crosshair';
   }
+  resize();   // Leiste kann umbrechen -> #viewport aendert die Hoehe (siehe toggleFraes)
 }
 
 function _getSawAngle() {
