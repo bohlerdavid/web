@@ -912,6 +912,18 @@ FEEDBACK_STATUS = ('neu', 'in_arbeit', 'erledigt', 'abgelehnt')
 FEEDBACK_STATUS_LABEL = {
     'neu': 'Neu', 'in_arbeit': 'In Arbeit', 'erledigt': 'Erledigt', 'abgelehnt': 'Abgelehnt',
 }
+# Fuer E-Mails: die laufen serverseitig, dorthin kommt static/i18n.js nie. Auf
+# der Profilseite uebersetzt der Browser die deutschen Labels von oben; eine
+# Mail wuerde sonst "Status: Erledigt" mitten im englischen Text zeigen.
+FEEDBACK_STATUS_I18N = {
+    'de': FEEDBACK_STATUS_LABEL,
+    'en': {'neu': 'New', 'in_arbeit': 'In progress', 'erledigt': 'Done', 'abgelehnt': 'Declined'},
+    'fr': {'neu': 'Nouveau', 'in_arbeit': 'En cours', 'erledigt': 'Terminé', 'abgelehnt': 'Refusé'},
+}
+
+
+def _status_label(status, lang='de'):
+    return FEEDBACK_STATUS_I18N.get(_norm_lang(lang), FEEDBACK_STATUS_LABEL).get(status, status)
 # Screenshots kommen als data:-URL aus dem Browser (schon auf 1280px/WebP
 # heruntergerechnet). Grosszuegige Obergrenze, damit ein 4K-Monitor nicht
 # stumm abgelehnt wird, aber MEDIUMBLOB (16 MB) nicht sprengt.
@@ -1051,7 +1063,7 @@ def admin_feedback_update(fid):
         try:
             send_email(row['email'], FEEDBACK_I18N[u_lang]['subject'].replace('{subject}', row['subject']),
                        _email_feedback_html(row['full_name'] or row['username'], row['subject'],
-                                            reply, FEEDBACK_STATUS_LABEL.get(status, status), u_lang))
+                                            reply, _status_label(status, u_lang), u_lang))
         except Exception as e:
             logger.error('feedback: Antwort-Mail fehlgeschlagen: %s', type(e).__name__)
     flash('Ticket aktualisiert.' + (' Antwort per E-Mail gesendet.' if reply_neu else ''), 'success')

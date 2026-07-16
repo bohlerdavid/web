@@ -49,10 +49,13 @@
     <span class="fb-meta ms-auto">{{ t['created']|lokal }}</span>
   </div>
 
-  <div style="font-weight:700;color:#1f2937;margin-bottom:4px;">{{ t['subject'] }}</div>
-  <div class="fb-msg">{{ t['message'] }}</div>
+  {# translate="no": das hat der Nutzer geschrieben. Meldet jemand einen Fehler
+     am Speichern-Knopf mit dem Betreff "Speichern", wuerde die Uebersetzung
+     daraus "Save" machen — du laesest einen veraenderten Bericht. #}
+  <div translate="no" style="font-weight:700;color:#1f2937;margin-bottom:4px;">{{ t['subject'] }}</div>
+  <div translate="no" class="fb-msg">{{ t['message'] }}</div>
 
-  {% if t['ctx'] %}<div class="fb-ctx">{{ t['ctx'] }}</div>{% endif %}
+  {% if t['ctx'] %}<div translate="no" class="fb-ctx">{{ t['ctx'] }}</div>{% endif %}
 
   {% if t['has_shot'] %}
   <a href="{{ url_for('feedback_screenshot', fid=t['id']) }}" target="_blank">

@@ -99,8 +99,12 @@
       <span style="font-size:.75rem;color:#9ca3af;">{{ '🐞 Fehler' if t['kind'] == 'bug' else '💡 Vorschlag' }}</span>
       <span style="font-size:.75rem;color:#9ca3af;margin-left:auto;">{{ t['created']|lokal_datum }}</span>
     </div>
-    <div style="font-weight:600;color:#1f2937;margin-top:7px;">{{ t['subject'] }}</div>
-    <div style="color:#6b7280;font-size:.86rem;white-space:pre-wrap;margin-top:3px;">{{ t['message'] }}</div>
+    {# translate="no": das hat der Nutzer selbst geschrieben. Ohne die Sperre
+       wuerde ein Betreff, der zufaellig einem Woerterbuch-Schluessel gleicht
+       ("Speichern"), beim Anzeigen uebersetzt — der eigene Bericht stuende
+       veraendert da. #}
+    <div translate="no" style="font-weight:600;color:#1f2937;margin-top:7px;">{{ t['subject'] }}</div>
+    <div translate="no" style="color:#6b7280;font-size:.86rem;white-space:pre-wrap;margin-top:3px;">{{ t['message'] }}</div>
     {% if t['has_shot'] %}
     <a href="{{ url_for('feedback_screenshot', fid=t['id']) }}" target="_blank"
        style="display:inline-block;margin-top:8px;font-size:.78rem;color:#d97706;text-decoration:none;">
@@ -109,7 +113,7 @@
     {% if t['admin_reply'] %}
     <div style="margin-top:10px;padding:10px 12px;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;">
       <div style="font-size:.68rem;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.4px;">Unsere Antwort</div>
-      <div style="color:#374151;font-size:.86rem;white-space:pre-wrap;margin-top:3px;">{{ t['admin_reply'] }}</div>
+      <div translate="no" style="color:#374151;font-size:.86rem;white-space:pre-wrap;margin-top:3px;">{{ t['admin_reply'] }}</div>
     </div>
     {% endif %}
   </div>

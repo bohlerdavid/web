@@ -975,18 +975,23 @@ body {
         <div style="font-weight:700;font-size:.88rem;color:var(--text);">{{ session.get('full_name') or session.get('username','') }}</div>
         <div style="font-size:.72rem;color:var(--text-2);margin-top:2px;">{% if user_plan == 'premium' %}✨ Premium{% else %}Free Plan{% endif %}</div>
       </div>
-      <a href="/profile" class="umenu-item">👤&nbsp; Profil &amp; Passwort</a>
-      <a href="/subscribe" class="umenu-item">⭐&nbsp; Abonnement</a>
+      {# Emoji und Text stehen getrennt, damit der Textknoten NUR den Text
+         enthaelt: die Uebersetzung schlaegt den getrimmten Knoten im
+         Woerterbuch nach. Mit "👤&nbsp; Profil & Passwort" in einem Knoten
+         passte kein Schluessel — die Eintraege lagen uebersetzt, aber tot
+         im Woerterbuch. Den Abstand macht ohnehin das gap:8px der Zeile. #}
+      <a href="/profile" class="umenu-item"><span>👤</span><span>Profil &amp; Passwort</span></a>
+      <a href="/subscribe" class="umenu-item"><span>⭐</span><span>Abonnement</span></a>
       {% if not show_ads %}
       {# Gleiche Bedingung wie die Route: show_ads = (plan == 'free'). #}
       <button type="button" class="umenu-item" onclick="openFeedback()"
-              style="width:100%;background:none;border:none;font:inherit;font-size:.85rem;text-align:left;cursor:pointer;">💬&nbsp; Feedback senden</button>
+              style="width:100%;background:none;border:none;font:inherit;font-size:.85rem;text-align:left;cursor:pointer;"><span>💬</span><span>Feedback senden</span></button>
       {% endif %}
       {% if session.get('role') == 'admin' %}
-      <a href="/admin/users" class="umenu-item">🔧&nbsp; Admin</a>
+      <a href="/admin/users" class="umenu-item"><span>🔧</span><span>Admin</span></a>
       {% endif %}
       <div style="border-top:1px solid var(--border-2);"></div>
-      <a href="/logout" class="umenu-item" style="color:#f87171;">🚪&nbsp; Abmelden</a>
+      <a href="/logout" class="umenu-item" style="color:#f87171;"><span>🚪</span><span>Abmelden</span></a>
     </div>
   </div>
 
@@ -4298,18 +4303,28 @@ function closeFeedback() {
   if (m) m.style.display = 'none';
 }
 
+// Uebersetzt einen deutschen Text ueber das Woerterbuch aus i18n.js. Das Skript
+// laedt mit defer, deshalb der Rueckfall auf den deutschen Text — der ist immer
+// noch besser als eine leere Meldung.
+function _fbT(s) { return (window.t ? window.t(s) : s); }
+
+// Ein Fehler MIT eigener, verstaendlicher Meldung. Alles andere (fetch bricht ab,
+// JSON kaputt) traegt eine rohe Browser-Meldung wie "Failed to fetch" — die zeigen
+// wir nicht, die versteht niemand und uebersetzt ist sie auch nicht.
+function _fbFehler(text) { const e = new Error(text); e.fuerNutzer = true; return e; }
+
 async function sendFeedback() {
   const err = document.getElementById('fb-error');
   const btn = document.getElementById('fb-send');
   const subject = document.getElementById('fb-subject').value.trim();
   const message = document.getElementById('fb-message').value.trim();
   if (!subject || !message) {
-    err.textContent = 'Bitte Betreff und Beschreibung ausfüllen.';
+    err.textContent = _fbT('Bitte Betreff und Beschreibung ausfüllen.');
     err.style.display = 'block';
     return;
   }
   err.style.display = 'none';
-  btn.disabled = true; btn.textContent = 'Sendet …';
+  btn.disabled = true; btn.textContent = _fbT('Sendet …');
 
   const fd = new FormData();
   fd.append('csrf_token', CSRF_TOKEN);
@@ -4332,21 +4347,28 @@ async function sendFeedback() {
     // wuerde dem Nutzer als kryptische Meldung angezeigt — Text futsch.
     const typ = r.headers.get('content-type') || '';
     if (!typ.includes('application/json')) {
-      throw new Error(r.status === 413
+      throw _fbFehler(_fbT(r.status === 413
         ? 'Der Screenshot ist zu groß. Nimm den Haken raus und sende erneut.'
-        : 'Deine Sitzung ist abgelaufen. Bitte in einem neuen Tab neu anmelden — dein Text bleibt hier stehen.');
+        : 'Deine Sitzung ist abgelaufen. Bitte in einem neuen Tab neu anmelden — dein Text bleibt hier stehen.'));
     }
     const j = await r.json();
-    if (!j.ok) throw new Error(j.error || 'Senden fehlgeschlagen.');
+    // j.error kommt auf Deutsch vom Server. Durch _fbT geschickt wird es
+    // uebersetzt, weil das Woerterbuch ohnehin nach dem deutschen Text schluesselt.
+    if (!j.ok) throw _fbFehler(j.error ? _fbT(j.error) : _fbT('Senden fehlgeschlagen.'));
     closeFeedback();
     document.getElementById('fb-subject').value = '';
     document.getElementById('fb-message').value = '';
-    alert('Danke! Dein Feedback ist angekommen. Den Status siehst du in deinem Profil.');
+    alert(_fbT('Danke! Dein Feedback ist angekommen. Den Status siehst du in deinem Profil.'));
   } catch (e) {
-    err.textContent = e.message || 'Senden fehlgeschlagen. Bitte später erneut versuchen.';
+    // Nur unsere eigenen Meldungen durchlassen — ein Netzwerkabbruch liefert
+    // "Failed to fetch" (Chrome) bzw. "Load failed" (Safari), roh und englisch.
+    if (!e || !e.fuerNutzer) console.warn('[HolzBAU] Feedback fehlgeschlagen:', e);
+    err.textContent = (e && e.fuerNutzer)
+      ? e.message
+      : _fbT('Senden fehlgeschlagen. Bitte später erneut versuchen.');
     err.style.display = 'block';
   } finally {
-    btn.disabled = false; btn.textContent = 'Senden';
+    btn.disabled = false; btn.textContent = _fbT('Senden');
   }
 }
 
