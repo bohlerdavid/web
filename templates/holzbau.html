@@ -812,23 +812,56 @@ body {
 .schnitt-bar-waste { flex: 1; background: var(--bg-card); display: flex; align-items: center; justify-content: center; font-size: 9px; color: var(--text-3); }
 
 /* ── SAW PANEL ── */
+/* ── WERKZEUGFENSTER ────────────────────────────────────────────────────────
+   #saw-panel und #fraes-panel lagen frueher IN #topbar. Die Leiste ist
+   flex-wrap mit min-height: sobald eine Leiste aufklappte, passte die Zeile
+   nicht mehr, sie brach um, #topbar wurde hoeher und #viewport (flex:1)
+   schrumpfte — die 3D-Ansicht sprang. Jetzt schweben beide ueber der Ansicht,
+   und die Leiste kann strukturell nicht mehr wachsen.
+   Optik bewusst wie #autosave-banner (Z. ~1540): dieselbe Karte, derselbe
+   Schatten — ein Fenster soll wie das andere aussehen. */
+#tool-popup {
+  /* Absolut IM #viewport (das ist position:relative), nicht fixed am Fenster.
+     Erster Versuch war `fixed; top: calc(var(--topbar-h) + 12px)` — das lag
+     falsch, sobald die Leiste umbricht: --topbar-h ist 46px, die Leiste wird
+     aber ~97px hoch, das Fenster verschwand unter ihr. Im Viewport verankert
+     stimmt die Lage immer, egal wie hoch die Leiste gerade ist.
+     Links statt mittig: dort sitzen .hb-hint und #autosave-banner. */
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 61;              /* knapp ueber #autosave-banner (60) */
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+  pointer-events: none;     /* der leere Behaelter darf keine Klicks abfangen */
+  max-width: calc(100% - 24px);
+}
+#tool-popup > * { pointer-events: auto; }
+.wz-zu { color: var(--red); border-color: var(--red-dim); margin-left: 4px; }
+
 #saw-panel {
   display: none;
   align-items: center;
   gap: 5px;
-  background: rgba(245,153,63,.09);
+  background: var(--bg-card);
   border: 1px solid var(--orange);
   border-radius: var(--r);
-  padding: 3px 10px;
-  font-size: 11px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.35);
+  padding: 8px 12px;
+  font-size: 11.5px;
   color: var(--orange);
+  flex-wrap: wrap;
+  max-width: min(92vw, 720px);
   animation: sawBlink 1.6s ease-in-out infinite;
-  margin-left: 6px;
-  flex-shrink: 0;
 }
+/* Der Puls warnt weiter vor dem scharfen Schnitt, laeuft jetzt aber NUR ueber
+   den Rahmen. Als Leiste durfte die Karte mitblinken; als Fenster ueber der
+   Ansicht waere eine pulsierende Flaeche samt Text schlicht nicht auszuhalten. */
 @keyframes sawBlink {
-  0%,100% { border-color: var(--orange); opacity: 1; }
-  50% { border-color: #f5d08f; opacity: .85; }
+  0%,100% { border-color: var(--orange); }
+  50% { border-color: #f5d08f; }
 }
 #saw-panel .tb-input { width: 46px; }
 #saw-panel .saw-angle-btn {
@@ -843,7 +876,6 @@ body {
   transition: all .1s;
 }
 #saw-panel .saw-angle-btn:hover { background: var(--orange); color: #fff; }
-#btn-saw.active { background: rgba(245,153,63,.12); border-color: var(--orange); color: var(--orange); }
 
 /* ── Fraes-Leiste — wie die Saege, aber in Akzentfarbe und ohne Blinken.
    Das Blinken der Saege warnt vor dem Schnitt; hier waehlt man nur eine Form. */
@@ -851,14 +883,15 @@ body {
   display: none;
   align-items: center;
   gap: 5px;
-  background: var(--accent-dim);
+  background: var(--bg-card);
   border: 1px solid var(--accent);
   border-radius: var(--r);
-  padding: 3px 10px;
-  font-size: 11px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.35);
+  padding: 8px 12px;
+  font-size: 11.5px;
   color: var(--accent);
-  margin-left: 6px;
-  flex-shrink: 0;
+  flex-wrap: wrap;
+  max-width: min(92vw, 720px);
 }
 #fraes-panel .fraes-form {
   background: var(--bg-input);
@@ -875,7 +908,30 @@ body {
 /* Ohne ausgewaehlte Platte gibt es nichts zu fraesen — dann sagt der Hinweis
    daneben, was fehlt, statt dass ein Klick wortlos nichts tut. */
 #fraes-panel .fraes-form:disabled { opacity: .4; cursor: not-allowed; border-color: var(--border); color: var(--text-3); }
-#btn-fraes.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+/* ── Werkzeuge-Menue ── nach dem Muster von #user-menu (Z. ~1060). #}
+   Die drei Eintraege TRAGEN die alten Knopf-Ids, damit toggleMeasure/toggleSaw/
+   renderFraesPanel ihr .active unveraendert setzen koennen. */
+#tools-menu {
+  display: none;
+  position: fixed;
+  min-width: 190px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.5);
+  z-index: 601;             /* knapp ueber #tool-popup, sonst deckt ein offenes
+                               Werkzeugfenster das Menue zu */
+  overflow: hidden;
+  padding: 4px;
+}
+#tools-menu .umenu-item {
+  width: 100%; background: none; border: none; font: inherit; font-size: .85rem;
+  text-align: left; cursor: pointer; border-radius: 6px;
+}
+/* Laufendes Werkzeug im Menue markieren — sonst muesste man raten, was an ist. */
+#tools-menu .umenu-item.active { background: var(--accent-dim); color: var(--accent); font-weight: 700; }
+#btn-saw.active  { background: rgba(245,153,63,.14); color: var(--orange); }
+#btn-tools.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
 
 /* ── FLOOR PLAN ── */
 #floor-preview { display: block; margin: 0 auto 10px; background: var(--bg-input); border-radius: var(--r); border: 1px solid var(--border); }
@@ -1039,11 +1095,16 @@ body {
 
   <div class="tb-divider"></div>
 
+  {# Die drei Werkzeuge sitzen jetzt in einem Menue statt nebeneinander: ihre
+     Bedienleisten klappten frueher INNEN in #topbar auf, die Leiste brach um
+     und die 3D-Ansicht sprang in der Hoehe. Die Knopf-Ids bleiben absichtlich
+     erhalten (#btn-measure/#btn-saw/#btn-fraes) — toggleMeasure/toggleSaw/
+     renderFraesPanel setzen darauf .active, das gilt fuer Menueeintraege genauso. #}
   <div class="tb-group">
-    <button class="tb-btn" id="btn-measure" onclick="toggleMeasure()" title="Maßband: 2 Punkte anklicken">📏 Maßband</button>
+    <div style="position:relative;flex-shrink:0" id="tools-menu-wrap">
+      <button class="tb-btn" id="btn-tools" onclick="toggleToolsMenu(event)" title="Werkzeuge — Maßband, Säge, Fräsen">🧰 Werkzeuge<span style="font-size:9px;opacity:.5;margin-left:3px" translate="no">▼</span></button>
+    </div>
     <button class="tb-btn" id="btn-measure-clear" onclick="clearMeasure()" style="display:none;color:var(--red);border-color:var(--red-dim)">✕</button>
-    <button class="tb-btn" id="btn-saw" onclick="toggleSaw()" title="Säge — Balken schneiden">🪚 Säge{% if show_ads %} 🔒{% endif %}</button>
-    <button class="tb-btn" id="btn-fraes" onclick="toggleFraes()" title="Fräsen — Aussparung in eine Platte (OSB/Sperrholz)">🔩 Fräsen<span id="fraes-rest" translate="no"></span></button>
     <button class="tb-btn" onclick="screenshotPNG()" title="Screenshot als PNG speichern">📷 Foto</button>
     <button class="tb-btn" onclick="printProject()" title="Drucken / PDF">🖨 Drucken{% if show_ads %} 🔒{% endif %}</button>
   </div>
@@ -1089,29 +1150,27 @@ body {
     </div>
   </div>
 
-  <div id="saw-panel">
-    <span>🪚 Säge aktiv — Balken anklicken</span>
-    <span style="color:var(--text-3);margin-left:4px">Winkel:</span>
-    <input type="number" id="saw-angle" class="tb-input" value="0" min="-60" max="60" step="1" title="Schnittwinkel in Grad">
-    <span style="color:var(--text-3)">°</span>
-    <button class="saw-angle-btn" onclick="document.getElementById('saw-angle').value=0" title="Gerader Schnitt">⊥ 0°</button>
-    <button class="saw-angle-btn" onclick="document.getElementById('saw-angle').value=22.5">22.5°</button>
-    <button class="saw-angle-btn" onclick="document.getElementById('saw-angle').value=30">30°</button>
-    <button class="saw-angle-btn" onclick="document.getElementById('saw-angle').value=45">45°</button>
-    <button class="saw-angle-btn" onclick="document.getElementById('saw-angle').value=-45">-45°</button>
-    <button class="tb-btn" style="color:var(--red);border-color:var(--red-dim);margin-left:4px" onclick="toggleSaw()">✕ Beenden</button>
-  </div>
-
-  {# Fraesen lag frueher nur im Panel "Auswahl bearbeiten" und tauchte dort erst
-     auf, wenn zufaellig eine Platte gewaehlt war — praktisch unauffindbar.
-     Jetzt wie die Saege: Knopf oben, Leiste klappt auf. #}
-  <div id="fraes-panel">
-    <span id="fraes-hint">🔩 Fräsen</span>
-    <button class="fraes-form" id="fraes-rect" onclick="startPlaceCutout('rect')">▭ Rechteck</button>
-    <button class="fraes-form" id="fraes-circle" onclick="startPlaceCutout('circle')">◯ Kreis</button>
-    <button class="tb-btn" style="color:var(--red);border-color:var(--red-dim);margin-left:4px" onclick="toggleFraes()">✕ Beenden</button>
-  </div>
 </div>
+
+{# ══ WERKZEUGE ══════════════════════════════════════════════════════════════
+   Menue und Bedienfenster stehen BEWUSST ausserhalb von #topbar. Solange sie
+   Kinder der Leiste waren, brach die Leiste beim Aufklappen um (flex-wrap +
+   min-height) und die 3D-Ansicht sprang in der Hoehe — genau die Klage. Jetzt
+   schweben sie darueber: die Leiste kann ihre Hoehe gar nicht mehr aendern. #}
+{# Emoji und Text stehen hier bewusst im SELBEN Textknoten: "📏 Maßband",
+   "🪚 Säge" und "🔩 Fräsen" sind bereits Woerterbuch-Schluessel. Trennte man
+   sie wie im Benutzermenue, entstuenden die neuen Schluessel "Maßband"/"Säge"/
+   "Fräsen" — kurze Allerweltswoerter, die dann auch einen so benannten Balken
+   in der Liste uebersetzen wuerden. Das Schloss bleibt getrennt und gesperrt. #}
+<div id="tools-menu">
+  <button type="button" class="umenu-item" id="btn-measure" onclick="toggleMeasure();closeToolsMenu()"><span>📏 Maßband</span></button>
+  <button type="button" class="umenu-item" id="btn-saw" onclick="toggleSaw();closeToolsMenu()"><span>🪚 Säge</span>{% if show_ads %}<span translate="no"> 🔒</span>{% endif %}</button>
+  {# Kein 🔒 am Fraesen: es ist nicht gesperrt, man hat 3 Gratis-Versuche. Der
+     Zaehler steht deshalb HIER und nicht am Sammelknopf — "🧰 Werkzeuge (3/3)"
+     laese sich als "3 von 3 Werkzeugen". #}
+  <button type="button" class="umenu-item" id="btn-fraes" onclick="toggleFraes();closeToolsMenu()"><span>🔩 Fräsen</span><span id="fraes-rest" translate="no"></span></button>
+</div>
+
 
 <div id="main">
 
@@ -1541,6 +1600,32 @@ body {
       <button class="tb-btn green" style="height:26px" onclick="restoreAutosave()">Wiederherstellen</button>
       <button class="tb-btn" style="height:26px" onclick="discardAutosave()" title="Verwerfen">✕</button>
     </div>
+    {# Die Werkzeugfenster sitzen IM Viewport, damit sie immer unter der Leiste
+       liegen — egal wie hoch die gerade ist. Frueher waren beide Kinder von
+       #topbar: dann brach die Leiste beim Aufklappen um und die 3D-Ansicht
+       sprang in der Hoehe. #}
+    <div id="tool-popup">
+      <div id="saw-panel">
+        <span>🪚 Säge aktiv — Balken anklicken</span>
+        <span style="color:var(--text-3);margin-left:4px">Winkel:</span>
+        <input type="number" id="saw-angle" class="tb-input" value="0" min="-60" max="60" step="1" title="Schnittwinkel in Grad">
+        <span style="color:var(--text-3)">°</span>
+        <button class="saw-angle-btn" onclick="document.getElementById('saw-angle').value=0" title="Gerader Schnitt">⊥ 0°</button>
+        <button class="saw-angle-btn" onclick="document.getElementById('saw-angle').value=22.5">22.5°</button>
+        <button class="saw-angle-btn" onclick="document.getElementById('saw-angle').value=30">30°</button>
+        <button class="saw-angle-btn" onclick="document.getElementById('saw-angle').value=45">45°</button>
+        <button class="saw-angle-btn" onclick="document.getElementById('saw-angle').value=-45">-45°</button>
+        <button class="tb-btn wz-zu" onclick="toggleSaw()">✕ Beenden</button>
+      </div>
+
+      <div id="fraes-panel">
+        <span id="fraes-hint">🔩 Fräsen</span>
+        <button class="fraes-form" id="fraes-rect" onclick="startPlaceCutout('rect')">▭ Rechteck</button>
+        <button class="fraes-form" id="fraes-circle" onclick="startPlaceCutout('circle')">◯ Kreis</button>
+        <button class="tb-btn wz-zu" onclick="toggleFraes()">✕ Beenden</button>
+      </div>
+    </div>
+
     <div id="place-hint" class="hb-hint" style="display:none;z-index:56"></div>
     <div id="snap-indicator" class="snap-indicator on">Raster: EIN</div>
     <div id="measure-hint" class="hb-hint" style="display:none">📏 Maßband aktiv — 1. Punkt anklicken</div>
@@ -3298,16 +3383,23 @@ function _fraesErlaubt() {
   return false;
 }
 
+/* Am Sammelknopf zeigen, dass ueberhaupt ein Werkzeug laeuft. Ohne das muesste
+   man das Menue aufklappen, um zu merken, dass die Saege noch scharf ist —
+   frueher sah man die drei Knoepfe ja direkt in der Leiste. */
+function _werkzeugeKnopf() {
+  const k = document.getElementById('btn-tools');
+  if (k) k.classList.toggle('active', !!(measureActive || sawActive || fraesActive));
+}
+
 function toggleFraes() {
   fraesActive = !fraesActive;
   if (fraesActive) _exitTools('cutout');   // Saege/Massband beenden
   else cancelPlaceCutout();                // Vorschau weg, wenn man zumacht
   renderFraesPanel();
-  // Die Leiste bricht dadurch evtl. auf eine Zeile mehr um und #viewport
-  // schrumpft. Ohne Nachmessen behielte das Canvas seine alte Hoehe und der
-  // untere Rand der 3D-Ansicht waere abgeschnitten — ausgerechnet waehrend man
-  // auf die Platte klicken soll. Wie in _applyPanelToggle.
-  resize();
+  _werkzeugeKnopf();
+  // Kein resize() mehr noetig: #fraes-panel liegt seit dem Umbau in #tool-popup
+  // (position:fixed) statt in #topbar. Die Leiste kann durch das Werkzeug nicht
+  // mehr umbrechen, also aendert #viewport seine Hoehe nicht.
 }
 
 // Haelt Hinweis und Knoepfe der Leiste am Auswahlzustand. Wird auch bei jeder
@@ -3470,6 +3562,7 @@ function _exitTools(keep) {
     document.getElementById('measure-hint').style.display = 'none';
     clearMeasure(false);
   }
+  _werkzeugeKnopf();
 }
 
 function updateDecoSelPanel() {
@@ -5513,7 +5606,7 @@ function toggleSaw() {
     _exitTools('saw');    // Massband UND Ausfraesung beenden
     viewport.style.cursor = 'crosshair';
   }
-  resize();   // Leiste kann umbrechen -> #viewport aendert die Hoehe (siehe toggleFraes)
+  _werkzeugeKnopf();
 }
 
 function _getSawAngle() {
@@ -6729,11 +6822,7 @@ function toggleMeasure() {
     hint.style.display = 'none';
     clearMeasure(false);
   }
-  // Wie toggleFraes/toggleSaw: _exitTools kann die Fraes-Leiste schliessen,
-  // dann faellt eine umgebrochene Zeile der Toolbar weg und #viewport wird
-  // hoeher. Ohne Nachmessen behielte das Canvas seine alte Hoehe — und das
-  // Massband-Overlay zeichnete versetzt zum Bild.
-  resize();
+  _werkzeugeKnopf();
 }
 
 function clearMeasure(deactivate = true) {
@@ -7750,14 +7839,41 @@ function toggleUserMenu(e) {
   m.style.right = (window.innerWidth - btn.right) + 'px';
   m.style.display = 'block';
 }
+/* Werkzeuge-Menue — bewusst hier im klassischen Script, wie toggleUserMenu:
+   reines DOM, kein 3D-Bezug, und so braucht es keinen Object.assign(window,…)
+   Eintrag (das grosse Script ist ein Module, dessen Funktionen sind privat). */
+function closeToolsMenu() {
+  var m = document.getElementById('tools-menu');
+  if (m) m.style.display = 'none';
+}
+function toggleToolsMenu(e) {
+  e.stopPropagation();
+  var m = document.getElementById('tools-menu');
+  if (m.style.display === 'block') { m.style.display = 'none'; return; }
+  document.getElementById('user-menu').style.display = 'none';   // nie beide offen
+  var btn = document.getElementById('btn-tools').getBoundingClientRect();
+  m.style.top = (btn.bottom + 6) + 'px';
+  m.style.left = btn.left + 'px';   // links verankert — der Knopf steht links
+  m.style.display = 'block';
+}
 document.addEventListener('click', function(e) {
   var wrap = document.getElementById('user-menu-wrap');
   if (wrap && !wrap.contains(e.target)) {
     document.getElementById('user-menu').style.display = 'none';
   }
+  // Das Menue selbst darf nicht mitzaehlen: seine Eintraege schliessen schon
+  // selbst per closeToolsMenu(), aber ein Klick auf den Rand soll es offen lassen.
+  var twrap = document.getElementById('tools-menu-wrap');
+  var tmenu = document.getElementById('tools-menu');
+  if (twrap && tmenu && !twrap.contains(e.target) && !tmenu.contains(e.target)) {
+    closeToolsMenu();
+  }
 });
 document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') document.getElementById('user-menu').style.display = 'none';
+  if (e.key === 'Escape') {
+    document.getElementById('user-menu').style.display = 'none';
+    closeToolsMenu();
+  }
 });
 </script>
 
