@@ -859,6 +859,15 @@ body {
 [data-theme="light"] #tooltip { background: rgba(255,255,255,.97); }
 [data-theme="light"] #controls-help { background: rgba(255,255,255,.94); }
 /* ── FEEDBACK ── */
+.fb-kind { position: relative; }
+/* Die Radios sind unsichtbar, aber NICHT display:none — damit fielen sie aus
+   der Tab-Reihenfolge und aus dem Accessibility-Baum, und wer nur mit der
+   Tastatur arbeitet, kam nie von "Fehler melden" auf "Vorschlag". */
+.fb-kind input {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; border: 0; overflow: hidden;
+  clip: rect(0, 0, 0, 0); white-space: nowrap;
+}
 .fb-kind span {
   display: block; text-align: center; cursor: pointer;
   background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--r-sm);
@@ -868,6 +877,8 @@ body {
   background: var(--accent-dim); border-color: var(--accent); color: var(--accent); font-weight: 600;
 }
 .fb-kind span:hover { border-color: var(--accent); }
+/* Sichtbarer Fokus: sonst tappt man bei der Tastaturbedienung im Dunkeln. */
+.fb-kind input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Hinweisbanner ueber dem Viewport (Massband, Ausfraesung platzieren).
    Hintergrund und Farbe MUESSEN hier stehen, nicht inline: ein Inline-Style
@@ -946,8 +957,10 @@ body {
   <div class="tb-divider"></div>
   <button class="tb-btn" id="theme-toggle" onclick="toggleTheme()" title="Hell/Dunkel-Modus wechseln" style="font-size:15px;padding:0 6px">🌙</button>
   {% if not show_ads %}
-  <button class="tb-btn" onclick="openFeedback()" title="Fehler melden oder Vorschlag senden" style="margin-left:auto;flex-shrink:0">💬 Feedback</button>
-  <div style="display:flex;align-items:center;gap:5px;background:rgba(56,216,156,.1);border:1px solid rgba(56,216,156,.25);border-radius:var(--r-sm);padding:2px 10px;font-size:11px;color:var(--green);font-weight:600;flex-shrink:0">✨ Premium</div>
+  {# "Feedback senden" sitzt jetzt im Benutzermenue — die Leiste war voll.
+     margin-left:auto hing am Feedback-Knopf und muss hierher, sonst klebt
+     die rechte Gruppe nicht mehr am Rand. #}
+  <div style="margin-left:auto;display:flex;align-items:center;gap:5px;background:rgba(56,216,156,.1);border:1px solid rgba(56,216,156,.25);border-radius:var(--r-sm);padding:2px 10px;font-size:11px;color:var(--green);font-weight:600;flex-shrink:0">✨ Premium</div>
   {% else %}
   <a href="/subscribe" style="margin-left:auto;display:flex;align-items:center;gap:5px;background:rgba(78,140,221,.1);border:1px solid rgba(78,140,221,.25);border-radius:var(--r-sm);padding:2px 10px;font-size:11px;color:var(--accent);font-weight:600;text-decoration:none;flex-shrink:0">⬆ Upgrade</a>
   {% endif %}
@@ -964,6 +977,11 @@ body {
       </div>
       <a href="/profile" class="umenu-item">👤&nbsp; Profil &amp; Passwort</a>
       <a href="/subscribe" class="umenu-item">⭐&nbsp; Abonnement</a>
+      {% if not show_ads %}
+      {# Gleiche Bedingung wie die Route: show_ads = (plan == 'free'). #}
+      <button type="button" class="umenu-item" onclick="openFeedback()"
+              style="width:100%;background:none;border:none;font:inherit;font-size:.85rem;text-align:left;cursor:pointer;">💬&nbsp; Feedback senden</button>
+      {% endif %}
       {% if session.get('role') == 'admin' %}
       <a href="/admin/users" class="umenu-item">🔧&nbsp; Admin</a>
       {% endif %}
@@ -1457,13 +1475,13 @@ body {
       Etwas funktioniert nicht oder dir fehlt eine Funktion? Schreib es uns — wir antworten dir per E-Mail.
     </p>
 
-    <div style="display:flex;gap:8px;margin-bottom:14px">
+    <div style="display:flex;gap:8px;margin-bottom:14px" role="radiogroup" aria-label="Art der Rückmeldung">
       <label class="fb-kind" style="flex:1">
-        <input type="radio" name="fb-kind" value="bug" checked style="display:none">
+        <input type="radio" name="fb-kind" value="bug" checked>
         <span>🐞 Fehler melden</span>
       </label>
       <label class="fb-kind" style="flex:1">
-        <input type="radio" name="fb-kind" value="idea" style="display:none">
+        <input type="radio" name="fb-kind" value="idea">
         <span>💡 Vorschlag</span>
       </label>
     </div>
@@ -4252,6 +4270,10 @@ function _grabViewport() {
 function openFeedback() {
   const m = document.getElementById('fb-modal');
   if (!m) return;
+  // Benutzermenue zu: es liegt auf z-index 99999, der Dialog nur auf 2100 —
+  // offen geblieben, stuende es mitten im Dialog.
+  const um = document.getElementById('user-menu');
+  if (um) um.style.display = 'none';
   document.getElementById('fb-error').style.display = 'none';
   // Bild sofort aufnehmen: sobald der Dialog offen ist, verdeckt er die Ansicht,
   // und der Nutzer will genau das melden, was er GERADE sieht.
