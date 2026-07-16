@@ -239,6 +239,9 @@ SCHEMA_MIGRATIONS = [
     "ALTER TABLE subscriptions ADD COLUMN reminder_stage VARCHAR(4) NOT NULL DEFAULT ''",
     # Weekly Premium-upsell mailing: opt-out flag, unsubscribe token, throttle timestamp
     "ALTER TABLE app_users ADD COLUMN marketing_opt_out TINYINT NOT NULL DEFAULT 0",
+    # Feedback: das Projekt-JSON, das der Nutzer freiwillig mitschickt (nur Geometrie,
+    # ohne eingebettete Bild-Vorlage). MEDIUMTEXT reicht mit Abstand.
+    "ALTER TABLE feedback ADD COLUMN project MEDIUMTEXT NULL",
     "ALTER TABLE app_users ADD COLUMN unsub_token VARCHAR(64) NULL",
     "ALTER TABLE app_users ADD COLUMN last_upsell_sent DATETIME NULL",
     # Verlaengerungs-Erinnerung: speichert das Periodenende, fuer das bereits
@@ -929,12 +932,18 @@ def _status_label(status, lang='de'):
 # stumm abgelehnt wird, aber MEDIUMBLOB (16 MB) nicht sprengt.
 FEEDBACK_MAX_IMG = 3 * 1024 * 1024
 
+# Reines Geometrie-JSON ist klein (selbst grosse Aufbauten bleiben unter 1 MB).
+# Der Deckel ist nur ein Riegel gegen einen pathologisch grossen Aufbau — und er
+# haelt zusammen mit dem Screenshot den 8-MB-Upload (MAX_CONTENT_LENGTH) sicher ein.
+FEEDBACK_MAX_PROJECT = 4 * 1024 * 1024
+
 # Liste OHNE den screenshot-BLOB: das Template braucht daraus nur ein Ja/Nein,
 # das Bild selbst holt der Browser ueber /feedback/<id>/screenshot nach.
 # 'f.*' htte pro Aufruf jedes Bild durch MySQL, PyMySQL und Jinja gezogen.
 FB_LIST_SQL = (
     'SELECT f.id, f.user_id, f.kind, f.subject, f.message, f.ctx, f.status, '
     'f.admin_reply, f.created, f.updated, f.screenshot IS NOT NULL AS has_shot, '
+    'f.project IS NOT NULL AS has_project, '
     'u.username, u.email FROM feedback f JOIN app_users u ON u.id=f.user_id '
 )
 
@@ -975,10 +984,21 @@ def feedback_create():
             shot = None
             shot_mime = None
 
+    # Freiwillig mitgeschicktes Projekt-JSON. Nur speichern, wenn es wirklich JSON
+    # ist und den Deckel einhaelt — sonst legt jemand beliebigen Text in die Spalte.
+    project = None
+    raw_proj = request.form.get('project') or ''
+    if raw_proj and len(raw_proj) <= FEEDBACK_MAX_PROJECT:
+        try:
+            json.loads(raw_proj)
+            project = raw_proj
+        except Exception:
+            project = None
+
     ctx = (request.form.get('ctx') or '')[:1000]
-    execute_db('INSERT INTO feedback (user_id, kind, subject, message, screenshot, shot_mime, ctx, status, created) '
-               'VALUES (?,?,?,?,?,?,?,?,?)',
-               [session['user_id'], kind, subject, message, shot, shot_mime, ctx, 'neu',
+    execute_db('INSERT INTO feedback (user_id, kind, subject, message, screenshot, shot_mime, ctx, project, status, created) '
+               'VALUES (?,?,?,?,?,?,?,?,?,?)',
+               [session['user_id'], kind, subject, message, shot, shot_mime, ctx, project, 'neu',
                 datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')])
 
     # Admin benachrichtigen, damit ein Ticket nicht wochenlang liegen bleibt.
@@ -1017,6 +1037,20 @@ def feedback_screenshot(fid):
     if row['user_id'] != session['user_id'] and session.get('role') != 'admin':
         abort(403)
     return app.response_class(row['screenshot'], mimetype=row['shot_mime'] or 'image/webp')
+
+
+@app.route('/feedback/<int:fid>/project')
+@login_required
+def feedback_project(fid):
+    row = query_db('SELECT user_id, project FROM feedback WHERE id=?', [fid], one=True)
+    if not row or not row['project']:
+        abort(404)
+    # Gleiche Schranke wie beim Screenshot: nur der Verfasser oder ein Admin.
+    if row['user_id'] != session['user_id'] and session.get('role') != 'admin':
+        abort(403)
+    return app.response_class(
+        row['project'], mimetype='application/json',
+        headers={'Content-Disposition': f'attachment; filename="feedback_{fid}_projekt.json"'})
 
 
 @app.route('/admin/feedback')

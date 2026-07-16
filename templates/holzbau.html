@@ -1512,6 +1512,11 @@ body {
       <div style="font-size:10.5px;color:var(--text-3);margin-top:4px">So kommt er bei uns an.</div>
     </div>
 
+    <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text);cursor:pointer;margin-bottom:12px">
+      <input type="checkbox" id="fb-project" checked>
+      <span>Mein Projekt als Datei mitschicken (hilft uns, den Fehler nachzustellen)</span>
+    </label>
+
     <div id="fb-error" style="display:none;font-size:12px;color:var(--red);margin-bottom:10px"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end">
       <button class="tb-btn" onclick="closeFeedback()">Abbrechen</button>
@@ -3119,6 +3124,7 @@ function _previewOutline(shape, def) {
 function startPlaceCutout(shape) {
   const b = _selectedSheetBeam();
   if (!b) return;
+  _exitTools('cutout');   // Saege/Massband beenden, sonst faengt deren Klick vor
   _placingCutout = { beamId: b.id, shape };
   const hint = document.getElementById('place-hint');
   if (hint) { hint.textContent = (shape === 'circle' ? '◯' : '▭') + ' Über die Platte fahren und klicken zum Platzieren · Esc = Abbrechen'; hint.style.display = 'block'; }
@@ -3187,6 +3193,30 @@ function cancelPlaceCutout() {
   if (_cutoutPreview) { _cutoutPreview.visible = false; }
   const hint = document.getElementById('place-hint');
   if (hint) hint.style.display = 'none';
+}
+
+// Genau EIN Viewport-Werkzeug darf aktiv sein: Ausfraesung platzieren, Saege,
+// Massband. onPointerDown prueft sie in fester Reihenfolge (Ausfraesung zuerst,
+// dann Saege, dann Massband) — startet man also ein Werkzeug, ohne die anderen
+// zu beenden, faengt der naechste Klick noch das alte ab. Genau das war der Bug:
+// Massband angeklickt, aber der Klick hat noch gefraest.
+function _exitTools(keep) {
+  if (keep !== 'cutout' && _placingCutout) cancelPlaceCutout();
+  if (keep !== 'saw' && sawActive) {
+    sawActive = false;
+    document.getElementById('btn-saw').classList.remove('active');
+    document.getElementById('saw-panel').style.display = 'none';
+    _sawIndicator.visible = false;
+    _sawBorder.visible = false;
+    _sawHoverBeamId = null;
+    viewport.style.cursor = '';
+  }
+  if (keep !== 'measure' && measureActive) {
+    measureActive = false;
+    document.getElementById('btn-measure')?.classList.remove('active');
+    document.getElementById('measure-hint').style.display = 'none';
+    clearMeasure(false);
+  }
 }
 
 function updateDecoSelPanel() {
@@ -4332,6 +4362,19 @@ async function sendFeedback() {
   fd.append('subject', subject);
   fd.append('message', message);
   if (document.getElementById('fb-shot').checked && _fbShot) fd.append('screenshot', _fbShot);
+  // Projekt mitschicken, damit wir den Fehler mit dem echten Aufbau nachstellen
+  // koennen. Ohne die Hintergrund-Bildvorlage (serializeProject(false)): die ist
+  // fuer einen Werkzeug-/Geometriefehler unnoetig und waere das einzige, was den
+  // 8-MB-Upload sprengen koennte. Reine Geometrie ist ohnehin winzig — die Grenze
+  // hier ist nur ein Riegel, damit Screenshot + Projekt zusammen nie den Upload
+  // sprengen (sonst 413). Ein pathologisch grosser Aufbau geht dann eben ohne.
+  if (document.getElementById('fb-project')?.checked) {
+    try {
+      const pj = JSON.stringify(serializeProject(false));
+      if (pj.length <= 3 * 1024 * 1024) fd.append('project', pj);
+      else console.warn('[HolzBAU] Projekt zu gross zum Mitschicken:', pj.length, 'Bytes');
+    } catch (e) { console.warn('[HolzBAU] Projekt anhaengen fehlgeschlagen:', e); }
+  }
   // Kontext spart Rueckfragen: Fenstergroesse, Browser, Umfang der Konstruktion.
   fd.append('ctx', [
     'Objekte: ' + beams.length + ' Balken, ' + decos.length + ' Deko',
@@ -5196,7 +5239,7 @@ function toggleSaw() {
     _sawHoverBeamId = null;
     viewport.style.cursor = '';
   } else {
-    if (measureActive) toggleMeasure();    // deactivate measure if active
+    _exitTools('saw');    // Massband UND Ausfraesung beenden
     viewport.style.cursor = 'crosshair';
   }
 }
@@ -6380,6 +6423,8 @@ function toggleMeasure() {
   const btn = document.getElementById('btn-measure');
   const hint = document.getElementById('measure-hint');
   if (measureActive) {
+    _exitTools('measure');    // Ausfraesung UND Saege beenden — sonst fraest/saegt
+                              // der erste Klick noch, statt zu messen
     btn.classList.add('active');
     hint.style.display = 'block';
     hint.textContent = '📏 Maßband — Maustaste drücken und ziehen zum Messen';
