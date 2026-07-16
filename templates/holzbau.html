@@ -379,6 +379,25 @@ body {
   gap: 16px;
   flex-shrink: 0;
 }
+/* Eigene Zeile fuer JS-Fehler — frueher wurde dafuer #statusbar ueberschrieben
+   und dabei #st-sel & Co. zerstoert (siehe _zeigeJsFehler). */
+#js-fehler {
+  display: none;
+  position: fixed;
+  /* Links bleibt Platz fuer die Sprachpille aus i18n.js: die sitzt fix auf
+     left:10px/bottom:32px und endet bei x=134. Ueber sie zu stapeln waere
+     falsch herum — dann verdeckt eine Fehlermeldung den Sprachumschalter.
+     Also weicht die Zeile aus, statt um den z-index zu streiten. */
+  left: 144px; right: 0; bottom: var(--status-h);
+  z-index: 99999;
+  background: rgba(90, 20, 20, .97);
+  border-top: 1px solid var(--red);
+  color: #ffd7d7;
+  padding: 6px 12px;
+  font: 600 11px/1.4 var(--font);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
 #statusbar span { color: var(--text-2); }
 #statusbar strong { color: var(--text); font-weight: 600; }
 
@@ -1024,7 +1043,7 @@ body {
     <button class="tb-btn" id="btn-measure" onclick="toggleMeasure()" title="Maßband: 2 Punkte anklicken">📏 Maßband</button>
     <button class="tb-btn" id="btn-measure-clear" onclick="clearMeasure()" style="display:none;color:var(--red);border-color:var(--red-dim)">✕</button>
     <button class="tb-btn" id="btn-saw" onclick="toggleSaw()" title="Säge — Balken schneiden">🪚 Säge{% if show_ads %} 🔒{% endif %}</button>
-    <button class="tb-btn" id="btn-fraes" onclick="toggleFraes()" title="Fräsen — Aussparung in eine Platte (OSB/Sperrholz)">🔩 Fräsen</button>
+    <button class="tb-btn" id="btn-fraes" onclick="toggleFraes()" title="Fräsen — Aussparung in eine Platte (OSB/Sperrholz)">🔩 Fräsen<span id="fraes-rest" translate="no"></span></button>
     <button class="tb-btn" onclick="screenshotPNG()" title="Screenshot als PNG speichern">📷 Foto</button>
     <button class="tb-btn" onclick="printProject()" title="Drucken / PDF">🖨 Drucken{% if show_ads %} 🔒{% endif %}</button>
   </div>
@@ -2963,8 +2982,10 @@ function duplicateSelected() {
     groups.push(neu);
     lockedGroups.add(neu);
     const neueIds = [];
+    let loecherGekappt = false;
     beams.filter(b => b.group === alt).forEach(b => {
       const k = { ...b, id: idCounter++, group: neu, x: b.x + offset, z: b.z + offset, mesh: null };
+      if (!_cutoutsKopieren(b, k)) loecherGekappt = true;
       k.mesh = createBeamMesh(k);
       scene.add(k.mesh);
       beams.push(k);
@@ -2986,14 +3007,18 @@ function duplicateSelected() {
     renderDekoList();
     renderGroupList();
     updateUI();
+    if (loecherGekappt) _fraesKontingentHinweis();
     return;
   }
   const beam = { ...src, id: idCounter++, name: src.name + ' (Kopie)', x: src.x + offset, z: src.z + offset, mesh: null };
+  const mitLoechern = _cutoutsKopieren(src, beam);
   beam.mesh = createBeamMesh(beam);
   scene.add(beam.mesh);
   beams.push(beam);
   selectBeam(beam.id);
   updateUI();
+  // Erst nach dem Aufbau melden: die Kopie steht, ihr fehlen nur die Loecher.
+  if (!mitLoechern) _fraesKontingentHinweis();
 }
 
 // ══════════════════════════════════════════════
@@ -3221,6 +3246,58 @@ function _previewOutline(shape, def) {
 // ── Fraes-Leiste oben (Knopf 🔩 Fräsen) ──
 let fraesActive = false;
 
+/* Fraesen ist eine Premium-Funktion, im Free-Plan zum Ausprobieren 3 Mal.
+   Gezaehlt wird im localStorage — wie MAX_FREE_BEAMS ist das eine Huerde,
+   keine Schranke: wer will, leert den Browserspeicher. Das ist bewusst so,
+   der Zaehler soll zum Upgrade anstupsen, nicht Buchhaltung sein. */
+const MAX_FREE_FRAES = 3;
+const FRAES_ZAEHLER = 'hb_fraes_frei';
+
+function _fraesVerbraucht() {
+  try { return parseInt(localStorage.getItem(FRAES_ZAEHLER) || '0', 10) || 0; }
+  catch (e) { return 0; }
+}
+function _fraesUebrig() {
+  return IS_PREMIUM ? Infinity : Math.max(0, MAX_FREE_FRAES - _fraesVerbraucht());
+}
+function _fraesVerbrauchen(anzahl = 1) {
+  try { localStorage.setItem(FRAES_ZAEHLER, String(_fraesVerbraucht() + anzahl)); } catch (e) {}
+  renderFraesPanel();   // Restanzeige mitziehen
+}
+
+/* Ausfraesungen von einer Platte in ihre Kopie uebernehmen.
+   Zwei Gruende, warum das eine eigene Funktion ist:
+   1) TIEF kopieren. Ein Spread `{ ...b }` nimmt `cutouts` nur als REFERENZ mit —
+      Original und Kopie zeigten auf dasselbe Array, und ein Loch in der Kopie
+      erschiene auch im Original.
+   2) Sie kosten Kontingent. Sonst waere die 3er-Grenze wertlos: einmal fraesen,
+      dann Strg+D halten und beliebig viele Platten mit Loechern bekommen.
+   Rueckgabe false = Kontingent reicht nicht, die Kopie bleibt ohne Loecher. */
+function _cutoutsKopieren(quelle, ziel) {
+  delete ziel.cutouts;   // die Referenz aus dem Spread MUSS zuerst weg
+  const loecher = quelle.cutouts || [];
+  if (!loecher.length) return true;
+  if (!IS_PREMIUM) {
+    if (_fraesUebrig() < loecher.length) return false;
+    _fraesVerbrauchen(loecher.length);
+  }
+  ziel.cutouts = loecher.map(c => ({ ...c }));
+  return true;
+}
+// Ein Text fuer beide Wege ins Limit: selbst fraesen und Kopie ohne Loecher.
+function _fraesKontingentHinweis() {
+  requirePremium('🔩 Fräsen',
+    `Im kostenlosen Plan sind ${MAX_FREE_FRAES} Ausfräsungen zum Ausprobieren enthalten. ` +
+    'Mit Premium fräst du unbegrenzt — inklusive CNC-Fräsplan als DXF.');
+}
+// true = darf fraesen. Sonst laeuft das Upgrade-Fenster auf.
+function _fraesErlaubt() {
+  if (IS_PREMIUM) return true;
+  if (_fraesUebrig() > 0) return true;
+  _fraesKontingentHinweis();
+  return false;
+}
+
 function toggleFraes() {
   fraesActive = !fraesActive;
   if (fraesActive) _exitTools('cutout');   // Saege/Massband beenden
@@ -3240,11 +3317,21 @@ function renderFraesPanel() {
   if (!p) return;
   p.style.display = fraesActive ? 'flex' : 'none';
   document.getElementById('btn-fraes')?.classList.toggle('active', fraesActive);
-  if (!fraesActive) return;
+
   // Uebersetzen wie ueberall: der deutsche Text ist der Schluessel. {platte}
   // bleibt ein Platzhalter, damit der Satzbau je Sprache frei ist — die
   // Anfuehrungszeichen unterscheiden sich ja auch („“ / "" / « »).
   const T = (s) => (window.t ? window.t(s) : s);
+  const uebrig = _fraesUebrig();
+
+  // Rest VOR dem fruehen return: sonst sieht man das Kontingent erst, wenn man
+  // die Leiste schon geoeffnet hat. Eigenes <span translate="no"> statt Anhaengen
+  // an den Knopftext — der deutsche Knopftext IST der Woerterbuch-Schluessel,
+  // "🔩 Fräsen (3/3)" faende keine Uebersetzung mehr.
+  const rest = document.getElementById('fraes-rest');
+  if (rest) rest.textContent = IS_PREMIUM ? '' : ' (' + uebrig + '/' + MAX_FREE_FRAES + ')';
+
+  if (!fraesActive) return;
   const b = _selectedSheetBeam();
 
   // Wechselt die Auswahl WEG von der Platte, in die gerade platziert wird, muss
@@ -3255,7 +3342,12 @@ function renderFraesPanel() {
   const hinweis = document.getElementById('fraes-hint');
   const rect = document.getElementById('fraes-rect');
   const kreis = document.getElementById('fraes-circle');
-  if (b) {
+
+  if (uebrig === 0) {
+    // Free-Kontingent aufgebraucht: klar sagen, statt die Knoepfe nur zu sperren.
+    hinweis.textContent = T('🔩 Fräsen — kostenloses Kontingent aufgebraucht. Mit Premium unbegrenzt.');
+    rect.disabled = true; kreis.disabled = true;
+  } else if (b) {
     // Ersatz als FUNKTION: der Name ist freier Nutzertext, und $&, $', $` sind
     // Ersetzungsmuster von String.replace. Ein Balken namens "Wand $' 2" haette
     // den halben Satz verdoppelt. Eine Funktion setzt stur ein, was sie liefert.
@@ -3273,6 +3365,9 @@ function renderFraesPanel() {
 function startPlaceCutout(shape) {
   const b = _selectedSheetBeam();
   if (!b) { renderFraesPanel(); return; }   // Leiste sagt, was fehlt
+  // Aufgebraucht: hier schon abfangen. Sonst haengt eine Vorschau am Cursor, die
+  // beim Klick nur das Upgrade-Fenster oeffnet — das sieht aus wie ein Fehler.
+  if (_fraesUebrig() === 0 && !_fraesErlaubt()) { renderFraesPanel(); return; }
   _exitTools('cutout');   // Saege/Massband beenden, sonst faengt deren Klick vor
   _placingCutout = { beamId: b.id, shape };
   const hint = document.getElementById('place-hint');
@@ -3320,9 +3415,13 @@ function updateCutoutPreview(cx, cy) {
 function placeCutoutAtCursor(cx, cy) {
   const hit = _cursorFaceUV(cx, cy);
   if (!hit) return;  // nicht auf der Platte → ignorieren
+  // Erst HIER zaehlen, nicht beim Formwaehlen: wer eine Form waehlt und dann
+  // abbricht, soll keinen Versuch verbrennen.
+  if (!_fraesErlaubt()) { cancelPlaceCutout(); renderFraesPanel(); return; }
   const b = hit.b, fb = hit.fb, shape = _placingCutout.shape;
   const def = _cutoutDefaults(shape, fb.A, fb.B);
   pushHistory();
+  if (!IS_PREMIUM) _fraesVerbrauchen();
   if (!b.cutouts) b.cutouts = [];
   const clamp = (val, lo, hi) => Math.max(lo, Math.min(hi, val));
   if (shape === 'circle') {
@@ -6456,15 +6555,38 @@ function toggleTheme() {
   } catch(_) {}
 })();
 
-// Global error handler — shows JS errors visibly in the status bar
+/* Fehleranzeige in EIGENEM Element.
+   Vorher ueberschrieb sie den Inhalt von #statusbar per innerHTML — und riss
+   damit #st-count, #st-sel und #st-cam heraus. Folge: nach dem ERSTEN Fehler
+   stuerzte updateSelPanel() bei jeder Auswahl an
+   document.getElementById('st-sel').textContent ab, brach ab, bevor es das
+   Auswahl-Panel (und damit die Ausfraesungen) zeichnen konnte — und der neue
+   Absturz ueberschrieb die Anzeige gleich wieder. Die urspruengliche Meldung
+   war damit weg und die App blieb kaputt, bis man neu laedt.
+   Ein eigenes Element laesst den Statusbalken heil und zeigt den ERSTEN Fehler. */
+function _zeigeJsFehler(text) {
+  let bar = document.getElementById('js-fehler');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'js-fehler';
+    bar.addEventListener('click', () => { bar.style.display = 'none'; });
+    bar.title = 'Zum Ausblenden klicken';
+    document.body.appendChild(bar);
+  }
+  // Nur den ERSTEN Fehler zeigen: Folgefehler sind meist bloss Nachbeben und
+  // wuerden die eigentliche Ursache verdecken.
+  if (bar.dataset.gesetzt) return;
+  bar.dataset.gesetzt = '1';
+  bar.textContent = '⚠ JS-Fehler: ' + text;
+  bar.style.display = 'block';
+}
 window.addEventListener('error', ev => {
-  const bar = document.getElementById('statusbar');
-  if (bar) bar.innerHTML = `<span style="color:var(--red);font-weight:600">⚠ JS-Fehler: ${ev.message} (${ev.filename?.split('/').pop()}:${ev.lineno})</span>`;
+  _zeigeJsFehler(`${ev.message} (${ev.filename ? ev.filename.split('/').pop() : '?'}:${ev.lineno})`);
   console.error('Global error:', ev);
 });
 window.addEventListener('unhandledrejection', ev => {
-  const bar = document.getElementById('statusbar');
-  if (bar) bar.innerHTML = `<span style="color:var(--red);font-weight:600">⚠ Fehler: ${ev.reason}</span>`;
+  _zeigeJsFehler(String(ev.reason));
+  console.error('Unhandled rejection:', ev.reason);
 });
 
 // ══════════════════════════════════════════════
@@ -6607,6 +6729,11 @@ function toggleMeasure() {
     hint.style.display = 'none';
     clearMeasure(false);
   }
+  // Wie toggleFraes/toggleSaw: _exitTools kann die Fraes-Leiste schliessen,
+  // dann faellt eine umgebrochene Zeile der Toolbar weg und #viewport wird
+  // hoeher. Ohne Nachmessen behielte das Canvas seine alte Hoehe — und das
+  // Massband-Overlay zeichnete versetzt zum Bild.
+  resize();
 }
 
 function clearMeasure(deactivate = true) {
