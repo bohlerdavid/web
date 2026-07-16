@@ -127,6 +127,36 @@ body {
 .tb-btn:hover { background: var(--bg-card); border-color: var(--border); color: var(--text); }
 .umenu-item { display:flex;align-items:center;gap:8px;padding:9px 14px;color:var(--text);text-decoration:none;font-size:.85rem;transition:background .12s; }
 .umenu-item:hover { background:var(--bg-hover); }
+
+/* ── Handy-Einstieg (siehe #mobil-gate am Seitenende) ──
+   display:none ist die Vorgabe; das Skript unten blendet ihn nur unter 700px ein. */
+#mobil-gate {
+  display: none; position: fixed; inset: 0; z-index: 100001;
+  background: var(--bg); overflow-y: auto; padding: 32px 20px 40px;
+}
+#mobil-gate .mg-box { max-width: 420px; margin: 0 auto; }
+#mobil-gate .mg-logo { font-size: 20px; font-weight: 800; color: var(--text); letter-spacing: -.5px; }
+#mobil-gate .mg-logo span { color: var(--accent); }
+#mobil-gate .mg-titel { font-size: 19px; font-weight: 700; color: var(--text); margin: 26px 0 10px; line-height: 1.3; }
+#mobil-gate .mg-text { font-size: 13.5px; line-height: 1.6; color: var(--text-2); margin: 0 0 24px; }
+/* min-height 52px: eine Tippflaeche muss man mit dem Finger treffen koennen. */
+#mobil-gate .mg-btn {
+  display: flex; align-items: center; gap: 12px;
+  min-height: 52px; padding: 0 16px; margin-bottom: 10px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r-sm);
+  color: var(--text); text-decoration: none; font-size: 15px; font-weight: 600;
+}
+#mobil-gate .mg-btn:active { background: var(--bg-panel); }
+#mobil-gate .mg-rot { color: #f87171; }
+/* Sichtbar genug, um ihn zu finden: das Gate erscheint auch bei 200% Zoom oder
+   im iPad-Splitview (beides unter 700 CSS-px). Wer dort den Editor will, darf
+   den Ausweg nicht suchen muessen — vorher war er 13px in --text-3 auf --bg. */
+#mobil-gate .mg-trotzdem {
+  display: block; width: 100%; min-height: 48px; margin-top: 24px;
+  background: none; border: 1px solid var(--border); border-radius: var(--r-sm);
+  color: var(--text-2); font: inherit; font-size: 14px; cursor: pointer;
+}
+#mobil-gate .mg-trotzdem:hover { color: var(--text); border-color: var(--accent); }
 .tb-btn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
 .tb-btn.green { color: var(--green); border-color: rgba(56,216,156,.2); background: rgba(56,216,156,.06); }
 .tb-btn.green:hover { background: rgba(56,216,156,.14); border-color: var(--green); }
@@ -7416,6 +7446,10 @@ try {
   window.hbStartTour=start;
   window.addEventListener('resize', function(){ if(ov&&ov.style.display==='block') positionTo(SEL[i]); });
   window.addEventListener('load', function(){
+    // Liegt der Handy-Einstieg (#mobil-gate) davor, ist eine Editor-Tour sinnlos —
+    // und sie wuerde sich sogar darueberlegen (tour-pop hat den hoeheren z-index).
+    var g = document.getElementById('mobil-gate');
+    if (g && getComputedStyle(g).display !== 'none') return;
     try{ if(!localStorage.getItem(KEY)) setTimeout(start,900); }catch(e){ setTimeout(start,900); }
   });
 })();
@@ -7495,6 +7529,56 @@ document.addEventListener('keydown', function(e) {
     document.addEventListener(e, reset, {passive:true});
   });
   reset();
+})();
+</script>
+
+{# ── HANDY-EINSTIEG ─────────────────────────────────────────────────────────
+   Der Editor ist fuer PC und Tablet gemacht. Trotzdem landet man nach dem
+   Login hier — und sass am Handy fest: die Werkzeugleiste braucht 1802px,
+   das Benutzermenue mit Profil/Abo/Admin liegt damit weit ausserhalb des
+   Bildschirms und ist mit dem Finger nicht erreichbar. Darum hier ein
+   eigener Einstieg mit genau den Links, die am Handy Sinn ergeben.
+   Emoji und Text stehen getrennt, damit die vorhandenen Woerterbuch-
+   Eintraege ("Profil & Passwort", "Abonnement", "Abmelden") greifen. #}
+<div id="mobil-gate">
+  <div class="mg-box">
+    <div class="mg-logo">Holz<span>BAU</span> 3D</div>
+    <h1 class="mg-titel">Der Editor braucht einen größeren Bildschirm</h1>
+    <p class="mg-text">Zum Konstruieren ist ein Handy zu klein — dafür bitte PC oder Tablet nehmen. Alles andere erreichst du hier:</p>
+
+    <a href="/profile" class="mg-btn"><span>👤</span><span>Profil &amp; Passwort</span></a>
+    <a href="/subscribe" class="mg-btn"><span>⭐</span><span>Abonnement</span></a>
+    {% if session.get('role') == 'admin' %}
+    <a href="/admin/users" class="mg-btn"><span>🔧</span><span>Admin: Benutzer</span></a>
+    <a href="/admin/feedback" class="mg-btn"><span>💬</span><span>Admin: Feedback</span></a>
+    {% endif %}
+    <a href="/logout" class="mg-btn mg-rot"><span>🚪</span><span>Abmelden</span></a>
+
+    <button type="button" class="mg-trotzdem" onclick="window.hbGateAus()">Editor trotzdem öffnen</button>
+  </div>
+</div>
+<script>
+(function () {
+  // Handy ja, Tablet nein: iPad mini ist 744px breit, Handys im Hochformat
+  // hoechstens ~430px. 700px trennt das sauber.
+  // Absichtlich ein normales Skript statt eines Moduls — laedt der Editor am
+  // Handy gar nicht erst, muss dieser Ausweg trotzdem erscheinen.
+  var g = document.getElementById('mobil-gate');
+  if (!g) return;
+  var weggeklickt = false;
+
+  // Bei jeder Groessenaenderung neu entscheiden (Drehen!). Nur "bei breit
+  // ausblenden" waere eine Falle: zurueck ins Hochformat gedreht saesse man
+  // wieder in der Sackgasse — Leiste 1802px, Menue ausserhalb des Bildschirms.
+  function sync() {
+    g.style.display = (!weggeklickt && window.innerWidth < 700) ? 'block' : 'none';
+  }
+  // Wer den Editor ausdruecklich will, bekommt ihn — und wird nicht beim
+  // naechsten Drehen wieder zugedeckt.
+  window.hbGateAus = function () { weggeklickt = true; sync(); };
+
+  sync();
+  window.addEventListener('resize', sync);
 })();
 </script>
 </body>

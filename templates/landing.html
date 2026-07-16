@@ -134,6 +134,11 @@
       display: grid; grid-template-columns: 1fr 460px; gap: 56px; align-items: center;
       max-width: 1144px; margin: 0 auto;
     }
+    /* min-width:0 ist Pflicht: ein Grid-Kind schrumpft sonst NICHT unter sein
+       laengstes Wort ("Holzkonstruktion"). Die Spalte wurde dadurch am Handy
+       421px breit statt 350px — und .hero (overflow:hidden) hat den Rest
+       einfach abgeschnitten: halbe Ueberschrift, halber Knopf. */
+    .hero-inner > * { min-width: 0; }
     .hero-badge {
       display: inline-flex; align-items: center; gap: 8px;
       padding: 6px 14px; background: oklch(0.94 0.012 60);
@@ -145,6 +150,9 @@
       font-size: clamp(2.4rem, 4.5vw, 3.75rem);
       line-height: 1.04; letter-spacing: -0.015em;
       color: oklch(0.22 0.02 50); margin: 0 0 26px;
+      /* Notbremse: kein einzelnes Wort darf die Zeile sprengen — greift nur,
+         wenn es sonst ueberliefe. Wichtig auch fuer EN/FR mit anderen Woertern. */
+      overflow-wrap: break-word;
     }
     .hero h1 em { font-style: italic; color: oklch(0.48 0.1 40); }
     .hero-sub {
@@ -417,6 +425,10 @@
     @media (max-width: 540px) {
       .nav-links { display: none; }
       .hero { padding: 48px 20px 60px; }
+      /* Das clamp-Minimum von 2.4rem (38px) war fuers Handy zu gross: allein
+         "Holzkonstruktion" wurde damit 421px breit. Hier mit der Bildschirm-
+         breite skalieren; Desktop bleibt unveraendert. */
+      .hero h1 { font-size: clamp(1.6rem, 7.5vw, 2.4rem); }
       .features-grid  { grid-template-columns: 1fr; }
       .examples-grid  { grid-template-columns: 1fr; }
       .section { padding: 48px 20px; }
