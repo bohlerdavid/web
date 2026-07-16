@@ -4499,11 +4499,29 @@ function rotateHorizontal() {
   updateUI();
 }
 function standUpright() { switchAxis('y'); }
+
+// "Flach hinlegen" = die DUENNSTE Kante zeigt nach oben. Das gilt fuer Balken
+// wie fuer Platten.
+// Vorher stand hier nur "if (b.axis === 'y') switchAxis('x')" — gedacht fuer
+// stehende Balken. Eine Platte steht aber mit axis 'x' (Beispiel: L=1200,
+// B=15, H=2600 ergibt 1200 breit, 2600 HOCH, 15 duenn). Damit traf die
+// Bedingung nie zu und der Menuepunkt tat wortlos gar nichts.
+// Achsenzuordnung (siehe createBeamMesh): die Hoehe (Y) ist L bei axis 'y',
+// sonst H. Ist die duenne Kante B, hilft keine Achse — dann B und H tauschen.
 function layFlat() {
   closeCtxMenu();
   const id = [...selectedIds][0] ?? null;
   const b = beams.find(x => x.id === id);
-  if (b && b.axis === 'y') switchAxis('x'); // upright -> lay flat along X
+  if (!b) return;
+  const hoch  = (b.axis === 'y') ? b.L : b.H;   // was gerade nach oben zeigt
+  const duenn = Math.min(b.L, b.B, b.H);
+  if (hoch === duenn) return;                   // liegt schon flach
+  pushHistory();
+  if (duenn === b.H)      b.axis = 'x';                      // Y = H
+  else if (duenn === b.L) b.axis = 'y';                      // Y = L
+  else { const t = b.B; b.B = b.H; b.H = t; b.axis = 'x'; }  // duenn war B → nach H
+  rebuildMesh(b);
+  updateUI();
 }
 
 function getBeamHalfW(b) { return (b.axis === 'x' ? b.L : b.B) / 2; }
