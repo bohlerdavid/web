@@ -151,8 +151,16 @@
     return g;
   }
 
+  // Texte kommen von der Seite (window.HB3D_TEXTE), damit sie auf /en und /fr
+  // nicht deutsch stehen bleiben. Diese Datei kann kein Jinja; Rueckfall Deutsch.
+  function txt(schluessel, vorgabe) {
+    var t = window.HB3D_TEXTE;
+    return (t && t[schluessel]) || vorgabe;
+  }
+
   function mount(el, modelUrl) {
-    el.innerHTML = '<div class="hb3d-load">3D wird geladen …</div>';
+    el.innerHTML = '<div class="hb3d-load"></div>';
+    el.firstChild.textContent = txt('laedt', '3D wird geladen …');
     return Promise.all([loadModules(), fetch(modelUrl).then(function (r) { return r.json(); })])
       .then(function (res) {
         var THREE = res[0].THREE, OrbitControls = res[0].OrbitControls, data = res[1];
@@ -254,7 +262,8 @@
         };
       })
       .catch(function (err) {
-        el.innerHTML = '<div class="hb3d-load">3D-Ansicht nicht verfügbar.</div>';
+        el.innerHTML = '<div class="hb3d-load"></div>';
+        el.firstChild.textContent = txt('fehler', '3D-Ansicht nicht verfügbar.');
         console.warn('[HB3D] Viewer:', err);
         throw err;
       });

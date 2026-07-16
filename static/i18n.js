@@ -12,13 +12,37 @@ window.HB_I18N = {"en":{"Nadelbaum":"Conifer","Laubbaum":"Deciduous tree","Profi
   if (!stored) { try { stored = localStorage.getItem('hb_lang'); } catch (e) {} }
   // Server-Sprache (vom SEO-Routing in <html lang> gesetzt) als starker Hinweis vor Browser
   var serverLang = (document.documentElement.getAttribute('lang') || '').slice(0, 2);
-  var lang = norm(stored || serverLang || (navigator.language || 'de'));
-  window.hbLang = lang;
-  try { localStorage.setItem('hb_lang', lang); } catch (e) {}
-  document.cookie = 'hb_lang=' + lang + ';path=/;max-age=31536000;SameSite=Lax';
-  document.documentElement.setAttribute('lang', lang);
 
-  var dict = (window.HB_I18N && window.HB_I18N[lang]) || null;
+  /* Serverseitig lokalisierte Seiten (Startseite unter /, /en, /fr) tragen
+     data-i18n="server": dort ist der Text schon fertig uebersetzt (app.py,
+     LANDING_TXT), und <html lang> ist bereits von der Route gesetzt.
+
+     WICHTIG — zwei verschiedene Dinge, die frueher eins waren:
+     a) Die VORLIEBE des Nutzers (Cookie/localStorage). Sie gilt app-weit, auch
+        fuer den Editor, und der Server liest sie in _request_lang() — daran
+        haengen Kontosprache und Mails. Sie darf ein blosser Seitenaufruf NIE
+        aendern: wer Franzoesisch gewaehlt hat und aufs Logo klickt (das zeigt
+        immer auf /), soll nicht still auf Deutsch umgestellt werden.
+     b) Was DIESE Seite ANZEIGT. Auf Server-Seiten ist das die Route — sonst
+        wuerde das Woerterbuch den fertigen Text nochmal anfassen (Mischtexte),
+        und die Zeile unten wuerde <html lang="en"> zu lang="de" machen, nur
+        weil ein altes Cookie das sagt. Fuer Google waere das ein Widerspruch
+        auf genau der Seite, die auf englische Suchbegriffe zielt. */
+  var serverSeite = document.documentElement.getAttribute('data-i18n') === 'server';
+
+  // (a) Vorliebe — wie bisher ermittelt und gespeichert. Unveraendert!
+  var vorliebe = norm(stored || serverLang || (navigator.language || 'de'));
+  try { localStorage.setItem('hb_lang', vorliebe); } catch (e) {}
+  document.cookie = 'hb_lang=' + vorliebe + ';path=/;max-age=31536000;SameSite=Lax';
+
+  // (b) Anzeige dieser Seite
+  var lang = serverSeite ? norm(serverLang) : vorliebe;
+  window.hbLang = lang;
+  if (!serverSeite) document.documentElement.setAttribute('lang', lang);
+
+  // Auf Server-Seiten bewusst KEIN Woerterbuch: start() blendet dann nur den
+  // Sprachumschalter ein und laesst den fertigen Text in Ruhe.
+  var dict = (!serverSeite && window.HB_I18N && window.HB_I18N[lang]) || null;
   window.t = function (s) { return (dict && dict[s]) || s; };
 
   function trText(node) {

@@ -1,5 +1,8 @@
 <!DOCTYPE html>
-<html lang="{{ seo_lang|default('de') }}">
+{# data-i18n="server": der sichtbare Text kommt fertig uebersetzt aus app.py
+   (LANDING_TXT). i18n.js soll hier nur den Sprachumschalter einblenden und
+   weder nachuebersetzen noch <html lang> ueberschreiben — siehe static/i18n.js. #}
+<html lang="{{ seo_lang|default('de') }}" data-i18n="server">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -155,6 +158,18 @@
       overflow-wrap: break-word;
     }
     .hero h1 em { font-style: italic; color: oklch(0.48 0.1 40); }
+    /* Geschwungene Unterstreichung unter einem betonten Wort der Ueberschrift.
+       Lag frueher als Inline-SVG in der h1 — die Ueberschrift kommt jetzt aber
+       je Sprache aus app.py, und dort waere das SVG dreimal dupliziert und
+       unlesbar. #bf8b68 ist oklch(0.68 0.08 55) in sRGB (im Browser gemessen);
+       in einem data:-SVG geht oklch nicht. */
+    .hero-ul { position: relative; white-space: nowrap; }
+    .hero-ul::after {
+      content: ''; position: absolute; left: 0; bottom: -6px;
+      width: 100%; height: 10px;
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 10' preserveAspectRatio='none'%3E%3Cpath d='M0,6 Q50,-2 100,6' stroke='%23bf8b68' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat;
+      background-size: 100% 100%;
+    }
     .hero-sub {
       font-size: 17px; line-height: 1.6; color: oklch(0.45 0.02 50);
       max-width: 480px; margin: 0 0 32px;
@@ -446,14 +461,14 @@
     HolzBau 3D
   </a>
   <ul class="nav-links">
-    <li><a href="#features">Features</a></li>
-    <li><a href="#pricing">Preise</a></li>
-    <li><a href="{{ '/ratgeber' if seo_lang|default('de') == 'de' else '/' + seo_lang + '/guides' }}">Ratgeber</a></li>
-    <li><a href="#faq">FAQ</a></li>
+    <li><a href="#features">{{ L.nav_features }}</a></li>
+    <li><a href="#pricing">{{ L.nav_preise }}</a></li>
+    <li><a href="{{ '/ratgeber' if seo_lang|default('de') == 'de' else '/' + seo_lang + '/guides' }}">{{ L.nav_ratgeber }}</a></li>
+    <li><a href="#faq">{{ L.nav_faq }}</a></li>
   </ul>
   <div class="nav-actions">
-    <a href="/login" class="nav-login">Anmelden</a>
-    <a href="/register" class="btn-primary">Kostenlos starten</a>
+    <a href="/login" class="nav-login">{{ L.nav_anmelden }}</a>
+    <a href="/register" class="btn-primary">{{ L.nav_start }}</a>
   </div>
 </nav>
 
@@ -464,12 +479,12 @@
   <div class="hero-deco-3"></div>
   <div class="hero-inner">
     <div>
-      <div class="hero-badge">🪵 Browser-basiert · Keine Installation</div>
-      <h1>Holzbau in <em>3D</em>:<br>Holzkonstruktion&nbsp;<span style="position:relative;white-space:nowrap">online<svg style="position:absolute;left:0;bottom:-6px;width:100%;height:10px" viewBox="0 0 100 10" preserveAspectRatio="none"><path d="M0,6 Q50,-2 100,6" stroke="oklch(0.68 0.08 55)" stroke-width="3" fill="none" stroke-linecap="round"/></svg></span> planen</h1>
-      <p class="hero-sub">Mit HolzBau 3D planst und konstruierst du deine Holzkonstruktion direkt im Browser – Pergola, Carport, Dachstuhl oder jede andere Konstruktion aus Holz. Stückliste auf Knopfdruck, präzise 3D-Ansicht, sofort bereit ohne Installation.</p>
+      <div class="hero-badge">{{ L.hero_badge }}</div>
+      <h1>{{ L.hero_h1_html|safe }}</h1>
+      <p class="hero-sub">{{ L.hero_sub }}</p>
       <div class="hero-ctas">
-        <a href="/login" class="btn-primary" style="padding:14px 26px;font-size:15px;">Kostenlos testen</a>
-        <a href="#pricing" class="btn-outline" style="padding:14px 26px;font-size:15px;">Preise &amp; Abos ansehen</a>
+        <a href="/login" class="btn-primary" style="padding:14px 26px;font-size:15px;">{{ L.hero_cta1 }}</a>
+        <a href="#pricing" class="btn-outline" style="padding:14px 26px;font-size:15px;">{{ L.hero_cta2 }}</a>
       </div>
     </div>
 
@@ -543,26 +558,26 @@
           <div class="p3d-face p3d-rafter-front" style="left:77px;top:145px;width:146px;height:10px;transform:translate3d(60px,-132px,0px) rotateY(90deg) translateZ(5px);"></div>
         </div>
 
-        <span class="dim-chip dim-span">2,80 m</span>
-        <span class="dim-chip dim-depth">2,00 m</span>
-        <span class="dim-chip dim-height">2,40 m</span>
+        <span class="dim-chip dim-span">{{ L.mock_d1 }}</span>
+        <span class="dim-chip dim-depth">{{ L.mock_d2 }}</span>
+        <span class="dim-chip dim-height">{{ L.mock_d3 }}</span>
 
         <div class="orbit-hint">
           <div class="orbit-icon"></div>
-          <span class="orbit-label">3D-Ansicht · frei drehbar</span>
+          <span class="orbit-label">{{ L.mock_ansicht }}</span>
         </div>
       </div>
       <div class="mockup-footer">
         <div class="mockup-list">
-          <div>Pfosten 100×100 mm · 4 Stk — 2,40 m</div>
-          <div>Pfette 120×80 mm · 2 Stk — 2,80 m</div>
-          <div>Pfette 120×80 mm · 2 Stk — 2,00 m</div>
-          <div>Sparren 60×40 mm · 4 Stk — 2,00 m</div>
-          <div>Gesamt: 27,20 lfm</div>
+          <div>{{ L.mock_p1 }}</div>
+          <div>{{ L.mock_p2 }}</div>
+          <div>{{ L.mock_p3 }}</div>
+          <div>{{ L.mock_p4 }}</div>
+          <div>{{ L.mock_gesamt }}</div>
         </div>
         <div class="mockup-tools">
-          <div class="tool-btn tool-active">Auswählen</div>
-          <div class="tool-btn tool-inactive">Verschieben</div>
+          <div class="tool-btn tool-active">{{ L.mock_werkzeug1 }}</div>
+          <div class="tool-btn tool-inactive">{{ L.mock_werkzeug2 }}</div>
         </div>
       </div>
     </div>
@@ -573,55 +588,55 @@
 <section id="features" class="section features-bg">
   <div class="section-inner">
     <div class="section-header">
-      <div class="section-eyebrow">Features</div>
-      <h2 class="section-h2">Alles was du brauchst</h2>
-      <p class="section-lead">Von der ersten Idee über die Materialkosten bis zum fertigen Zuschnitt — HolzBau 3D begleitet dein gesamtes Projekt.</p>
+      <div class="section-eyebrow">{{ L.feat_eyebrow }}</div>
+      <h2 class="section-h2">{{ L.feat_h2 }}</h2>
+      <p class="section-lead">{{ L.feat_lead }}</p>
     </div>
     <div class="features-grid">
       <div class="feature-card">
         <div class="feature-icon"><i class="bi bi-box"></i></div>
-        <h3>3D Visualisierung</h3>
-        <p>Interaktive 3D-Ansicht deiner Holzkonstruktion direkt im Browser. Drehen, zoomen, inspizieren — ohne Plugin oder Installation.</p>
+        <h3>{{ L.f1_t }}</h3>
+        <p>{{ L.f1_p }}</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon"><i class="bi bi-map"></i></div>
-        <h3>Grundriss als Vorlage <span class="feat-new">Neu</span></h3>
-        <p>Grundriss-Foto, Scan oder Plan laden, per bekannter Strecke maßhaltig kalibrieren und die Konstruktion einfach darüber nachzeichnen.</p>
+        <h3>{{ L.f2_t }} <span class="feat-new">{{ L.feat_neu }}</span></h3>
+        <p>{{ L.f2_p }}</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon"><i class="bi bi-magic"></i></div>
-        <h3>Vorlagen nach Maß <span class="feat-new">Neu</span></h3>
-        <p>Carport, Pergola, Gartenhaus oder Terrassendach: einfach Maße eingeben und die komplette Konstruktion wird automatisch erzeugt.</p>
+        <h3>{{ L.f3_t }} <span class="feat-new">{{ L.feat_neu }}</span></h3>
+        <p>{{ L.f3_p }}</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon"><i class="bi bi-currency-euro"></i></div>
-        <h3>Materialkosten &amp; Angebot <span class="feat-new">Neu</span></h3>
-        <p>Sofort sehen, was dein Projekt kostet. Preise je Holzart pflegen und ein fertiges Angebots-PDF mit eigenem Briefkopf erstellen.</p>
+        <h3>{{ L.f4_t }} <span class="feat-new">{{ L.feat_neu }}</span></h3>
+        <p>{{ L.f4_p }}</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon"><i class="bi bi-scissors"></i></div>
-        <h3>Verschnitt-Optimierung <span class="feat-new">Neu</span></h3>
-        <p>Zuschnittpläne für Balken (1D) und 2D-Plattenzuschnitt für OSB/Sperrholz wie bei Cutlist Optimizer — inkl. Sägeblattbreite und Restholz.</p>
+        <h3>{{ L.f5_t }} <span class="feat-new">{{ L.feat_neu }}</span></h3>
+        <p>{{ L.f5_p }}</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon"><i class="bi bi-record-circle"></i></div>
-        <h3>Ausfräsungen &amp; CNC <span class="feat-new">Neu</span></h3>
-        <p>Aussparungen per Maus auf der Platte platzieren; überlappende Löcher verschmelzen zu komplexen Formen. Als echtes 3D-Loch — und als CNC-Fräsplan (DXF, 1:1) direkt für die Fräse exportierbar.</p>
+        <h3>{{ L.f6_t }} <span class="feat-new">{{ L.feat_neu }}</span></h3>
+        <p>{{ L.f6_p }}</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon"><i class="bi bi-table"></i></div>
-        <h3>Stückliste, CSV &amp; DXF</h3>
-        <p>Automatische Stückliste als CSV, bemaßte Einzelteil-Zeichnungen und DXF-Export der Planansichten — bereit für Werkstatt und CAD.</p>
+        <h3>{{ L.f7_t }}</h3>
+        <p>{{ L.f7_p }}</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon"><i class="bi bi-rulers"></i></div>
-        <h3>Querschnitts-Assistent <span class="feat-new">Neu</span></h3>
-        <p>Aus Spannweite und Achsabstand einen sinnvollen Holzquerschnitt vorgeschlagen bekommen — nimmt dir das Raten ab.</p>
+        <h3>{{ L.f8_t }} <span class="feat-new">{{ L.feat_neu }}</span></h3>
+        <p>{{ L.f8_p }}</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon"><i class="bi bi-printer"></i></div>
-        <h3>Maßstabsgetreuer Druck <span class="feat-new">Neu</span></h3>
-        <p>Druckfertige Pläne als PDF im echten Maßstab (1:1 bis 1:100) — 1:1 sogar als Schablone direkt aufs Holz. Für Bauantrag oder Werkstatt.</p>
+        <h3>{{ L.f9_t }} <span class="feat-new">{{ L.feat_neu }}</span></h3>
+        <p>{{ L.f9_p }}</p>
       </div>
     </div>
   </div>
@@ -631,61 +646,61 @@
 <section id="beispiele" class="section examples-bg">
   <div class="section-inner">
     <div class="section-header">
-      <div class="section-eyebrow">Beispiele</div>
-      <h2 class="section-h2">Was du bauen kannst</h2>
-      <p class="section-lead">Von der Pergola bis zum Dachstuhl — HolzBau 3D deckt alle gängigen Holzkonstruktionen ab.</p>
+      <div class="section-eyebrow">{{ L.bsp_eyebrow }}</div>
+      <h2 class="section-h2">{{ L.bsp_h2 }}</h2>
+      <p class="section-lead">{{ L.bsp_lead }}</p>
     </div>
     <div class="examples-grid">
       <div class="example-card">
         <div class="example-photo">
-          <img src="/static/img/pergola.webp" alt="Pergola — in HolzBau 3D geplant und gerendert" width="760" height="488" loading="lazy" decoding="async">
-          <button class="btn-3d" type="button" data-model="/static/models/pergola.json" aria-label="Pergola in 3D drehen">
-            <span class="btn-3d-ico" aria-hidden="true">↻</span> In 3D drehen
+          <img src="/static/img/pergola.webp" alt="{{ L.b1_alt }}" width="760" height="488" loading="lazy" decoding="async">
+          <button class="btn-3d" type="button" data-model="/static/models/pergola.json" aria-label="{{ L.b1_t }} — {{ L.bsp_3d }}">
+            <span class="btn-3d-ico" aria-hidden="true">↻</span> {{ L.bsp_3d }}
           </button>
         </div>
         <div class="example-body">
-          <h3>🌿 Pergola</h3>
-          <p>Klassische Pergola mit Längs- und Querbalken. Ideal für Garten und Terrasse.</p>
-          <div class="example-spec">19 Balken · 3,0 × 4,0 m · 0,60 m³</div>
+          <h3>🌿 {{ L.b1_t }}</h3>
+          <p>{{ L.b1_p }}</p>
+          <div class="example-spec">{{ L.b1_s }}</div>
         </div>
       </div>
       <div class="example-card">
         <div class="example-photo">
-          <img src="/static/img/carport.webp" alt="Carport — in HolzBau 3D geplant und gerendert" width="760" height="488" loading="lazy" decoding="async">
-          <button class="btn-3d" type="button" data-model="/static/models/carport.json" aria-label="Carport in 3D drehen">
-            <span class="btn-3d-ico" aria-hidden="true">↻</span> In 3D drehen
+          <img src="/static/img/carport.webp" alt="{{ L.b2_alt }}" width="760" height="488" loading="lazy" decoding="async">
+          <button class="btn-3d" type="button" data-model="/static/models/carport.json" aria-label="{{ L.b2_t }} — {{ L.bsp_3d }}">
+            <span class="btn-3d-ico" aria-hidden="true">↻</span> {{ L.bsp_3d }}
           </button>
         </div>
         <div class="example-body">
-          <h3>🚗 Carport</h3>
-          <p>Pultdach-Carport mit Auto-Objekt — so siehst du sofort, ob dein Wagen reinpasst.</p>
-          <div class="example-spec">16 Balken · 3,0 × 5,0 m · 0,70 m³</div>
+          <h3>🚗 {{ L.b2_t }}</h3>
+          <p>{{ L.b2_p }}</p>
+          <div class="example-spec">{{ L.b2_s }}</div>
         </div>
       </div>
       <div class="example-card">
         <div class="example-photo">
-          <img src="/static/img/wand_osb.webp" alt="Wand mit Fenster — in HolzBau 3D geplant und gerendert" width="760" height="488" loading="lazy" decoding="async">
-          <button class="btn-3d" type="button" data-model="/static/models/wand_osb.json" aria-label="Wand mit Fenster in 3D drehen">
-            <span class="btn-3d-ico" aria-hidden="true">↻</span> In 3D drehen
+          <img src="/static/img/wand_osb.webp" alt="{{ L.b3_alt }}" width="760" height="488" loading="lazy" decoding="async">
+          <button class="btn-3d" type="button" data-model="/static/models/wand_osb.json" aria-label="{{ L.b3_t }} — {{ L.bsp_3d }}">
+            <span class="btn-3d-ico" aria-hidden="true">↻</span> {{ L.bsp_3d }}
           </button>
         </div>
         <div class="example-body">
-          <h3>🏠 Wand mit Fenster</h3>
-          <p>Ständerwerk mit Fensterwechsel, Sturz und einseitiger OSB-Beplankung.</p>
-          <div class="example-spec">17 Teile · 3,6 × 2,6 m · 9,4 m² OSB</div>
+          <h3>🏠 {{ L.b3_t }}</h3>
+          <p>{{ L.b3_p }}</p>
+          <div class="example-spec">{{ L.b3_s }}</div>
         </div>
       </div>
       <div class="example-card">
         <div class="example-photo">
-          <img src="/static/img/dachstuhl.webp" alt="Dachstuhl — in HolzBau 3D geplant und gerendert" width="760" height="488" loading="lazy" decoding="async">
-          <button class="btn-3d" type="button" data-model="/static/models/dachstuhl.json" aria-label="Dachstuhl in 3D drehen">
-            <span class="btn-3d-ico" aria-hidden="true">↻</span> In 3D drehen
+          <img src="/static/img/dachstuhl.webp" alt="{{ L.b4_alt }}" width="760" height="488" loading="lazy" decoding="async">
+          <button class="btn-3d" type="button" data-model="/static/models/dachstuhl.json" aria-label="{{ L.b4_t }} — {{ L.bsp_3d }}">
+            <span class="btn-3d-ico" aria-hidden="true">↻</span> {{ L.bsp_3d }}
           </button>
         </div>
         <div class="example-body">
-          <h3>🏗️ Dachstuhl</h3>
-          <p>Satteldach mit Sparren, Pfetten und Firstpfette — die Basis jedes Dachs.</p>
-          <div class="example-spec">15 Teile · 6,0 × 6,0 m · 1,09 m³</div>
+          <h3>🏗️ {{ L.b4_t }}</h3>
+          <p>{{ L.b4_p }}</p>
+          <div class="example-spec">{{ L.b4_s }}</div>
         </div>
       </div>
     </div>
@@ -696,9 +711,9 @@
 <section id="pricing" class="section pricing-bg">
   <div class="section-inner">
     <div class="section-header">
-      <div class="section-eyebrow">Preise</div>
-      <h2 class="section-h2">Einfache, faire Preise</h2>
-      <p class="section-lead">Starte kostenlos und upgrade jederzeit. Monatlich kündbar, keine Bindung.</p>
+      <div class="section-eyebrow">{{ L.pr_eyebrow }}</div>
+      <h2 class="section-h2">{{ L.pr_h2 }}</h2>
+      <p class="section-lead">{{ L.pr_lead }}</p>
     </div>
     <div class="pricing-grid">
 
@@ -706,50 +721,50 @@
       <div class="price-card">
         <div class="price-name">Free</div>
         <div class="price-amount">0 €</div>
-        <div class="price-desc">Mit Werbung · Ideal zum Ausprobieren</div>
+        <div class="price-desc">{{ L.pr_free_desc }}</div>
         <div class="price-features">
-          <div>✓ 3D Visualisierung</div>
-          <div>✓ Bis zu 3 Projekte</div>
-          <div>✓ Stückliste als CSV</div>
-          <div class="price-muted">⚠ Mit Werbebannern</div>
-          <div class="price-muted">✗ PDF Export</div>
-          <div class="price-muted">✗ Gruppen &amp; Ebenen</div>
+          <div>{{ L.pr_free_f1 }}</div>
+          <div>{{ L.pr_free_f2 }}</div>
+          <div>{{ L.pr_free_f3 }}</div>
+          <div class="price-muted">{{ L.pr_free_f4 }}</div>
+          <div class="price-muted">{{ L.pr_free_f5 }}</div>
+          <div class="price-muted">{{ L.pr_free_f6 }}</div>
         </div>
-        <a href="/login" class="btn-plan btn-plan-outline">Kostenlos starten</a>
+        <a href="/login" class="btn-plan btn-plan-outline">{{ L.pr_free_cta }}</a>
       </div>
 
       <!-- Premium monthly -->
       <div class="price-card dark">
         <div class="price-name">Premium</div>
-        <div class="price-amount">€9,99<sub>/Monat</sub></div>
-        <div class="price-desc">Werbefrei · Alle Features entsperrt</div>
+        <div class="price-amount">€9,99<sub>{{ L.pr_monat }}</sub></div>
+        <div class="price-desc">{{ L.pr_mon_desc }}</div>
         <div class="price-features">
-          <div>✓ Unbegrenzte Projekte &amp; Vorlagen nach Maß</div>
-          <div>✓ Materialkosten &amp; Angebots-PDF</div>
-          <div>✓ Schnittplan, 2D-Plattenzuschnitt &amp; Ausfräsungen</div>
-          <div>✓ Stückliste als CSV, DXF &amp; Druck-PDF</div>
-          <div>✓ <strong>Vollständig werbefrei</strong></div>
-          <div>✓ Prioritäts-Support</div>
+          <div>{{ L.pr_f1 }}</div>
+          <div>{{ L.pr_f2 }}</div>
+          <div>{{ L.pr_f3 }}</div>
+          <div>{{ L.pr_f4 }}</div>
+          <div>{{ L.pr_f5_html|safe }}</div>
+          <div>{{ L.pr_f6 }}</div>
         </div>
-        <a href="/subscribe" class="btn-plan btn-plan-solid">Monatlich starten</a>
+        <a href="/subscribe" class="btn-plan btn-plan-solid">{{ L.pr_mon_cta }}</a>
       </div>
 
       <!-- Premium annual -->
       <div class="price-card featured">
-        <div class="price-save">🎉 Spare 19,89 €</div>
-        <div class="price-badge">Meistgewählt</div>
-        <div class="price-name">Premium Jährlich</div>
-        <div class="price-amount">€99,99<sub>/Jahr</sub></div>
-        <div class="price-desc">= 8,33 €/Monat · 2 Monate gratis</div>
+        <div class="price-save">{{ L.pr_save }}</div>
+        <div class="price-badge">{{ L.pr_badge }}</div>
+        <div class="price-name">{{ L.pr_year_name }}</div>
+        <div class="price-amount">€99,99<sub>{{ L.pr_jahr }}</sub></div>
+        <div class="price-desc">{{ L.pr_year_desc }}</div>
         <div class="price-features">
-          <div>✓ Unbegrenzte Projekte &amp; Vorlagen nach Maß</div>
-          <div>✓ Materialkosten &amp; Angebots-PDF</div>
-          <div>✓ Schnittplan, 2D-Plattenzuschnitt &amp; Ausfräsungen</div>
-          <div>✓ Stückliste als CSV, DXF &amp; Druck-PDF</div>
-          <div>✓ <strong>Vollständig werbefrei</strong></div>
-          <div>✓ Prioritäts-Support</div>
+          <div>{{ L.pr_f1 }}</div>
+          <div>{{ L.pr_f2 }}</div>
+          <div>{{ L.pr_f3 }}</div>
+          <div>{{ L.pr_f4 }}</div>
+          <div>{{ L.pr_f5_html|safe }}</div>
+          <div>{{ L.pr_f6 }}</div>
         </div>
-        <a href="/subscribe" class="btn-plan btn-plan-solid">Jährlich starten</a>
+        <a href="/subscribe" class="btn-plan btn-plan-solid">{{ L.pr_year_cta }}</a>
       </div>
 
     </div>
@@ -779,7 +794,7 @@
 <section class="section examples-bg">
   <div class="section-inner">
     <div class="section-header">
-      <div class="section-eyebrow">Ratgeber</div>
+      <div class="section-eyebrow">{{ L.nav_ratgeber }}</div>
       <h2 class="section-h2">{{ guides_heading|default('Ratgeber & Anleitungen') }}</h2>
       <p class="section-lead">{{ guides_lead }}</p>
     </div>
@@ -806,10 +821,12 @@
       <h2>Plan timber structures online in 3D</h2>
       <p>HolzBau 3D is a free online tool for planning timber structures right in your browser – no installation needed. Whether pergola, carport, patio roof or a complete roof truss: you assemble beams, posts, purlins and rafters to scale in 3D and view your design from every angle. Mistakes in dimensions or joints show up during planning, not on site.</p>
       <p>Your design takes shape step by step: enter dimensions, place beams, organise groups. Every finished project automatically produces a parts list with lengths and cross-sections plus an optimised cutting plan – Premium users export everything as PDF. If you would like to read up first, our <a href="/en/guides">guides</a> cover pergolas, carports, roof trusses and more.</p>
+      <p>New: complete structures such as a carport, pergola or garden shed are generated automatically from your dimensions. A built-in <strong>material cost calculation</strong> shows the timber price straight away and produces a quote PDF, the <strong>2D panel cutting</strong> optimises OSB and plywood sheets just like a Cutlist Optimizer, and cut-outs can be milled into panels to the millimetre. Finished plans export as CSV, DXF or print-ready PDF.</p>
       {% elif seo_lang|default('de') == 'fr' %}
       <h2>Concevoir des structures en bois en 3D, en ligne</h2>
       <p>HolzBau 3D est un outil en ligne gratuit pour planifier des structures en bois directement dans le navigateur – sans installation. Pergola, carport, couverture de terrasse ou charpente complète : vous assemblez poutres, poteaux, pannes et chevrons à l'échelle en 3D et examinez votre projet sous tous les angles. Les erreurs de dimensions ou d'assemblage apparaissent dès la planification, pas sur le chantier.</p>
       <p>Le projet prend forme étape par étape : saisir les dimensions, placer les poutres, organiser des groupes. Chaque projet terminé génère automatiquement une liste de pièces avec longueurs et sections ainsi qu'un plan de coupe optimisé – les utilisateurs Premium exportent tout en PDF. Pour vous documenter d'abord, nos <a href="/fr/guides">guides</a> couvrent pergolas, carports, charpentes et plus encore.</p>
+      <p>Nouveau : des constructions complètes comme un carport, une pergola ou un abri de jardin sont générées automatiquement à partir de vos dimensions. Un <strong>calcul du coût des matériaux</strong> intégré affiche immédiatement le prix du bois et produit un devis PDF, le <strong>débit de panneaux 2D</strong> optimise les panneaux OSB et contreplaqué comme un Cutlist Optimizer, et les évidements se fraisent au millimètre près dans les panneaux. Vous exportez les plans finis en CSV, DXF ou PDF d'impression.</p>
       {% else %}
       <h2>Holzkonstruktionen online in 3D planen</h2>
       <p>HolzBau 3D ist ein kostenloses Online-Tool, mit dem du Holzkonstruktionen direkt im Browser planst – ganz ohne Installation. Ob Pergola, Carport, Terrassenüberdachung oder kompletter Dachstuhl: Du setzt Balken, Pfosten, Pfetten und Sparren maßstabsgetreu in 3D zusammen und betrachtest deinen Entwurf sofort von allen Seiten. Fehler in den Maßen oder Verbindungen fallen so schon in der Planung auf, nicht erst auf der Baustelle.</p>
@@ -824,15 +841,15 @@
 <footer>
   <a href="/" class="footer-logo">HolzBau 3D</a>
   <div class="footer-links">
-    <a href="#features">Features</a>
-    <a href="#pricing">Preise</a>
-    <a href="{{ '/ratgeber' if seo_lang|default('de') == 'de' else '/' + seo_lang + '/guides' }}">Ratgeber</a>
-    <a href="/ueber-uns">Über uns</a>
-    <a href="/login">Login</a>
-    <a href="/impressum">Impressum</a>
-    <a href="/datenschutz">Datenschutz</a>
-    <a href="/nutzungsbedingungen">Nutzungsbedingungen</a> | <a href="/widerruf">Widerruf</a>
-    <a href="#" onclick="if(window.googlefc){googlefc.callbackQueue.push(googlefc.showRevocationMessage);}return false;">Cookie-Einstellungen</a>
+    <a href="#features">{{ L.nav_features }}</a>
+    <a href="#pricing">{{ L.nav_preise }}</a>
+    <a href="{{ '/ratgeber' if seo_lang|default('de') == 'de' else '/' + seo_lang + '/guides' }}">{{ L.nav_ratgeber }}</a>
+    <a href="/ueber-uns">{{ L.fu_ueber }}</a>
+    <a href="/login">{{ L.fu_login }}</a>
+    <a href="/impressum">{{ L.fu_impressum }}</a>
+    <a href="/datenschutz">{{ L.fu_datenschutz }}</a>
+    <a href="/nutzungsbedingungen">{{ L.fu_agb }}</a> | <a href="/widerruf">{{ L.fu_widerruf }}</a>
+    <a href="#" onclick="if(window.googlefc){googlefc.callbackQueue.push(googlefc.showRevocationMessage);}return false;">{{ L.fu_cookies }}</a>
   </div>
   <div class="footer-copy">&copy; 2026 HolzBau 3D</div>
 </footer>
@@ -843,6 +860,13 @@
 // 3D-Knopf der Beispiel-Karten. three.js (~600 KB) wird ERST beim Klick geladen —
 // wer nur scrollt, zahlt nichts. Bis dahin steht nur das WebP-Bild da.
 (function () {
+  /* Texte vom Server, damit der 3D-Knopf auf /en und /fr nicht deutsch wird.
+     viewer3d.js liegt ausserhalb der Vorlage und kann kein Jinja — es liest sie
+     darum aus window.HB3D_TEXTE. */
+  window.HB3D_TEXTE = {
+    laedt:  {{ L.v3d_laedt|tojson }},
+    fehler: {{ L.v3d_fehler|tojson }}
+  };
   document.addEventListener('click', function (ev) {
     var btn = ev.target.closest && ev.target.closest('.btn-3d');
     if (!btn || btn.disabled) return;
@@ -850,7 +874,7 @@
     var url = btn.getAttribute('data-model');
     if (!box || !url || !window.HB3DViewer) return;
     btn.disabled = true;
-    btn.textContent = 'Lädt …';
+    btn.textContent = {{ L.v3d_laedt|tojson }};
     var img = box.querySelector('img');
     HB3DViewer.mount(box, url).then(function () {
       btn.remove();
@@ -860,7 +884,7 @@
       box.innerHTML = '';
       if (img) box.appendChild(img);
       btn.disabled = false;
-      btn.textContent = '↻ Erneut versuchen';
+      btn.textContent = {{ L.v3d_erneut|tojson }};
       box.appendChild(btn);
     });
   });
