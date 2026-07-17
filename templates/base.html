@@ -3,6 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  {# noindex fuer ALLE Erben: base.html nutzen nur Konto-Seiten (Abo, Profil,
+     Konto loeschen) — Privates hat in Google nichts verloren, und als eigene
+     Treffer wuerden sie nur mit der Startseite um dieselben Suchen konkurrieren.
+     "follow" bleibt: Links (z.B. auf /preise) duerfen weiter Gewicht geben.
+     ACHTUNG falls je eine oeffentliche Seite base.html erben soll: dieses Meta
+     dann per Block ueberschreibbar machen. #}
+  <meta name="robots" content="noindex, follow">
   <title>{% block title %}HolzBau 3D{% endblock %}</title>
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <script>

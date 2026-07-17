@@ -712,15 +712,18 @@ def _admin_email():
 SEO_META = {
     'de': {
         'title': 'Holzbau 3D – Holzkonstruktion planen, 3D Holzdesign | Gratis',
-        'desc': 'Holzbau 3D – das kostenlose Konstruktionsprogramm & 3D-Holzdesign-Tool: Holzkonstruktionen online planen – Pergola, Carport, Dachstuhl & mehr direkt im Browser, mit Stückliste, Schnittplan & PDF-Export. Jetzt gratis starten.',
+        # Max ~160 Zeichen: Google schneidet dahinter ab. Die alte Fassung hatte
+        # 236 — abgeschnitten wurde mitten im Satz, ausgerechnet vor dem
+        # "Jetzt gratis starten". Schluesselwoerter stehen vorn.
+        'desc': 'Holzkonstruktionen kostenlos online planen: Pergola, Carport, Dachstuhl & mehr in 3D – direkt im Browser, mit Stückliste, Schnittplan & PDF-Export.',
         'keywords': 'Holzbau, Holzbau 3D, 3D Holzdesign, Holzdesign 3D, Holzkonstruktion, Holz Konstruktion, Holzbau Konstruktion, Konstruktion aus Holz, Holzkonstruktion 3D, Holzkonstruktion planen, Holzkonstruktion planen kostenlos, Holzkonstruktion online, Holz konstruieren, Holzbau planen, Holzbau Software kostenlos, Holzbausoftware kostenlos, Konstruktionsprogramm Holzbau kostenlos, 3D Holz Planer kostenlos, Holzbau Programm, 3D Holzbau, Pergola planen, Carport planen, Dachstuhl planen, Stückliste, Schnittplan',
         'og_title': 'Holzbau 3D – Holzkonstruktion in 3D planen & konstruieren',
         'og_desc': 'Holzkonstruktionen online planen und konstruieren – Pergola, Carport, Dachstuhl & mehr. Gratis im Browser, mit Stückliste und PDF-Export.',
         'og_locale': 'de_DE',
     },
     'en': {
-        'title': 'Wood Construction 3D – Plan Timber Structures & 3D Wood Design | Free',
-        'desc': 'HolzBau 3D: plan and design wood constructions online for free – pergola, carport, roof truss & more, right in your browser. Timber construction in 3D, with parts list, cutting plan & PDF export. Start free.',
+        'title': 'Wood Construction 3D – Plan Timber Structures Online | Free',
+        'desc': 'Plan wood constructions online for free: pergola, carport, roof truss & more in 3D – right in your browser, with parts list, cutting plan & PDF export.',
         'keywords': 'wood construction, wood construction 3D, timber construction, timber construction 3D, plan wood construction, design timber structure, wood construction software, wood construction online, timber framing, 3D wood design, pergola, carport, roof truss, online wood planner, parts list, cutting plan',
         'og_title': 'Wood Construction 3D – Plan & design timber structures online',
         'og_desc': 'Plan and design wood constructions online – pergola, carport, roof truss & more. Free in your browser, with parts list and PDF export.',
@@ -728,7 +731,7 @@ SEO_META = {
     },
     'fr': {
         'title': 'Construction bois 3D – Concevez vos ossatures en ligne | Gratuit',
-        'desc': 'HolzBau 3D : concevez et planifiez vos constructions bois en ligne gratuitement – pergola, carport, charpente & plus, directement dans le navigateur. Construction bois en 3D, avec liste de pièces, plan de coupe et export PDF.',
+        'desc': 'Concevez vos constructions bois en ligne gratuitement : pergola, carport, charpente & plus en 3D – avec liste de pièces, plan de coupe et export PDF.',
         'keywords': 'construction bois, construction bois 3D, ossature bois, charpente 3D, concevoir construction bois, planifier construction bois, logiciel construction bois, construction bois en ligne, plan bois, 3D bois, pergola, carport, charpente, planificateur bois en ligne, liste de pièces, plan de coupe',
         'og_title': 'Construction bois 3D – Concevez vos ossatures en 3D en ligne',
         'og_desc': 'Concevez et planifiez vos constructions bois en ligne – pergola, carport, charpente & plus. Gratuit dans le navigateur, avec liste de pièces et export PDF.',
