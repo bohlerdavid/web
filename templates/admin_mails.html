@@ -142,13 +142,9 @@
                 {% else %}<span class="text-danger">Vorlage defekt: {{ v.fehler }}</span>{% endif %}
               </td>
               <td class="text-end text-nowrap">
-                {% if v.nur_de %}
-                  <button class="btn btn-sm btn-outline-primary" onclick="zeige('{{ v.key }}','de','{{ v.name }}')">Ansehen</button>
-                {% else %}
-                  {% for l in ['de','en','fr'] %}
-                  <button class="btn btn-sm btn-outline-primary" onclick="zeige('{{ v.key }}','{{ l }}','{{ v.name }}')">{{ l|upper }}</button>
-                  {% endfor %}
-                {% endif %}
+                {% for l in ['de','en','fr'] %}
+                <button class="btn btn-sm btn-outline-primary" onclick="zeige('{{ v.key }}','{{ l }}','{{ v.name }}')">{{ l|upper }}</button>
+                {% endfor %}
               </td>
             </tr>
             {% endfor %}
@@ -158,9 +154,10 @@
     </div>
 
     <div class="alert alert-light border small">
-      <i class="bi bi-translate"></i>
-      Die <strong>Premium-Werbung</strong> gibt es nur auf Deutsch — die Vorlage kennt keine Sprache.
-      Englische und französische Nutzer bekommen sie deutsch.
+      <i class="bi bi-link-45deg"></i>
+      In der Vorschau sind <strong>alle Links Beispiele</strong> und führen ins Leere — auch der
+      Rechnungs-Knopf in „Premium aktiviert“. Die echte Mail enthält den Rechnungslink,
+      den Stripe nach der Zahlung liefert.
     </div>
 
     <h6 class="mt-4">Mails ohne eigene Vorlage</h6>
