@@ -748,6 +748,11 @@ body {
 .group-lock:hover { opacity: 0.85; }
 .group-lock.lock-on { opacity: 1; }
 .group-vis.vis-off { opacity: 0.2; filter: grayscale(1); }
+/* Gleiches Auge wie in der Gruppenliste — ein Schalter soll ueberall gleich
+   aussehen und gleich heissen, egal ob er eine Gruppe oder ein Loch betrifft. */
+.cutout-vis { user-select: none; opacity: 0.55; transition: opacity .1s; }
+.cutout-vis:hover { opacity: 1; }
+.cutout-vis.vis-off { opacity: 0.2; filter: grayscale(1); }
 .group-items { display: none; }
 .group-items.open { display: block; }
 .group-beam-item {
@@ -2211,7 +2216,7 @@ Object.assign(window, {
   openParamTemplate, applyParamTemplate, showSpanAssist, calcSpanAssist,
   showPlattenzuschnitt, renderPlattenzuschnitt, exportPanelCNCDXF,
   toggleLeftPanel, toggleRightPanel,
-  addCutout, updateCutout, deleteCutout, startPlaceCutout, toggleFraes,
+  addCutout, updateCutout, deleteCutout, toggleCutout, startPlaceCutout, toggleFraes,
   loadRefImage, applyCalibration, setRefImageOpacity, toggleRefImageVisible, recalibrateRefImage, removeRefImage,
   calibZoomBy, calibZoomFit, toggleCalibCrop, applyCalibCrop, resetCalibCrop,
 });
@@ -2305,7 +2310,9 @@ function buildPanelGeometry(beam, W, H, D) {
   const A = face[0].v, B = face[1].v, T = axes[ti].v;
 
   const plattenRing = [[-A / 2, -B / 2], [A / 2, -B / 2], [A / 2, B / 2], [-A / 2, B / 2], [-A / 2, -B / 2]];
-  const cuts = beam.cutouts || [];
+  // Ausgeblendete Loecher zaehlen nirgends mit — hier faellt die Entscheidung
+  // fuer das 3D-Bild, in _placementCutouts dieselbe fuer den CNC-Plan.
+  const cuts = (beam.cutouts || []).filter(c => !c.aus);
 
   /* Gerechnet wird PLATTE MINUS LOECHER, nicht mehr "Platte, und die Loecher
      als holes anhaengen". Der Unterschied zaehlt in drei Faellen, die es mit
@@ -3387,9 +3394,13 @@ function renderCutoutPanel(b) {
     const titel = istBahn
       ? T('〰 Fräsbahn {i} ({p} Punkte)').replace('{i}', () => String(i + 1)).replace('{p}', () => String(c.punkte.length))
       : T(c.shape === 'circle' ? '◯ Kreis' : '▭ Rechteck') + ' ' + (i + 1);
-    return `<div style="border:1px solid var(--border);border-radius:var(--r-sm);padding:6px;margin-bottom:6px;background:var(--bg-card)">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-        <strong style="font-size:11px;color:var(--text-2)">${titel}</strong>
+    // Ausgeblendet = auch NICHT gefraest und NICHT exportiert. Alles andere
+    // waere eine Falle: was man nicht sieht, erwartet man auch nicht im Holz.
+    const aus = !!c.aus;
+    return `<div style="border:1px solid var(--border);border-radius:var(--r-sm);padding:6px;margin-bottom:6px;background:var(--bg-card);${aus ? 'opacity:.55' : ''}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;gap:6px">
+        <strong style="font-size:11px;color:var(--text-2);flex:1;${aus ? 'text-decoration:line-through' : ''}">${titel}</strong>
+        <span class="cutout-vis${aus ? ' vis-off' : ''}" style="cursor:pointer;font-size:12px" onclick="toggleCutout(${i})" title="${T(aus ? 'Einblenden — wird wieder gefräst' : 'Ausblenden — wird nicht gefräst')}">👁</span>
         <span style="cursor:pointer;color:var(--red);font-size:12px" onclick="deleteCutout(${i})" title="Entfernen">✕</span>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
@@ -3426,6 +3437,23 @@ function deleteCutout(i) {
   pushHistory();
   b.cutouts.splice(i, 1);
   if (!b.cutouts.length) delete b.cutouts;
+  rebuildMesh(b);
+  renderCutoutPanel(b);
+}
+
+/* Ausfraesung stilllegen, ohne sie zu verlieren — zum Vergleichen ("mit oder
+   ohne Fenster?") und um eine Variante aufzuheben, statt sie zu loeschen und
+   neu zu fraesen. Ausgeblendet heisst konsequent: nicht im Bild, nicht in der
+   Geometrie, nicht im CNC-Plan. Nur zu verstecken, aber weiter zu fraesen,
+   waere eine Falle — was man nicht sieht, erwartet man nicht im Holz.
+   Das Feld heisst `aus` und fehlt normalerweise: ein Loch ohne das Feld ist
+   sichtbar, alte Projekte bleiben damit unveraendert. */
+function toggleCutout(i) {
+  const b = _selectedSheetBeam();
+  if (!b || !b.cutouts || !b.cutouts[i]) return;
+  pushHistory();
+  if (b.cutouts[i].aus) delete b.cutouts[i].aus;   // Feld wieder entfernen,
+  else b.cutouts[i].aus = true;                    // nicht auf false setzen
   rebuildMesh(b);
   renderCutoutPanel(b);
 }
@@ -3642,9 +3670,8 @@ function startPlaceCutout(shape) {
   document.getElementById('fraes-circle')?.classList.toggle('aktiv', shape === 'circle');
   const hint = document.getElementById('place-hint');
   if (hint) {
-    hint.textContent = window.t
-      ? window.t('🔩 Maustaste auf der Platte halten und ziehen — es wird gefräst, solange du ziehst · Esc = Abbrechen')
-      : '🔩 Maustaste auf der Platte halten und ziehen — es wird gefräst, solange du ziehst · Esc = Abbrechen';
+    const t = '🔩 Maustaste auf der Platte halten und ziehen — es wird gefräst, solange du ziehst · Alt = gerade · Esc = Abbrechen';
+    hint.textContent = window.t ? window.t(t) : t;
     hint.style.display = 'block';
   }
 }
@@ -3782,7 +3809,7 @@ function _bahnStart(cx, cy) {
   _fraesBahn = { beamId: hit.b.id, shape: _placingCutout.shape, masse, punkte: [_bahnPunkt(hit, _placingCutout.shape, masse)] };
 }
 
-function _bahnZiehen(cx, cy, hit) {
+function _bahnZiehen(cx, cy, hit, gerade) {
   if (!_fraesBahn || _fraesBahn.beendet) return;
   if (hit === undefined) hit = _cursorFaceUV(cx, cy);
   if (!hit || hit.b.id !== _fraesBahn.beamId) {
@@ -3796,6 +3823,28 @@ function _bahnZiehen(cx, cy, hit) {
     return;
   }
   const p = _bahnPunkt(hit, _fraesBahn.shape, _fraesBahn.masse);
+
+  /* ── Alt gedrueckt: GERADE fraesen ──────────────────────────────────────
+     Von Hand laesst sich keine gerade Nut ziehen — jedes Maus-Zucken steht
+     danach im Holz. Mit Alt wird die Bahn ab dem Anker zu EINER Strecke zum
+     Cursor: die Zwischenpunkte werden verworfen und durch den aktuellen
+     ersetzt. Dadurch verschwindet das Zittern nicht nur optisch, es entsteht
+     gar nicht erst — gespeichert werden nur Anfang und Ende.
+     Der Anker ist der letzte Punkt VOR dem Alt-Druck, nicht der Bahnanfang:
+     so kann man frei anfahren, dann Alt halten und ab dort gerade weiter.
+     Die Schrittweite gilt hier bewusst nicht: die Gerade soll dem Cursor
+     unmittelbar folgen, sie waechst ja nicht, sie wird nur neu gespannt. */
+  if (gerade) {
+    if (_fraesBahn.anker == null) _fraesBahn.anker = _fraesBahn.punkte.length - 1;
+    _fraesBahn.punkte.length = _fraesBahn.anker + 1;   // zurueck auf den Anker
+    _fraesBahn.punkte.push(p);
+    _bahnVorschau();
+    return;
+  }
+  // Alt losgelassen: ab hier wieder freihand — der Endpunkt der Geraden ist
+  // der neue Ausgangspunkt.
+  _fraesBahn.anker = null;
+
   const letzt = _fraesBahn.punkte[_fraesBahn.punkte.length - 1];
   // Punkte erst ab etwas Abstand sammeln. Jeder Mauspixel waere ein Punkt und
   // damit ein Polygon in der Vereinigung — bei einem langen Zug waeren das
@@ -3857,10 +3906,25 @@ function _bahnEnde() {
   const c = bahn.shape === 'circle'
     ? { shape: 'circle', u: bahn.punkte[0].u, v: bahn.punkte[0].v, dia: Math.round(bahn.masse.dia) }
     : { shape: 'rect', u: bahn.punkte[0].u, v: bahn.punkte[0].v, w: Math.round(bahn.masse.w), h: Math.round(bahn.masse.h) };
-  // u/v bleiben der ERSTE Punkt und `punkte` kommt nur bei echter Bewegung
-  // dazu. Ein Klick erzeugt damit exakt das Objekt von frueher — alte Projekte,
-  // CNC-Export und Stueckliste merken nichts von der Neuerung.
-  if (bahn.punkte.length > 1) c.punkte = bahn.punkte;
+  /* u/v bleiben der ERSTE Punkt und `punkte` kommt nur bei ECHTER Bewegung
+     dazu. Ein Klick erzeugt damit exakt das Objekt von frueher — alte Projekte,
+     CNC-Export und Stueckliste merken nichts von der Neuerung.
+
+     "Echt" muss hier nachgemessen werden und nicht bloss punkte.length > 1
+     heissen. Freihand sorgte die Schrittweite in _bahnZiehen dafuer, dass ein
+     zweiter Punkt immer weit genug weg liegt. Der Alt-Zweig ueberspringt sie
+     aber bewusst (er spannt die Gerade neu auf) — ein Klick mit gehaltenem Alt
+     und einem Pixel Zucken lieferte damit punkte = [P0, P1] im Millimeter-
+     abstand, bei starkem Zoom sogar zweimal denselben Punkt. Folgen waren
+     handfest: die Liste nannte das Loch "Fräsbahn", blendete die Felder ↔/↕
+     aus (es liess sich nicht mehr verschieben, nur loeschen), und der
+     CNC-Export machte aus einem Kreis einen 48-Ecken-Linienzug statt einer
+     CIRCLE-Entity — die Maschine haette eine Kontur gefahren statt zu bohren. */
+  const werkzeug = bahn.shape === 'circle' ? bahn.masse.dia : Math.min(bahn.masse.w, bahn.masse.h);
+  const mindestens = Math.max(5, werkzeug / 4);
+  const gefahren = bahn.punkte.some(p =>
+    Math.hypot(p.u - bahn.punkte[0].u, p.v - bahn.punkte[0].v) >= mindestens);
+  if (bahn.punkte.length > 1 && gefahren) c.punkte = bahn.punkte;
   b.cutouts.push(c);
 
   cancelPlaceCutout();
@@ -4747,7 +4811,10 @@ function onPointerMove(e) {
       // (Taste in einem anderen Fenster losgelassen), waere der Zug sonst noch
       // offen und die Bahn wuechse beim blossen Ueberfahren weiter. Der Browser
       // sagt uns hier, was WIRKLICH gedrueckt ist — dem glauben wir.
-      if (e.buttons & 1) _bahnZiehen(e.clientX, e.clientY, hit);
+      // e.altKey direkt vom Ereignis: kein eigener keydown/keyup-Zustand, der
+      // haengen bleiben koennte, wenn Alt in einem anderen Fenster losgelassen
+      // wird. Jede Mausbewegung sagt uns aufs Neue, ob Alt gerade gilt.
+      if (e.buttons & 1) _bahnZiehen(e.clientX, e.clientY, hit, e.altKey);
       else { _fraesBahn = null; if (_bahnLinie) _bahnLinie.visible = false; }
     }
     return;
@@ -5442,6 +5509,14 @@ document.addEventListener('keydown', e => {
 document.addEventListener('keyup', e => {
   const key = e.key.toLowerCase();
   if (WASD_KEYS.has(key)) wasd[key] = false;
+  /* Alt losgelassen -> der Anker der Geraden ist verbraucht.
+     Das muss HIER stehen und nicht nur in _bahnZiehen: dort haengt es an einer
+     Mausbewegung, und wer Alt antippt, ohne die Maus zu ruehren, behielte den
+     alten Anker. Die naechste Gerade wuerde dann auf ihn zurueckschneiden und
+     die vorige Strecke loeschen — aus L->X->Y wuerde L->Y. Genau das ist aber
+     die naheliegende Geste fuer eine L-foermige Nut: Alt tippen, Ecke setzen,
+     weiter. Sie schluege still fehl. */
+  if (e.key === 'Alt' && _fraesBahn) _fraesBahn.anker = null;
   // Pfeiltasten-/Bild-Navigation wieder freigeben
   const nav = ARROW_TO_WASD[e.key];
   if (nav) wasd[nav] = false;
@@ -7579,6 +7654,9 @@ function _placementCutouts(pl) {
   // Rechteck durch — die Maschine fraeste dann etwas anderes als das Modell
   // zeigt, und das faellt erst am Werkstueck auf.
   return b.cutouts.flatMap(c => {
+    // Ausgeblendet = nicht fraesen. Dieselbe Regel wie in buildPanelGeometry:
+    // was im Modell fehlt, darf die Maschine nicht schneiden.
+    if (c.aus) return [];
     const cu = c.u || 0, cv = c.v || 0;   // u entlang A (=lange Seite), v entlang B
 
     if (Array.isArray(c.punkte) && c.punkte.length > 1) {
