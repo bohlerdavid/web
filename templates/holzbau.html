@@ -1191,7 +1191,10 @@ body {
       <button class="tab-btn active" id="tab-dach" onclick="showTab('dach')">📐 Grundriss</button>
       <button class="tab-btn" id="tab-balken" onclick="showTab('balken')">🪵 Balken</button>
       <button class="tab-btn" id="tab-sel" onclick="showTab('sel')">✎ Auswahl</button>
-      <button class="tab-btn row2" id="tab-deko" onclick="showTab('deko')" style="grid-column:1">🌿 Deko</button>
+      {# Schloss am REITER, nicht an den 25 Deko-Knoepfen darin: addDeco ist
+         komplett premium (requirePremium gleich in der ersten Zeile), also ist
+         der ganze Reiter gesperrt. Genau wie bei "📦 Vorlagen" daneben. #}
+      <button class="tab-btn row2" id="tab-deko" onclick="showTab('deko')" style="grid-column:1">🌿 Deko{% if user_plan != 'premium' %} 🔒{% endif %}</button>
       <button class="tab-btn row2" id="tab-list" onclick="showTab('list')" style="grid-column:2">📋 Stückliste</button>
       <button class="tab-btn row2" id="tab-vorlagen" onclick="showTab('vorlagen')" style="grid-column:3">📦 Vorlagen{% if user_plan != 'premium' %} 🔒{% endif %}</button>
     </div>
@@ -1330,7 +1333,10 @@ body {
             <select id="par-dir"><option value="x">X →</option><option value="z" selected>Z ↗</option><option value="y">Y ↑</option></select>
           </div>
         </div>
-        <button class="add-btn" onclick="addBeamRow()" style="background:var(--bg-card);color:var(--green);border:1px solid rgba(56,216,156,.3)">⊕⊕ Parallelreihe hinzufügen</button>
+        {# addBeamRow ist premium-only (requirePremium in der ersten Zeile) — im
+           Gegensatz zum "+ Balken"-Knopf darueber, der nur ein LIMIT hat (20 im
+           freien Plan). Deshalb hier ein Schloss und dort keins. #}
+        <button class="add-btn" onclick="addBeamRow()" style="background:var(--bg-card);color:var(--green);border:1px solid rgba(56,216,156,.3)">⊕⊕ Parallelreihe hinzufügen{% if user_plan != 'premium' %} 🔒{% endif %}</button>
       </div>
 
       <div class="panel-section">
