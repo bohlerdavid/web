@@ -1471,7 +1471,10 @@ body {
     <div id="pane-list" class="tab-pane" style="display:none;flex-direction:column;flex:1;overflow:hidden">
       <div style="padding:8px;border-bottom:1px solid var(--border);flex-shrink:0;display:grid;grid-template-columns:1fr 1fr;gap:6px">
         <button class="tb-btn" style="justify-content:center" onclick="showKalkulation()">💶 Kalkulation{% if user_plan != 'premium' %} 🔒{% endif %}</button>
-        <button class="tb-btn" style="justify-content:center" onclick="showSchnittplan()">✂️ Schnittplan</button>
+        {# Schloss wie bei den Nachbarn: showSchnittplan ist premium (requirePremium
+           in der Funktion), zeigte als einziger der vier aber keins. Ein Free-Nutzer
+           sah keinen Hinweis, klickte und bekam unvermittelt das Upgrade-Fenster. #}
+        <button class="tb-btn" style="justify-content:center" onclick="showSchnittplan()">✂️ Schnittplan{% if user_plan != 'premium' %} 🔒{% endif %}</button>
         <button class="tb-btn" style="justify-content:center" onclick="showPlattenzuschnitt()">🪵 Platten{% if user_plan != 'premium' %} 🔒{% endif %}</button>
         <button class="tb-btn" style="justify-content:center" onclick="exportDXF()">📐 DXF-Export{% if user_plan != 'premium' %} 🔒{% endif %}</button>
         <label style="grid-column:span 2;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-2)">Maßstab (Druck)
@@ -8220,7 +8223,12 @@ try {
 // ONBOARDING TOUR (DE / EN / FR)
 // ══════════════════════════════════════════════
 (function(){
-  var SEL = [null, '#tab-balken', '#tab-vorlagen', '#snap-size', '#view-controls', '#btn-help', '#right-panel', '#tab-list', null];
+  /* Ein Eintrag je Schritt — die Laenge MUSS zu steps[] passen, sonst zeigt der
+     Scheinwerfer auf den falschen Knopf. Neu ab Index 7: das Werkzeug-Menue.
+     Fraesen war vorher gar nicht in der Tour, und "Export findest du hier oben"
+     hat niemanden zum CNC-Fraesplan gefuehrt — er liegt zwei Klicks tiefer
+     hinter "🪵 Platten", was man als Name fuer einen CNC-Export nicht sucht. */
+  var SEL = [null, '#tab-balken', '#tab-vorlagen', '#snap-size', '#view-controls', '#btn-help', '#right-panel', '#btn-tools', '#tab-list', null];
   var TXT = {
     de:{ next:'Weiter', prev:'Zurück', skip:'Überspringen', done:'Fertig', start:'Tour starten', no:'Kein Tutorial', dont:'Nicht mehr anzeigen', of:'von', steps:[
       {t:'Willkommen bei HolzBau 3D 👋', b:'Diese kurze Tour zeigt dir in ~30 Sekunden die wichtigsten Funktionen.'},
@@ -8230,7 +8238,8 @@ try {
       {t:'Ansichten', b:'Wechsle zwischen Oben, Vorne, Seite und 3D – oder setze den Zoom zurück.'},
       {t:'Bewegen & Drehen', b:'Objekt ziehen = bewegen, Alt+Ziehen = Höhe, Rechtsklick = drehen. Dieser Knopf zeigt jederzeit alle Steuerungen.'},
       {t:'Gruppen & Schloss', b:'Organisiere Bauteile in Gruppen: ein-/ausblenden, umbenennen, löschen. Mit dem Schloss 🔒 sperrst du eine Gruppe — sie lässt sich dann nur noch komplett bewegen, kein Teil rutscht mehr einzeln weg.'},
-      {t:'Stückliste & Export', b:'Automatische Stückliste, Export und Drucken/PDF findest du hier oben.'},
+      {t:'Werkzeuge: Messen, Sägen, Fräsen', b:'📏 Maßband, 🪚 Säge und 🔩 Fräsen liegen hier. Zum Fräsen eine OSB- oder Sperrholzplatte auswählen, die Fräsergröße einstellen und mit gedrückter Maus über die Platte ziehen — es wird gefräst, solange du ziehst. Alt gedrückt halten ergibt eine gerade Nut.'},
+      {t:'Stückliste & Export', b:'Hier findest du die automatische Stückliste, Kalkulation, Schnittplan und Drucken/PDF. Deine Ausfräsungen gehen über „🪵 Platten“ → „⚙ CNC-DXF“ als Fräsplan 1:1 an die Maschine.'},
       {t:'Fertig! 🎉', b:'Du kannst diese Tour jederzeit über den ❔-Knopf oben rechts neu starten. Viel Erfolg beim Planen!'}
     ]},
     en:{ next:'Next', prev:'Back', skip:'Skip', done:'Done', start:'Start tour', no:'No tutorial', dont:'Don\'t show again', of:'of', steps:[
@@ -8241,7 +8250,8 @@ try {
       {t:'Views', b:'Switch between top, front, side and 3D – or reset the zoom.'},
       {t:'Move & rotate', b:'Drag an object = move, Alt+drag = height, right-click = rotate. This button always shows all controls.'},
       {t:'Groups & lock', b:'Organize components into groups: show/hide, rename, delete. The lock 🔒 keeps a group together — it then only moves as a whole and no single part slips away.'},
-      {t:'Parts list & export', b:'Automatic parts list, export and print/PDF are up here.'},
+      {t:'Tools: measure, saw, cut-out', b:'📏 Tape measure, 🪚 saw and 🔩 cut-out live here. To cut, select an OSB or plywood panel, set the cutter size and drag across the panel with the mouse held down — it cuts as long as you drag. Hold Alt for a straight groove.'},
+      {t:'Parts list & export', b:'The automatic parts list, cost calculation, cutting plan and print/PDF are here. Your cut-outs go to the machine as a 1:1 milling plan via “🪵 Platten” → “⚙ CNC-DXF”.'},
       {t:'All set! 🎉', b:'You can restart this tour anytime via the ❔ button at the top right. Happy building!'}
     ]},
     fr:{ next:'Suivant', prev:'Retour', skip:'Passer', done:'Terminé', start:'Démarrer', no:'Pas de tutoriel', dont:'Ne plus afficher', of:'sur', steps:[
@@ -8252,7 +8262,8 @@ try {
       {t:'Vues', b:'Basculez entre dessus, face, côté et 3D – ou réinitialisez le zoom.'},
       {t:'Déplacer & tourner', b:'Glisser = déplacer, Alt+glisser = hauteur, clic droit = tourner. Ce bouton affiche toutes les commandes.'},
       {t:'Groupes & verrou', b:'Organisez les éléments en groupes : afficher/masquer, renommer, supprimer. Le verrou 🔒 maintient un groupe ensemble — il ne se déplace plus qu’en bloc, aucune pièce ne s’échappe.'},
-      {t:'Liste & export', b:'Liste de pièces automatique, export et impression/PDF se trouvent ici en haut.'},
+      {t:'Outils : mesurer, scier, fraiser', b:'📏 Mètre ruban, 🪚 scie et 🔩 évidement se trouvent ici. Pour fraiser : sélectionnez un panneau OSB ou contreplaqué, réglez la taille de la fraise et glissez sur le panneau en maintenant le bouton — la fraise coupe tant que vous glissez. Maintenez Alt pour une rainure droite.'},
+      {t:'Liste & export', b:'Vous trouverez ici la liste de pièces automatique, le calcul, le plan de coupe et l’impression/PDF. Vos évidements partent vers la machine en 1:1 via « 🪵 Platten » → « ⚙ CNC-DXF ».'},
       {t:'Terminé ! 🎉', b:'Vous pouvez relancer la visite via le bouton ❔ en haut à droite. Bonne conception !'}
     ]}
   };
