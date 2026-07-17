@@ -1955,8 +1955,29 @@ const USER_PLAN = '{{ user_plan|default("free") }}';
 const IS_PREMIUM = USER_PLAN === 'premium';
 const MAX_FREE_BEAMS = 20;
 
+/* Meldet dem Server EINMAL pro Sitzung, dass ein Premium-Feature benutzt wird.
+   Der Server stellt den echten Plan selbst fest — ein gefaelschtes IS_PREMIUM
+   verbirgt die Nutzung also nicht. Einmal pro Feature reicht: uns interessiert
+   "hat dieser Nutzer Feature X benutzt", nicht wie oft. keepalive, damit der
+   Funkspruch auch beim Schliessen des Tabs noch rausgeht; Fehler sind egal. */
+const _featureGemeldet = new Set();
+function _premiumBeacon(feature) {
+  if (!feature || _featureGemeldet.has(feature)) return;
+  _featureGemeldet.add(feature);
+  try {
+    fetch('/telemetry/feature', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'feature=' + encodeURIComponent(feature) + '&csrf_token=' + encodeURIComponent(CSRF_TOKEN),
+      keepalive: true,
+    }).catch(() => {});
+  } catch (e) {}
+}
+
 function requirePremium(featureName, featureDesc) {
-  if (IS_PREMIUM) return true;
+  // Gate passiert (echtes Premium ODER gefaelschtes IS_PREMIUM) -> melden.
+  // Ein wirklich gesperrter Free-Nutzer laeuft unten in return false, kein Beacon.
+  if (IS_PREMIUM) { _premiumBeacon(featureName); return true; }
   document.getElementById('upgrade-modal-title').textContent = featureName;
   document.getElementById('upgrade-modal-desc').textContent = featureDesc || 'Diese Funktion ist nur im Premium-Abo verfügbar.';
   const modal = document.getElementById('upgrade-modal');
@@ -3144,6 +3165,9 @@ function addBeam() {
     requirePremium('Maximale Balkenanzahl erreicht', `Im kostenlosen Plan sind maximal ${MAX_FREE_BEAMS} Balken möglich. Upgrade für unbegrenzte Balken.`);
     return;
   }
+  // Ueber dem Gratis-Limit -> nutzt die Premium-Faehigkeit "unbegrenzte Balken".
+  // Wie bei der Saege faengt requirePremium den Bypasser nicht, also eigener Beacon.
+  if (beams.length >= MAX_FREE_BEAMS) _premiumBeacon('Unbegrenzte Balken');
   const woodType = document.getElementById('wood-type').value;
   const axis = document.getElementById('beam-axis').value;
   let name = document.getElementById('beam-name').value.trim();
@@ -6129,6 +6153,10 @@ function toggleSaw() {
     requirePremium('🪚 Säge-Tool', 'Balken präzise zuschneiden — Premium-Funktion.');
     return;
   }
+  // Eigener Beacon: der Gate oben laeuft nur bei gesperrten Free-Nutzern; ein
+  // Bypasser (IS_PREMIUM=true) kommt gar nicht durch requirePremium. Beim
+  // EINSCHALTEN melden.
+  if (!sawActive) _premiumBeacon('🪚 Säge-Tool');
   sawActive = !sawActive;
   document.getElementById('btn-saw').classList.toggle('active', sawActive);
   document.getElementById('saw-panel').style.display = sawActive ? 'flex' : 'none';

@@ -239,6 +239,19 @@ SCHEMA_STATEMENTS = [
         ip        VARCHAR(45)  NULL,
         INDEX (job), INDEX (ran_at)
     )""",
+    # Wer benutzt welches Premium-Feature? `plan` ist der SERVER-seitig zum
+    # Zeitpunkt festgestellte Plan — nicht der Browser-Wert, den ein Nutzer
+    # faelschen kann. Eine Zeile mit plan='free' heisst: hier hat jemand die
+    # Client-Sperre umgangen. Zeilen mit plan='premium' sind normale Nutzung
+    # (gratis Feature-Statistik als Nebenprodukt).
+    """CREATE TABLE IF NOT EXISTS feature_use (
+        id       INT PRIMARY KEY AUTO_INCREMENT,
+        user_id  INT          NULL,
+        feature  VARCHAR(60)  NOT NULL,
+        plan     VARCHAR(12)  NOT NULL,
+        used_at  DATETIME     NOT NULL,
+        INDEX (feature), INDEX (used_at), INDEX (plan)
+    )""",
 ]
 
 # Idempotent schema migrations — each is tried individually; existing columns are ignored.
@@ -1975,6 +1988,29 @@ def profile_delete():
                            csrf_token=generate_csrf())
 
 
+@app.route('/telemetry/feature', methods=['POST'])
+@login_required
+def telemetry_feature():
+    """Ein Premium-Feature meldet, dass es gerade benutzt wird. Der ENTSCHEIDENDE
+    Punkt: der Plan wird HIER server-seitig festgestellt, nicht vom Browser
+    uebernommen. Wer IS_PREMIUM im Browser auf true setzt, schaltet die Funktion
+    zwar frei — aber diese Zeile bekommt trotzdem plan='free' und der Fall ist
+    belegt. Absichtlich sehr genuegsam: kein flash, kein Redirect, Fehler werden
+    verschluckt. Telemetrie darf die App nie stoeren."""
+    if not validate_csrf(request.form.get('csrf_token', '')):
+        return ('', 204)   # still schlucken, nicht 403 — ein Beacon soll nie auffallen
+    feature = (request.form.get('feature', '') or '').strip()[:60]
+    if not feature:
+        return ('', 204)
+    try:
+        plan = get_user_plan(session['user_id'])
+        execute_db('INSERT INTO feature_use (user_id, feature, plan, used_at) VALUES (?, ?, ?, NOW())',
+                   [session['user_id'], feature, plan])
+    except Exception as e:
+        logger.warning('feature_use Protokoll fehlgeschlagen: %s', type(e).__name__)
+    return ('', 204)
+
+
 @app.route('/profile/set-lang', methods=['POST'])
 @login_required
 def profile_set_lang():
@@ -2130,6 +2166,48 @@ def admin_mails():
                            ohne_vorlage=MAIL_OHNE_VORLAGE, letzte=letzte,
                            cron_secret_gesetzt=cron_secret_gesetzt,
                            protokoll_seit=protokoll_seit)
+
+
+@app.route('/admin/feature-use')
+@admin_required
+def admin_feature_use():
+    """Wer benutzt welche Premium-Features — und benutzt sie jemand, der gar
+    kein Premium hat? plan='free' in dieser Tabelle ist genau das: eine umgangene
+    Client-Sperre. plan='premium' ist normale Nutzung (Feature-Statistik)."""
+    tage = request.args.get('tage', type=int) or 30
+    tage = max(1, min(tage, 365))
+    seit = "used_at > DATE_SUB(NOW(), INTERVAL %d DAY)" % tage
+
+    # Je Feature: wie oft und von wie vielen VERSCHIEDENEN Nutzern, getrennt nach Plan.
+    zeilen = query_db(
+        "SELECT feature, plan, COUNT(*) AS n, COUNT(DISTINCT user_id) AS nutzer "
+        "FROM feature_use WHERE " + seit + " GROUP BY feature, plan", [])
+    feat = {}
+    for r in zeilen:
+        f = feat.setdefault(r['feature'], {'feature': r['feature'], 'free_n': 0, 'free_u': 0, 'prem_n': 0, 'prem_u': 0})
+        if r['plan'] == 'premium':
+            f['prem_n'] = r['n']; f['prem_u'] = r['nutzer']
+        else:
+            f['free_n'] = r['n']; f['free_u'] = r['nutzer']
+    features = sorted(feat.values(), key=lambda x: (-x['free_u'], -x['free_n'], x['feature']))
+
+    # Die Kennzahl, um die es geht: wie viele UNTERSCHIEDLICHE Free-Nutzer haben
+    # ueberhaupt ein Premium-Feature benutzt?
+    kz = query_db("SELECT COUNT(DISTINCT user_id) AS u, COUNT(*) AS n "
+                  "FROM feature_use WHERE plan='free' AND " + seit, [], one=True)
+    free_nutzer = kz['u'] if kz else 0
+    free_ereignisse = kz['n'] if kz else 0
+
+    # Die letzten Free-Umgehungen konkret — mit Nutzername, damit man handeln kann.
+    letzte = query_db(
+        "SELECT fu.feature, fu.used_at, u.username, u.email "
+        "FROM feature_use fu LEFT JOIN app_users u ON u.id = fu.user_id "
+        "WHERE fu.plan='free' AND " + seit + " ORDER BY fu.used_at DESC LIMIT 40", [])
+
+    gesamt = query_db("SELECT COUNT(*) AS c FROM feature_use", [], one=True)
+    return render_template('admin_feature_use.html', features=features, letzte=letzte,
+                           free_nutzer=free_nutzer, free_ereignisse=free_ereignisse,
+                           tage=tage, gesamt=(gesamt['c'] if gesamt else 0))
 
 
 @app.route('/admin/mails/<key>')
