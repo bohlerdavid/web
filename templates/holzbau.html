@@ -3482,9 +3482,13 @@ function _cursorFaceUV(cx, cy) {
 }
 
 /* Vorschaufarbe: das Blau der Oberflaeche (--accent #4e8cdd).
-   Vorher war sie rot (0xe94560) — auf der orangebraunen Platte war die duenne
-   rote Linie kaum auszumachen. Dazu jetzt eine gefuellte Flaeche: eine blosse
-   Linie zeigt nicht, WIE VIEL Material weggeht. */
+   Vorher stand hier 0xe94560 — und GENAU dieselbe Zahl setzt die Auswahl als
+   emissive auf den Balken (siehe _setSelectedLook). Fraesen geht nur auf einer
+   AUSGEWAEHLTEN Platte, die Vorschau wurde also immer in der Farbe gezeichnet,
+   in der die Platte ohnehin schon leuchtete. Kein Wunder, dass man sie nicht
+   sah. Blau ist die Gegenfarbe dazu und nirgends sonst am Balken.
+   Dazu eine gefuellte Flaeche: eine blosse Linie zeigt nicht, WIE VIEL
+   Material weggeht. */
 const FRAES_BLAU = 0x4e8cdd;
 
 function updateCutoutPreview(cx, cy) {
@@ -3515,7 +3519,11 @@ function updateCutoutPreview(cx, cy) {
   // ── Fuellflaeche ──
   if (!_cutoutFill) {
     _cutoutFill = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({
-      color: FRAES_BLAU, transparent: true, opacity: 0.35,
+      // 0.7 und nicht etwa 0.35: Blau und Orange sind Komplementaerfarben, halb
+      // durchsichtig mischen sie sich zu schlammigem Grau — nachgemessen, es
+      // waeren nur 232 von 6139 ueberdeckten Pixeln als blau erkennbar gewesen.
+      // Erst ab ~0.7 setzt sich das Blau gegen das Plattenorange durch.
+      color: FRAES_BLAU, transparent: true, opacity: 0.7,
       side: THREE.DoubleSide,      // Handedness der Basis egal — sie soll von
                                    // beiden Seiten sichtbar sein
       depthWrite: false,           // sonst verdeckt sie die Umrisslinie
