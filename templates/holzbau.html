@@ -3528,6 +3528,78 @@ function _fraesVerbrauchen(anzahl = 1) {
    2) Sie kosten Kontingent. Sonst waere die 3er-Grenze wertlos: einmal fraesen,
       dann Strg+D halten und beliebig viele Platten mit Loechern bekommen.
    Rueckgabe false = Kontingent reicht nicht, die Kopie bleibt ohne Loecher. */
+/* ── Ausfraesungen beim Saegen auf die Haelften verteilen ───────────────────
+   Die u/v eines Lochs gelten fuer die Flaechenbasis der ALTEN Platte. Sie
+   einfach mitzunehmen waere falsch, und zwar aus einem Grund, den man leicht
+   uebersieht: _panelFaceBasis sortiert A und B nach GROESSE. Saegt man eine
+   2000x1000er Platte bei 800, ist die Haelfte 800x1000 — und damit sind A und B
+   VERTAUSCHT. Wer u/v uebernimmt, dreht jedes Loch um 90 Grad.
+   Deshalb wird ueber WELTACHSEN gerechnet: eA/eB/eT sind immer X, Y oder Z.
+   Ein Loch wird als {x?, y?, z?} beschrieben, entlang der Schnittachse um den
+   Versatz verschoben und in der NEUEN Basis wieder ausgelesen.
+   Ueberstehendes muss nicht geschnitten werden: buildPanelGeometry rechnet
+   Platte MINUS Loecher, ein Loch ueber der Kante wird dabei von selbst zur
+   Kerbe. Genau deshalb duerfen durchgesaegte Loecher in BEIDEN Haelften
+   bleiben — jede zeigt ihren Teil. */
+function _achseVon(e) { return Math.abs(e.x) > 0.5 ? 'x' : Math.abs(e.y) > 0.5 ? 'y' : 'z'; }
+
+function _cutoutsSaegen(original, teil, versatz) {
+  delete teil.cutouts;                       // Referenz aus dem Spread muss weg
+  const alt = original.cutouts || [];
+  if (!alt.length) return;
+
+  const fbA = _panelFaceBasis(original), fbN = _panelFaceBasis(teil);
+  const aAlt = _achseVon(fbA.eA), bAlt = _achseVon(fbA.eB);
+  const aNeu = _achseVon(fbN.eA), bNeu = _achseVon(fbN.eB);
+  const schnitt = original.axis;             // die Laengsachse, quer dazu saegt es
+
+  /* Ist die Flaeche der Haelfte eine ANDERE als die der Platte, sind die Loecher
+     sinnlos. Passiert bei sehr kurzen Abschnitten: aus 2000x1000x18 bei 10 mm
+     wird 10x1000x18 — duennste Kante ist jetzt die 10, die "Flaeche" also
+     1000x18, ein Hochkantstreifen. Da gehoert kein Fensterausschnitt hin. */
+  if ((aNeu !== aAlt && aNeu !== bAlt) || (bNeu !== aAlt && bNeu !== bAlt)) return;
+  if (schnitt !== aAlt && schnitt !== bAlt) return;   // quer zur Dicke gesaegt
+
+  const raus = [];
+  for (const c of alt) {
+    const istKreis = c.shape === 'circle';
+    // Masse liegen entlang aAlt / bAlt — beim Tausch muessen sie mittauschen.
+    const masse = {};
+    masse[aAlt] = istKreis ? c.dia : Math.max(1, c.w || 100);
+    masse[bAlt] = istKreis ? c.dia : Math.max(1, c.h || 100);
+
+    // Einen Punkt (u,v der alten Basis) in die neue Basis bringen.
+    const um = (u, v) => {
+      const p = {};
+      p[aAlt] = u; p[bAlt] = v;
+      p[schnitt] -= versatz;                 // an den Anfang DIESER Haelfte
+      return { u: p[aNeu], v: p[bNeu] };
+    };
+
+    const n = um(c.u || 0, c.v || 0);
+    const neu = istKreis
+      ? { shape: 'circle', u: Math.round(n.u), v: Math.round(n.v), dia: c.dia }
+      : { shape: 'rect', u: Math.round(n.u), v: Math.round(n.v),
+          w: Math.round(masse[aNeu]), h: Math.round(masse[bNeu]) };
+    if (c.aus) neu.aus = true;               // Sichtbarkeit mitnehmen
+    if (Array.isArray(c.punkte)) {
+      neu.punkte = c.punkte.map(p => { const q = um(p.u, p.v); return { u: Math.round(q.u), v: Math.round(q.v) }; });
+    }
+
+    // Liegt es ueberhaupt noch auf dieser Haelfte? Sonst nicht mitschleppen —
+    // es waere unsichtbar, stuende aber in der Liste und im CNC-Plan.
+    const pkte = neu.punkte && neu.punkte.length ? neu.punkte : [{ u: neu.u, v: neu.v }];
+    const bw = istKreis ? neu.dia : neu.w, bh = istKreis ? neu.dia : neu.h;
+    const u0 = Math.min(...pkte.map(p => istKreis ? p.u - bw / 2 : p.u));
+    const u1 = Math.max(...pkte.map(p => istKreis ? p.u + bw / 2 : p.u + bw));
+    const v0 = Math.min(...pkte.map(p => istKreis ? p.v - bh / 2 : p.v));
+    const v1 = Math.max(...pkte.map(p => istKreis ? p.v + bh / 2 : p.v + bh));
+    if (u1 <= 0 || u0 >= fbN.A || v1 <= 0 || v0 >= fbN.B) continue;
+    raus.push(neu);
+  }
+  if (raus.length) teil.cutouts = raus;
+}
+
 function _cutoutsKopieren(quelle, ziel) {
   delete ziel.cutouts;   // die Referenz aus dem Spread MUSS zuerst weg
   const loecher = quelle.cutouts || [];
@@ -6210,19 +6282,6 @@ function executeSawCut() {
   const depthDim = beam.B; // The "depth" of the cross-section (along Z for X-axis beams)
   const offset = depthDim * Math.tan(aRad); // length difference front vs back
 
-  /* Die Ausfraesungen des Originals gehoeren in KEINE der Haelften — an EINER
-     Stelle behandelt, weil unten drei Zweige (gerade, schraeg-X, schraeg-Z) je
-     zwei Teile per Spread bauen und einer davon sonst vergessen wuerde.
-     Warum ersatzlos verwerfen? Der flache Spread nahm `cutouts` bisher nur als
-     REFERENZ mit: beide Haelften und das Original zeigten auf dasselbe Array,
-     ein Loch in Haelfte 1 zu loeschen entfernte es auch aus Haelfte 2. Sie
-     stattdessen zu KOPIEREN waere aber genauso falsch: u/v beziehen sich auf
-     die alte Plattenlaenge, die Loecher saessen an voellig falschen Stellen,
-     und eine vom Schnitt durchtrennte Fraesbahn muesste zwischen den Haelften
-     aufgeteilt und neu gerechnet werden. Lieber sichtbar keine Loecher als
-     heimlich falsche — das sieht man sofort und fraest neu. */
-  const _ohneLoecher = (teil) => { delete teil.cutouts; return teil; };
-
   pushHistory();
 
   // ── Build piece data ──────────────────────────────
@@ -6237,7 +6296,13 @@ function executeSawCut() {
     else if (beam.axis === 'y') b2.y = beam.y + cutMM;
     else b2.z = beam.z + cutMM;
 
-    [b1, b2].map(_ohneLoecher).forEach(nb => {
+    // Jede Haelfte bekommt IHRE Loecher: Teil 1 faengt beim Original an
+    // (Versatz 0), Teil 2 erst beim Schnitt. Ein durchgesaegtes Loch bleibt in
+    // beiden — jede Haelfte zeigt ihren Teil als Kerbe.
+    _cutoutsSaegen(beam, b1, 0);
+    _cutoutsSaegen(beam, b2, cutMM);
+
+    [b1, b2].forEach(nb => {
       nb.mesh = createBeamMesh(nb);
       if (hiddenGroups.has(nb.group)) nb.mesh.visible = false;
       applyPhaseVisibility(nb);
@@ -6266,7 +6331,14 @@ function executeSawCut() {
       _sawBR: L - cutMM             // right end back  (flat, same x)
     };
 
-    [b1, b2].map(_ohneLoecher).forEach(nb => {
+    /* Schraegschnitt: Loecher werden verworfen, und das ist hier die richtige
+       Entscheidung — nicht Faulheit. createBeamMesh baut eine Platte MIT
+       Loechern ueber buildPanelGeometry, und das kennt die Schraege gar nicht
+       (shape 'sawnAngle' wird dort ignoriert). Die Haelfte saehe also wieder
+       rechteckig aus, der Schnittwinkel waere weg. Ohne Loecher greift die
+       richtige Schraeg-Geometrie. Lieber die Schraege behalten als ein Loch. */
+    [b1, b2].forEach(nb => { delete nb.cutouts; });
+    [b1, b2].forEach(nb => {
       nb.mesh = createBeamMesh(nb);
       if (hiddenGroups.has(nb.group)) nb.mesh.visible = false;
       applyPhaseVisibility(nb);
@@ -6290,7 +6362,14 @@ function executeSawCut() {
       _sawFR: L - cutMM, _sawBR: L - cutMM
     };
 
-    [b1, b2].map(_ohneLoecher).forEach(nb => {
+    /* Schraegschnitt: Loecher werden verworfen, und das ist hier die richtige
+       Entscheidung — nicht Faulheit. createBeamMesh baut eine Platte MIT
+       Loechern ueber buildPanelGeometry, und das kennt die Schraege gar nicht
+       (shape 'sawnAngle' wird dort ignoriert). Die Haelfte saehe also wieder
+       rechteckig aus, der Schnittwinkel waere weg. Ohne Loecher greift die
+       richtige Schraeg-Geometrie. Lieber die Schraege behalten als ein Loch. */
+    [b1, b2].forEach(nb => { delete nb.cutouts; });
+    [b1, b2].forEach(nb => {
       nb.mesh = createBeamMesh(nb);
       if (hiddenGroups.has(nb.group)) nb.mesh.visible = false;
       applyPhaseVisibility(nb);
