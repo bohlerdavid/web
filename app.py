@@ -234,6 +234,7 @@ SCHEMA_STATEMENTS = [
         job       VARCHAR(60)  NOT NULL,
         ran_at    DATETIME     NOT NULL,
         ok        TINYINT      NOT NULL DEFAULT 1,
+        grund     VARCHAR(24)  NULL,
         note      TEXT         NULL,
         ip        VARCHAR(45)  NULL,
         INDEX (job), INDEX (ran_at)
@@ -265,6 +266,11 @@ SCHEMA_MIGRATIONS = [
     # (reminder_stage taugt dafuer nicht: _activate_premium setzt es bei jeder
     #  Verlaengerung auf '' zurueck.)
     "ALTER TABLE subscriptions ADD COLUMN renewal_notice_for DATETIME NULL",
+    # Grund der Abweisung als Code statt nur im Fliesstext. Noetig, um "der Cron
+    # ruft mit falschem Schluessel an" von "irgendjemand hat die URL ohne
+    # Schluessel aufgerufen" zu unterscheiden — die Uebersicht hat das sonst
+    # verwechselt und einen Testaufruf als Cron-Problem gemeldet.
+    "ALTER TABLE cron_runs ADD COLUMN grund VARCHAR(24) NULL",
 ]
 
 
@@ -2026,22 +2032,45 @@ def admin_mails():
     war von aussen nicht feststellbar — ein nie aufgerufener Job und ein mit
     falschem Schluessel abgewiesener Job sehen beide aus wie: nichts passiert.
     Seit cron_runs steht beides schwarz auf weiss."""
+    # Seit wann wird ueberhaupt protokolliert? Ohne diese Angabe ist "noch nie
+    # gelaufen" irrefuehrend: die Tabelle entsteht erst beim Deploy, und ein
+    # taeglicher Job hat danach vielleicht schlicht noch nicht gefeuert.
+    aeltester = query_db('SELECT MIN(ran_at) AS a FROM cron_runs', [], one=True)
+    protokoll_seit = _to_dt(aeltester['a']) if aeltester and aeltester.get('a') else None
+
     jobs = []
     for j in CRON_JOBS:
         letzter_ok = query_db(
             'SELECT ran_at, note FROM cron_runs WHERE job=? AND ok=1 ORDER BY ran_at DESC LIMIT 1',
             [j['job']], one=True)
+        # NUR echte Cron-Versuche: ein Aufruf ganz ohne Schluessel kam nicht von
+        # cron-job.org (ein eingerichteter Job schickt immer einen mit). Ihn
+        # mitzuzaehlen hiesse dem Nutzer erzaehlen, sein Cron habe angerufen,
+        # obwohl es ein Scanner oder ein Test war.
         letzter_fehl = query_db(
-            'SELECT ran_at, note FROM cron_runs WHERE job=? AND ok=0 ORDER BY ran_at DESC LIMIT 1',
+            "SELECT ran_at, note FROM cron_runs WHERE job=? AND ok=0 "
+            "AND COALESCE(grund,'') IN ('falscher_schluessel','kein_secret') "
+            "ORDER BY ran_at DESC LIMIT 1", [j['job']], one=True)
+        # Fremdaufrufe getrennt zeigen, damit sie erklaerbar bleiben statt zu beunruhigen.
+        letzter_fremd = query_db(
+            "SELECT ran_at, note FROM cron_runs WHERE job=? AND ok=0 "
+            "AND COALESCE(grund,'') = 'kein_schluessel' ORDER BY ran_at DESC LIMIT 1",
             [j['job']], one=True)
         anzahl = query_db('SELECT COUNT(*) AS c FROM cron_runs WHERE job=? AND ok=1', [j['job']], one=True)
         ok_dt = _to_dt(letzter_ok['ran_at']) if letzter_ok else None
         stunden_her = ((datetime.utcnow() - ok_dt).total_seconds() / 3600.0) if ok_dt else None
 
         if ok_dt is None and letzter_fehl:
-            zustand, text = 'abgewiesen', 'Der Job ruft an, wird aber abgewiesen (403). Der Schlüssel stimmt nicht.'
+            zustand = 'abgewiesen'
+            text = ('Der Job ruft an, wird aber abgewiesen (403) — er schickt einen Schlüssel mit, '
+                    'nur den falschen. Trage den Wert aus CRON_SECRET bei cron-job.org ein.')
         elif ok_dt is None:
-            zustand, text = 'nie', 'Dieser Job wurde noch NIE erfolgreich aufgerufen. Es ging bisher keine dieser Mails raus.'
+            zustand = 'nie'
+            text = 'Dieser Job hat sich hier noch NIE gemeldet. Es ging bisher keine dieser Mails raus.'
+            # Ehrlich bleiben: bei jungem Protokoll ist das noch kein Beweis.
+            if protokoll_seit and (datetime.utcnow() - protokoll_seit).total_seconds() < j['max_stunden'] * 3600:
+                text += (' ACHTUNG: das Protokoll ist jünger als ein Job-Zeitraum — vielleicht war er '
+                         'einfach noch nicht dran. Erst nach einem vollen Zeitraum ist das aussagekräftig.')
         elif stunden_her is not None and stunden_her > j['max_stunden']:
             zustand, text = 'ueberfaellig', 'Der letzte erfolgreiche Lauf ist zu lange her — der Job scheint zu stehen.'
         else:
@@ -2054,6 +2083,8 @@ def admin_mails():
             'stunden_her': round(stunden_her, 1) if stunden_her is not None else None,
             'letzter_fehl': _to_dt(letzter_fehl['ran_at']) if letzter_fehl else None,
             'letzter_fehl_note': letzter_fehl['note'] if letzter_fehl else None,
+            'letzter_fremd': _to_dt(letzter_fremd['ran_at']) if letzter_fremd else None,
+            'letzter_fremd_note': letzter_fremd['note'] if letzter_fremd else None,
             'laeufe': anzahl['c'] if anzahl else 0,
             'url': (os.environ.get('BASE_URL', 'https://holzbau3d.app').rstrip('/')
                     + '/cron/' + j['job'] + '?key=DEIN_CRON_SECRET'),
@@ -2076,7 +2107,8 @@ def admin_mails():
     cron_secret_gesetzt = bool(os.environ.get('CRON_SECRET', ''))
     return render_template('admin_mails.html', jobs=jobs, vorlagen=vorlagen,
                            ohne_vorlage=MAIL_OHNE_VORLAGE, letzte=letzte,
-                           cron_secret_gesetzt=cron_secret_gesetzt)
+                           cron_secret_gesetzt=cron_secret_gesetzt,
+                           protokoll_seit=protokoll_seit)
 
 
 @app.route('/admin/mails/<key>')
@@ -2706,32 +2738,51 @@ def stripe_webhook():
         return jsonify(error='Webhook error'), 400
 
 
-def _cron_protokoll(job, ok, note):
+def _cron_protokoll(job, ok, note, grund='ok'):
     """Haelt fest, dass der Cron angeklopft hat — erfolgreich ODER abgewiesen.
     Bewusst in try/except: ein kaputtes Protokoll darf niemals den Versand
     verhindern. Lieber eine Luecke in der Uebersicht als eine Mail, die nicht
     rausgeht."""
     try:
-        execute_db('INSERT INTO cron_runs (job, ran_at, ok, note, ip) VALUES (?, NOW(), ?, ?, ?)',
-                   [job, 1 if ok else 0, (note or '')[:2000],
+        execute_db('INSERT INTO cron_runs (job, ran_at, ok, grund, note, ip) VALUES (?, NOW(), ?, ?, ?, ?)',
+                   [job, 1 if ok else 0, grund, (note or '')[:2000],
                     (request.headers.get('X-Forwarded-For', '') or request.remote_addr or '')[:45]])
     except Exception as e:
         logger.warning('cron_runs Protokoll fehlgeschlagen (%s): %s', job, type(e).__name__)
 
 
 def _cron_schluessel_pruefen(job):
-    """True = Aufruf ist echt. Schreibt jeden Versuch ins Protokoll."""
+    """True = Aufruf ist echt. Schreibt jeden Versuch ins Protokoll.
+
+    Der GRUND wird als Code festgehalten, nicht nur im Fliesstext. Sonst kann
+    die Uebersicht "der Cron ruft mit falschem Schluessel an" nicht von
+    "irgendwer hat die URL ohne Schluessel geoeffnet" unterscheiden — und genau
+    das hat sie verwechselt: ein Testaufruf ohne Schluessel wurde als
+    Cron-Problem gemeldet, obwohl cron-job.org nie angerufen hatte.
+    """
     secret = os.environ.get('CRON_SECRET', '')
     given = request.args.get('key') or request.headers.get('X-Cron-Key', '')
     if not secret:
-        _cron_protokoll(job, False, 'CRON_SECRET ist auf dem Server nicht gesetzt — Aufruf abgewiesen')
+        _cron_protokoll(job, False, 'CRON_SECRET ist auf dem Server nicht gesetzt — Aufruf abgewiesen',
+                        'kein_secret')
+        return False
+    if not given:
+        # Ein eingerichteter Cron schickt IMMER einen Schluessel mit. Ohne
+        # Schluessel war das jemand anderes: ein Scanner, ein Test, ein
+        # versehentlicher Aufruf im Browser. Das sagt ueber den Cron nichts aus.
+        _cron_protokoll(job, False,
+                        'Aufruf ohne Schluessel abgewiesen (403). Ein eingerichteter Cron-Job '
+                        'schickt immer einen Schluessel mit — das war also nicht cron-job.org, '
+                        'sondern ein Scanner, ein Test oder ein Aufruf im Browser.',
+                        'kein_schluessel')
         return False
     if given != secret:
         # Den Schluessel NICHT protokollieren, auch nicht teilweise.
         _cron_protokoll(job, False,
-                        'Falscher oder fehlender Schluessel — Aufruf abgewiesen (403). '
-                        + ('Es wurde gar kein Schluessel mitgeschickt.' if not given
-                           else 'Der mitgeschickte Schluessel passt nicht zu CRON_SECRET.'))
+                        'Der mitgeschickte Schluessel passt nicht zu CRON_SECRET — Aufruf '
+                        'abgewiesen (403). Hier hat jemand mit EINEM Schluessel angerufen, '
+                        'also sehr wahrscheinlich der Cron-Job mit einem veralteten Wert.',
+                        'falscher_schluessel')
         return False
     return True
 

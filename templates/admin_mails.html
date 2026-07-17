@@ -55,7 +55,16 @@
     </div>
     {% endif %}
 
-    <h5 class="mb-3">Cron-Jobs</h5>
+    <h5 class="mb-1">Cron-Jobs</h5>
+    {# Ohne diese Angabe liest sich "noch nie gelaufen" wie ein Beweis. Ist es
+       aber nicht, solange das Protokoll juenger ist als ein Job-Zeitraum. #}
+    <p class="text-muted small mb-3">
+      {% if protokoll_seit %}
+        Protokolliert wird seit <strong>{{ protokoll_seit|lokal }} Uhr</strong>. Was davor war, weiß die App nicht.
+      {% else %}
+        Es wurde noch kein einziger Aufruf protokolliert — auch kein abgewiesener.
+      {% endif %}
+    </p>
     {% for j in jobs %}
     <div class="card shadow-sm mb-3 zk zk-{{ j.zustand }}">
       <div class="card-body">
@@ -90,12 +99,17 @@
             {% endif %}
           </div>
           <div class="col-md-6">
-            <div class="text-muted">Letzter abgewiesener Aufruf</div>
+            <div class="text-muted">Abgewiesener Cron-Aufruf</div>
             {% if j.letzter_fehl %}
               <div>{{ j.letzter_fehl|lokal }} Uhr</div>
               {% if j.letzter_fehl_note %}<p class="note mt-1">{{ j.letzter_fehl_note }}</p>{% endif %}
             {% else %}
               <div class="text-muted">keiner</div>
+            {% endif %}
+            {% if j.letzter_fremd %}
+              <div class="text-muted mt-2">Aufruf ohne Schlüssel (nicht der Cron)</div>
+              <div>{{ j.letzter_fremd|lokal }} Uhr</div>
+              <p class="note mt-1">{{ j.letzter_fremd_note }}</p>
             {% endif %}
           </div>
         </div>
