@@ -288,7 +288,19 @@ def init_db():
             cur.execute("SELECT COUNT(*) as c FROM app_users")
             count = cur.fetchone()['c']
             if count == 0:
-                pw_hash = generate_password_hash('Admin1234!')
+                # Kein hartkodiertes Passwort mehr. 'Admin1234!' stand frueher
+                # hier — ein Standard-Credential, mit dem sich JEDER als admin
+                # anmelden konnte, solange es niemand aendert (CWE-798). Jetzt:
+                # aus ADMIN_PASSWORD, sonst ein zufaelliges, das EINMALIG ins
+                # Log geht. So existiert nie ein bekanntes Admin-Passwort.
+                admin_pw = os.environ.get('ADMIN_PASSWORD', '').strip()
+                if not admin_pw:
+                    admin_pw = secrets.token_urlsafe(18)
+                    logger.warning(
+                        'Kein ADMIN_PASSWORD gesetzt — zufaelliges Admin-Passwort erzeugt: %s '
+                        '— JETZT notieren und nach dem ersten Login im Profil aendern. '
+                        'Es erscheint nur dieses eine Mal.', admin_pw)
+                pw_hash = generate_password_hash(admin_pw)
                 cur.execute(
                     "INSERT INTO app_users (username, password_hash, full_name) VALUES (%s, %s, %s)",
                     ('admin', pw_hash, 'Administrator')
@@ -564,10 +576,16 @@ RESET_MAX_ATTEMPTS    = 3
 
 
 def _is_safe_redirect(url):
-    if not url:
+    # Nur echte, seiteninterne Pfade. Der alte Test (urljoin + startswith)
+    # liess '/\evil.com' durch: urljoin haengt es an die eigene Domain, der
+    # Browser macht aus dem Backslash aber '/', also '//evil.com' — protokoll-
+    # relativ auf eine FREMDE Domain (Open Redirect, Phishing nach dem Login).
+    # Kein Rechte-Bypass, aber eine echte Luecke. Jetzt streng: muss mit genau
+    # EINEM '/' beginnen und darf weder Schema noch Host tragen.
+    if not url or not url.startswith('/') or url.startswith('//') or url.startswith('/\\'):
         return False
-    test = urljoin(request.host_url, url)
-    return test.startswith(request.host_url)
+    teile = urlparse(url)
+    return not teile.scheme and not teile.netloc
 
 
 def _check_rate_limit(store, ip, max_attempts, window=600):
