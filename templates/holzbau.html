@@ -904,7 +904,12 @@ body {
   font-family: var(--font);
   transition: all .1s;
 }
+#fraes-panel { flex-direction: column; align-items: flex-start; gap: 7px; }
+.fraes-zeile { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+#fraes-masse { display: flex; align-items: center; gap: 4px; margin-left: 4px; }
+#fraes-masse .tb-input { width: 58px; }
 #fraes-panel .fraes-form:hover:not(:disabled) { background: var(--accent); color: #fff; }
+#fraes-panel .fraes-form.aktiv { background: var(--accent); color: #fff; }
 /* Ohne ausgewaehlte Platte gibt es nichts zu fraesen — dann sagt der Hinweis
    daneben, was fehlt, statt dass ein Klick wortlos nichts tut. */
 #fraes-panel .fraes-form:disabled { opacity: .4; cursor: not-allowed; border-color: var(--border); color: var(--text-3); }
@@ -1621,9 +1626,21 @@ body {
 
       <div id="fraes-panel">
         <span id="fraes-hint">🔩 Fräsen</span>
-        <button class="fraes-form" id="fraes-rect" onclick="startPlaceCutout('rect')">▭ Rechteck</button>
-        <button class="fraes-form" id="fraes-circle" onclick="startPlaceCutout('circle')">◯ Kreis</button>
-        <button class="tb-btn wz-zu" onclick="toggleFraes()">✕ Beenden</button>
+        <div class="fraes-zeile">
+          <button class="fraes-form" id="fraes-rect" onclick="startPlaceCutout('rect')">▭ Rechteck</button>
+          <button class="fraes-form" id="fraes-circle" onclick="startPlaceCutout('circle')">◯ Kreis</button>
+          {# Die Groesse des FRAESERS, nicht eines fertigen Lochs: damit wird
+             gefraest, solange die Maustaste gedrueckt ist. #}
+          <span id="fraes-masse">
+            <span style="color:var(--text-3)">Fräser:</span>
+            <input type="number" id="fraes-w" class="tb-input" min="1" step="10" title="Fräserbreite in mm">
+            <span id="fraes-mal" style="color:var(--text-3)" translate="no">×</span>
+            <input type="number" id="fraes-h" class="tb-input" min="1" step="10" title="Fräserhöhe in mm">
+            <input type="number" id="fraes-dia" class="tb-input" min="1" step="10" title="Fräser-Durchmesser in mm">
+            <span style="color:var(--text-3)" translate="no">mm</span>
+          </span>
+          <button class="tb-btn wz-zu" onclick="toggleFraes()">✕ Beenden</button>
+        </div>
       </div>
     </div>
 
@@ -2205,6 +2222,77 @@ Object.assign(window, {
 
 // Plattengeometrie mit Ausfräsungen (Löcher) — ExtrudeGeometry statt Box.
 // Ersetzt BoxGeometry(W,H,D) exakt (zentriert); Löcher gehen durch die dünnste Achse (Dicke).
+/* Konvexe Huelle einer Punktwolke (Andrew's monotone chain).
+   Gebraucht fuer die Fraesbahn: die von einem WANDERNDEN konvexen Werkzeug
+   ueberstrichene Flaeche ist exakt die konvexe Huelle aus Anfangs- und
+   Endstellung (Minkowski-Summe Strecke ⊕ Werkzeug). Deshalb reicht pro
+   Bahnsegment EIN Polygon — und es entstehen prinzipbedingt keine Luecken,
+   egal wie schnell die Maus gezogen wird. Dichtes Stempeln waere die
+   Alternative gewesen: mehr Rechenarbeit und trotzdem Luecken bei schnellen
+   Bewegungen. */
+function _konvexeHuelle(pts) {
+  if (pts.length < 3) return pts.slice();
+  const p = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const kreuz = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const bau = (liste) => {
+    const h = [];
+    for (const q of liste) {
+      while (h.length >= 2 && kreuz(h[h.length - 2], h[h.length - 1], q) <= 0) h.pop();
+      h.push(q);
+    }
+    h.pop();
+    return h;
+  };
+  const unten = bau(p), oben = bau(p.slice().reverse());
+  const huelle = unten.concat(oben);
+  return huelle.length >= 3 ? huelle : pts.slice();
+}
+
+/* Ein Cutout -> MultiPolygon (Liste von Polygonen) in zentrierten Flaechen-
+   koordinaten.
+
+   OHNE `punkte` ist das genau ein Stempel — identisch zu frueher. Alte
+   Projekte und Vorlagen aendern sich dadurch um kein Byte.
+   MIT `punkte` ist es eine FRAESBAHN: das Werkzeug wandert die Punktliste
+   entlang. Deshalb `punkte` als OPTIONALES Feld am bestehenden Objekt statt
+   eines neuen shape-Typs — jeder vorhandene Leser (Liste, Speichern, CNC)
+   kommt weiter mit {shape:'rect'|'circle'} klar.
+
+   Koordinaten-Semantik wie gehabt: Kreis -> u,v = MITTE, Rechteck -> u,v =
+   Ecke links unten. Fuer `punkte` gilt dasselbe, sonst haetten Stempel und
+   Bahn zwei verschiedene Bezugspunkte. */
+function _cutoutPolygone(c, A, B) {
+  const istKreis = c.shape === 'circle';
+  const N = 48;
+  const stempel = (u, v) => {
+    if (istKreis) {
+      // Der DURCHMESSER wird geklemmt, nicht der Radius. Vorher stand hier
+      // Math.max(1, dia/2): ein 1-mm-Fraeser bekam damit Radius 1 und fraeste
+      // 2 mm — doppelt so breit wie angezeigt.
+      const cx = u - A / 2, cy = v - B / 2, r = Math.max(1, c.dia || 100) / 2, ring = [];
+      for (let i = 0; i < N; i++) { const a = i / N * 2 * Math.PI; ring.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]); }
+      return ring;
+    }
+    const x0 = u - A / 2, y0 = v - B / 2, w = Math.max(1, c.w || 100), h = Math.max(1, c.h || 100);
+    return [[x0, y0], [x0 + w, y0], [x0 + w, y0 + h], [x0, y0 + h]];
+  };
+  const zu = (ring) => ring.concat([ring[0]]);   // polygon-clipping will den Ring geschlossen
+
+  const punkte = Array.isArray(c.punkte) && c.punkte.length ? c.punkte : null;
+  if (!punkte) return [[zu(stempel(c.u || 0, c.v || 0))]];
+  if (punkte.length === 1) return [[zu(stempel(punkte[0].u, punkte[0].v))]];
+
+  // Pro Segment die Huelle beider Stellungen. Sie enthaelt beide Stempel schon,
+  // einzelne Stempel waeren also doppelt gemoppelt.
+  const polys = [];
+  for (let i = 1; i < punkte.length; i++) {
+    const a = stempel(punkte[i - 1].u, punkte[i - 1].v);
+    const b = stempel(punkte[i].u, punkte[i].v);
+    polys.push([zu(_konvexeHuelle(a.concat(b)))]);
+  }
+  return polys;
+}
+
 function buildPanelGeometry(beam, W, H, D) {
   const axes = [
     { v: W, e: new THREE.Vector3(1, 0, 0) },
@@ -2216,44 +2304,74 @@ function buildPanelGeometry(beam, W, H, D) {
   if (face[1].v > face[0].v) face.reverse();   // faceA = längere Flächenseite (L), faceB = kürzere (B)
   const A = face[0].v, B = face[1].v, T = axes[ti].v;
 
-  const shape = new THREE.Shape();
-  shape.moveTo(-A / 2, -B / 2); shape.lineTo(A / 2, -B / 2); shape.lineTo(A / 2, B / 2); shape.lineTo(-A / 2, B / 2); shape.closePath();
-  // Ausfräsung → Polygon (zentrierte Koordinaten). Kreis als 48-Eck.
-  const cutPoly = (c) => {
-    if (c.shape === 'circle') {
-      const cx = (c.u || 0) - A / 2, cy = (c.v || 0) - B / 2, r = Math.max(1, (c.dia || 100) / 2), N = 48, ring = [];
-      for (let i = 0; i <= N; i++) { const a = i / N * 2 * Math.PI; ring.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]); }
-      return [ring];
-    }
-    const x0 = (c.u || 0) - A / 2, y0 = (c.v || 0) - B / 2, w = Math.max(1, c.w || 100), h = Math.max(1, c.h || 100);
-    return [[[x0, y0], [x0 + w, y0], [x0 + w, y0 + h], [x0, y0 + h], [x0, y0]]];
-  };
+  const plattenRing = [[-A / 2, -B / 2], [A / 2, -B / 2], [A / 2, B / 2], [-A / 2, B / 2], [-A / 2, -B / 2]];
   const cuts = beam.cutouts || [];
-  if (cuts.length) {
-    let merged = null;
-    // Überlappende Ausfräsungen vereinen → komplexe Formen (falls Lib geladen).
-    if (window.polygonClipping && cuts.length > 1) {
-      try { merged = window.polygonClipping.union(...cuts.map(cutPoly)); } catch (e) { merged = null; }
-    }
-    if (merged) {
-      merged.forEach(poly => {
-        const ring = poly[0];  // äußerer Ring = Loch
-        const path = new THREE.Path();
-        ring.forEach(([x, y], i) => i === 0 ? path.moveTo(x, y) : path.lineTo(x, y));
-        path.closePath();
-        shape.holes.push(path);
+
+  /* Gerechnet wird PLATTE MINUS LOECHER, nicht mehr "Platte, und die Loecher
+     als holes anhaengen". Der Unterschied zaehlt in drei Faellen, die es mit
+     Fraesbahnen wirklich gibt:
+       - Eine Bahn im Kreis laesst eine INSEL stehen. Frueher wurde nur poly[0]
+         (der Aussenring) als Loch genommen, die Insel fiel weg — das Material
+         in der Mitte waere mit weggefraest worden.
+       - Eine Bahn quer durch die Platte TEILT sie in zwei Stuecke. Als Loch
+         war das gar nicht darstellbar; ExtrudeGeometry nimmt hier einfach ein
+         Array von Shapes.
+       - Ein einzelnes Loch lief frueher gar nicht durch die Vereinigung
+         (Bedingung war cuts.length > 1) — eine Bahn besteht aber aus vielen
+         Polygonen und muss immer vereint werden.
+     Ohne die Bibliothek bleibt es beim alten Weg; sie liegt lokal unter
+     static/polygon-clipping.umd.js und fehlt praktisch nie. */
+  let shapes = null;
+  if (cuts.length && window.polygonClipping) {
+    try {
+      const loecher = cuts.map(c => _cutoutPolygone(c, A, B));
+      const rest = window.polygonClipping.difference([plattenRing], ...loecher);
+      shapes = rest.map(poly => {
+        const s = new THREE.Shape();
+        poly[0].forEach(([x, y], i) => i === 0 ? s.moveTo(x, y) : s.lineTo(x, y));
+        s.closePath();
+        for (let i = 1; i < poly.length; i++) {   // innere Ringe = Loecher im Rest
+          const p = new THREE.Path();
+          poly[i].forEach(([x, y], j) => j === 0 ? p.moveTo(x, y) : p.lineTo(x, y));
+          p.closePath();
+          s.holes.push(p);
+        }
+        return s;
       });
-    } else {
-      cuts.forEach(c => {
-        const ring = cutPoly(c)[0];
-        const path = new THREE.Path();
-        ring.forEach(([x, y], i) => i === 0 ? path.moveTo(x, y) : path.lineTo(x, y));
-        path.closePath();
-        shape.holes.push(path);
-      });
+      // Fraest jemand die Platte komplett weg, liefert difference() nichts.
+      // Dann die VOLLE Platte zeigen — hier direkt, nicht ueber shapes=null:
+      // der Rueckfallweg unten haengt die Loecher wieder an und ergaebe eine
+      // Platte, deren Deckflaechen komplett fehlen (Loch = ganze Flaeche).
+      // Man saehe nur noch die Schnittkanten. Lieber sichtbar unveraendert als
+      // ein Geisterrahmen: dass gar nichts passiert ist, versteht man sofort.
+      if (!shapes.length) {
+        const voll = new THREE.Shape();
+        plattenRing.forEach(([x, y], i) => i === 0 ? voll.moveTo(x, y) : voll.lineTo(x, y));
+        voll.closePath();
+        shapes = [voll];
+      }
+    } catch (e) {
+      console.warn('Ausfraesung: Vereinigung fehlgeschlagen, nutze Rueckfallweg', e);
+      shapes = null;
     }
   }
-  const geo = new THREE.ExtrudeGeometry(shape, { depth: T, bevelEnabled: false });
+
+  if (!shapes) {
+    const shape = new THREE.Shape();
+    plattenRing.forEach(([x, y], i) => i === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y));
+    shape.closePath();
+    cuts.forEach(c => {
+      _cutoutPolygone(c, A, B).forEach(poly => {
+        const path = new THREE.Path();
+        poly[0].forEach(([x, y], i) => i === 0 ? path.moveTo(x, y) : path.lineTo(x, y));
+        path.closePath();
+        shape.holes.push(path);
+      });
+    });
+    shapes = [shape];
+  }
+
+  const geo = new THREE.ExtrudeGeometry(shapes, { depth: T, bevelEnabled: false });
   geo.translate(0, 0, -T / 2);  // entlang Extrude-Achse zentrieren
   const eX = face[0].e.clone(), eY = face[1].e.clone(), eZ = axes[ti].e.clone();
   if (eX.clone().cross(eY).dot(eZ) < 0) eZ.negate();  // Rechtshändigkeit sichern
@@ -3253,18 +3371,29 @@ function renderCutoutPanel(b) {
   // englisch und die Liste darunter deutsch.
   const T = (s) => (window.t ? window.t(s) : s);
   list.innerHTML = cuts.map((c, i) => {
+    const istBahn = Array.isArray(c.punkte) && c.punkte.length > 1;
     const dims = c.shape === 'circle'
       ? `<label style="font-size:10px;color:var(--text-3)">Ø<input type="number" value="${c.dia || 100}" min="1" step="5" style="width:56px" onchange="updateCutout(${i},'dia',this.value)"></label>`
       : `<label style="font-size:10px;color:var(--text-3)">B<input type="number" value="${c.w || 100}" min="1" step="5" style="width:52px" onchange="updateCutout(${i},'w',this.value)"></label>
          <label style="font-size:10px;color:var(--text-3)">H<input type="number" value="${c.h || 100}" min="1" step="5" style="width:52px" onchange="updateCutout(${i},'h',this.value)"></label>`;
+    // Bei einer Bahn waeren ↔/↕ irrefuehrend: sie wuerden nur den ERSTEN Punkt
+    // verschieben und die Bahn zerreissen. Die Werkzeuggroesse bleibt aenderbar
+    // — sie wirkt auf die ganze Bahn und ist damit sinnvoll.
+    const pos = istBahn ? '' :
+      `<label style="font-size:10px;color:var(--text-3)">↔<input type="number" value="${Math.round(c.u || 0)}" step="10" style="width:56px" onchange="updateCutout(${i},'u',this.value)"></label>
+       <label style="font-size:10px;color:var(--text-3)">↕<input type="number" value="${Math.round(c.v || 0)}" step="10" style="width:56px" onchange="updateCutout(${i},'v',this.value)"></label>`;
+    // EIN Schluessel mit Platzhaltern statt zusammengestueckelt: "Punkte" allein
+    // waere ein kurzer Allerweltsschluessel, der dann auch anderswo zuschlaegt.
+    const titel = istBahn
+      ? T('〰 Fräsbahn {i} ({p} Punkte)').replace('{i}', () => String(i + 1)).replace('{p}', () => String(c.punkte.length))
+      : T(c.shape === 'circle' ? '◯ Kreis' : '▭ Rechteck') + ' ' + (i + 1);
     return `<div style="border:1px solid var(--border);border-radius:var(--r-sm);padding:6px;margin-bottom:6px;background:var(--bg-card)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-        <strong style="font-size:11px;color:var(--text-2)">${T(c.shape === 'circle' ? '◯ Kreis' : '▭ Rechteck')} ${i + 1}</strong>
+        <strong style="font-size:11px;color:var(--text-2)">${titel}</strong>
         <span style="cursor:pointer;color:var(--red);font-size:12px" onclick="deleteCutout(${i})" title="Entfernen">✕</span>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-        <label style="font-size:10px;color:var(--text-3)">↔<input type="number" value="${Math.round(c.u || 0)}" step="10" style="width:56px" onchange="updateCutout(${i},'u',this.value)"></label>
-        <label style="font-size:10px;color:var(--text-3)">↕<input type="number" value="${Math.round(c.v || 0)}" step="10" style="width:56px" onchange="updateCutout(${i},'v',this.value)"></label>
+        ${pos}
         ${dims}
       </div>
     </div>`;
@@ -3286,6 +3415,8 @@ function addCutout(shape) {
 function updateCutout(i, field, value) {
   const b = _selectedSheetBeam();
   if (!b || !b.cutouts || !b.cutouts[i]) return;
+  pushHistory();   // ohne das war eine Massaenderung nicht widerrufbar: Strg+Z
+                   // nahm die Aktion DAVOR zurueck und liess die Zahl stehen
   b.cutouts[i][field] = Math.max(1, parseFloat(value) || 0);
   rebuildMesh(b);
 }
@@ -3368,7 +3499,12 @@ function _cutoutsKopieren(quelle, ziel) {
     if (_fraesUebrig() < loecher.length) return false;
     _fraesVerbrauchen(loecher.length);
   }
-  ziel.cutouts = loecher.map(c => ({ ...c }));
+  // Tief bis auf die Punkte: `{ ...c }` allein wuerde das punkte-Array einer
+  // Fraesbahn nur als Referenz mitnehmen — Original und Kopie teilten sich dann
+  // dieselbe Bahn. Genau der Fehler, der bei den cutouts schon einmal drin war.
+  ziel.cutouts = loecher.map(c => (
+    Array.isArray(c.punkte) ? { ...c, punkte: c.punkte.map(p => ({ ...p })) } : { ...c }
+  ));
   return true;
 }
 // Ein Text fuer beide Wege ins Limit: selbst fraesen und Kopie ohne Loecher.
@@ -3445,7 +3581,7 @@ function renderFraesPanel() {
     // Ersatz als FUNKTION: der Name ist freier Nutzertext, und $&, $', $` sind
     // Ersetzungsmuster von String.replace. Ein Balken namens "Wand $' 2" haette
     // den halben Satz verdoppelt. Eine Funktion setzt stur ein, was sie liefert.
-    hinweis.textContent = T('🔩 Fräsen in „{platte}“ — Form wählen, dann auf die Platte klicken')
+    hinweis.textContent = T('🔩 Fräsen in „{platte}“ — Größe wählen, dann auf der Platte ziehen')
       .replace('{platte}', () => b.name);
     rect.disabled = false; kreis.disabled = false;
   } else {
@@ -3456,6 +3592,42 @@ function renderFraesPanel() {
   }
 }
 
+/* Die eingestellte WERKZEUGgroesse aus den Feldern. Leere Felder werden mit
+   _cutoutDefaults vorbelegt, damit nie ein leeres Feld dasteht und der erste
+   Zug sofort ein brauchbares Mass hat. */
+function _werkzeugMasse(shape, A, B) {
+  const zahl = (id) => {
+    const el = document.getElementById(id);
+    const n = el ? parseFloat(el.value) : NaN;
+    return isFinite(n) && n > 0 ? n : null;
+  };
+  const vor = _cutoutDefaults(shape, A, B);
+  /* Nach OBEN klemmen, damit ein Fraeser nicht groesser als die Platte wird
+     (sonst bliebe von ihr nichts uebrig), und nach UNTEN auf 1 mm.
+     Die Untergrenze ist kein Schoenheitsfehler: _bahnEnde rundet das Mass mit
+     Math.round, aus 0.4 wird 0 — und _cutoutPolygone macht aus `0 || 100` ein
+     100-mm-Loch. Die Vorschau zeigte einen Haarstrich, gefraest wurde faustgross.
+     Knapp unter der Platte bleiben (-1), sonst faellt sie in zwei Teile, von
+     denen eines keine Flaeche hat. */
+  const klemm = (n, max) => Math.min(Math.max(1, n), Math.max(1, max - 1));
+  if (shape === 'circle') {
+    return { dia: klemm(zahl('fraes-dia') || vor.dia, Math.min(A, B)) };
+  }
+  return { w: klemm(zahl('fraes-w') || vor.w, A), h: klemm(zahl('fraes-h') || vor.h, B) };
+}
+
+// Felder mit den aktuellen Werten fuellen und je nach Form umschalten.
+function _werkzeugFelderFuellen(shape, A, B) {
+  const m = _werkzeugMasse(shape, A, B);
+  const setz = (id, wert) => { const el = document.getElementById(id); if (el && !el.value) el.value = Math.round(wert); };
+  const zeig = (id, an) => { const el = document.getElementById(id); if (el) el.style.display = an ? '' : 'none'; };
+  if (shape === 'circle') { setz('fraes-dia', m.dia); } else { setz('fraes-w', m.w); setz('fraes-h', m.h); }
+  zeig('fraes-dia', shape === 'circle');
+  zeig('fraes-w', shape !== 'circle');
+  zeig('fraes-h', shape !== 'circle');
+  zeig('fraes-mal', shape !== 'circle');
+}
+
 function startPlaceCutout(shape) {
   const b = _selectedSheetBeam();
   if (!b) { renderFraesPanel(); return; }   // Leiste sagt, was fehlt
@@ -3464,8 +3636,17 @@ function startPlaceCutout(shape) {
   if (_fraesUebrig() === 0 && !_fraesErlaubt()) { renderFraesPanel(); return; }
   _exitTools('cutout');   // Saege/Massband beenden, sonst faengt deren Klick vor
   _placingCutout = { beamId: b.id, shape };
+  const fb = _panelFaceBasis(b);
+  _werkzeugFelderFuellen(shape, fb.A, fb.B);
+  document.getElementById('fraes-rect')?.classList.toggle('aktiv', shape !== 'circle');
+  document.getElementById('fraes-circle')?.classList.toggle('aktiv', shape === 'circle');
   const hint = document.getElementById('place-hint');
-  if (hint) { hint.textContent = (shape === 'circle' ? '◯' : '▭') + ' Über die Platte fahren und klicken zum Platzieren · Esc = Abbrechen'; hint.style.display = 'block'; }
+  if (hint) {
+    hint.textContent = window.t
+      ? window.t('🔩 Maustaste auf der Platte halten und ziehen — es wird gefräst, solange du ziehst · Esc = Abbrechen')
+      : '🔩 Maustaste auf der Platte halten und ziehen — es wird gefräst, solange du ziehst · Esc = Abbrechen';
+    hint.style.display = 'block';
+  }
 }
 
 function _cursorFaceUV(cx, cy) {
@@ -3491,17 +3672,33 @@ function _cursorFaceUV(cx, cy) {
    Material weggeht. */
 const FRAES_BLAU = 0x4e8cdd;
 
-function updateCutoutPreview(cx, cy) {
-  const hit = _cursorFaceUV(cx, cy);
+// `hit` darf hereingereicht werden: waehrend eines Zuges braucht auch
+// _bahnZiehen den Treffer, und _cursorFaceUV strahlt die GANZE Szene ab. Zwei
+// bitgleiche Raycasts pro Mausbewegung kosten proportional zur Modellgroesse —
+// bei einem grossen Dachstuhl merkt man das.
+function updateCutoutPreview(cx, cy, hit) {
+  if (hit === undefined) hit = _cursorFaceUV(cx, cy);
   if (!hit) { _cutoutVorschauAus(); return; }
-  const def = _cutoutDefaults(_placingCutout.shape, hit.fb.A, hit.fb.B);
+  // Die im Fenster eingestellte Werkzeuggroesse, nicht mehr eine feste
+  // Vorgabe: man soll VOR dem Ziehen sehen, was man fraesen wird.
+  const def = _werkzeugMasse(_placingCutout.shape, hit.fb.A, hit.fb.B);
   const outline = _previewOutline(_placingCutout.shape, def);
-  // Weltkoordinaten: Mittelpunkt = Treffer, Ebene aus eA/eB (durch Mesh-Quaternion gedreht)
+  // Weltkoordinaten: Ebene aus eA/eB (durch Mesh-Quaternion gedreht)
   const q = hit.b.mesh.quaternion;
   const wA = hit.fb.eA.clone().applyQuaternion(q), wB = hit.fb.eB.clone().applyQuaternion(q);
   const nEinheit = hit.fb.eT.clone().applyQuaternion(q).normalize();
   const wN = nEinheit.clone().multiplyScalar(hit.fb.T / 2 + 3);
-  const center = hit.world.clone();
+  /* Der Mittelpunkt kommt aus DERSELBEN Rechnung wie der spaetere Fraespunkt
+     (_bahnPunkt), nicht aus dem rohen Treffer. Sonst zeigt die Vorschau am
+     Plattenrand woanders hin, als gefraest wird: _bahnPunkt klemmt dort auf die
+     Kante, die Vorschau lief frueher ungeklemmt mit dem Cursor mit. */
+  const p = _bahnPunkt(hit, _placingCutout.shape, def);
+  const mA = _placingCutout.shape === 'circle' ? p.u : p.u + def.w / 2;
+  const mB = _placingCutout.shape === 'circle' ? p.v : p.v + def.h / 2;
+  const zentrum = hit.b.mesh.localToWorld(new THREE.Vector3());
+  const center = zentrum.clone()
+    .add(wA.clone().multiplyScalar(mA - hit.fb.A / 2))
+    .add(wB.clone().multiplyScalar(mB - hit.fb.B / 2));
   const verts = outline.flatMap(([da, db]) => {
     const p = center.clone().add(wA.clone().multiplyScalar(da)).add(wB.clone().multiplyScalar(db)).add(wN);
     return [p.x, p.y, p.z];
@@ -3554,25 +3751,118 @@ function _cutoutVorschauAus() {
   if (_cutoutFill) _cutoutFill.visible = false;
 }
 
-function placeCutoutAtCursor(cx, cy) {
+/* ── FRAESBAHN ──────────────────────────────────────────────────────────────
+   Wie eine Oberfraese: Taste druecken, ziehen, loslassen. Waehrend des Ziehens
+   entsteht KEINE Geometrie — nur eine Linie als Vorschau. rebuildMesh bei jeder
+   Mausbewegung waere viel zu teuer (Polygon-Vereinigung + ExtrudeGeometry, und
+   das mehrmals pro Sekunde). Gefraest wird EINMAL beim Loslassen.
+   Ein Klick ohne Bewegung = Bahn mit einem Punkt = ein Loch in Werkzeuggroesse. */
+let _fraesBahn = null;    // { beamId, shape, punkte:[{u,v}], masse }
+let _bahnLinie = null;    // THREE.Line — die gezogene Spur
+
+// Ein Bahnpunkt in Flaechen-mm. Bezugspunkt wie beim fertigen Cutout:
+// Kreis -> Mitte, Rechteck -> Ecke links unten (deshalb der halbe Versatz).
+function _bahnPunkt(hit, shape, masse) {
+  const klemm = (val, lo, hi) => Math.max(lo, Math.min(hi, val));
+  if (shape === 'circle') {
+    const r = masse.dia / 2;
+    return { u: Math.round(klemm(hit.u, r, hit.fb.A - r)), v: Math.round(klemm(hit.v, r, hit.fb.B - r)) };
+  }
+  return {
+    u: Math.round(klemm(hit.u - masse.w / 2, 0, hit.fb.A - masse.w)),
+    v: Math.round(klemm(hit.v - masse.h / 2, 0, hit.fb.B - masse.h)),
+  };
+}
+
+function _bahnStart(cx, cy) {
   const hit = _cursorFaceUV(cx, cy);
-  if (!hit) return;  // nicht auf der Platte → ignorieren
-  // Erst HIER zaehlen, nicht beim Formwaehlen: wer eine Form waehlt und dann
-  // abbricht, soll keinen Versuch verbrennen.
+  if (!hit) return;   // daneben getippt — kein Zug, kein Verbrauch
   if (!_fraesErlaubt()) { cancelPlaceCutout(); renderFraesPanel(); return; }
-  const b = hit.b, fb = hit.fb, shape = _placingCutout.shape;
-  const def = _cutoutDefaults(shape, fb.A, fb.B);
+  const masse = _werkzeugMasse(_placingCutout.shape, hit.fb.A, hit.fb.B);
+  _fraesBahn = { beamId: hit.b.id, shape: _placingCutout.shape, masse, punkte: [_bahnPunkt(hit, _placingCutout.shape, masse)] };
+}
+
+function _bahnZiehen(cx, cy, hit) {
+  if (!_fraesBahn || _fraesBahn.beendet) return;
+  if (hit === undefined) hit = _cursorFaceUV(cx, cy);
+  if (!hit || hit.b.id !== _fraesBahn.beamId) {
+    /* Platte verlassen -> die Bahn ist zu Ende, wie ein echter Fraeser, der
+       abhebt. Sie NUR anhalten und beim Wiedereintritt fortsetzen waere
+       schlimmer als nutzlos: zwischen Austritts- und Eintrittspunkt entstuende
+       ein gerades Segment quer durchs Material. Wer ueber die linke Kante
+       hinausfaehrt, unten herum bogen und rechts wieder eintritt, haette die
+       Ecke diagonal durchgesaegt — ohne das je gewollt zu haben. */
+    _fraesBahn.beendet = true;
+    return;
+  }
+  const p = _bahnPunkt(hit, _fraesBahn.shape, _fraesBahn.masse);
+  const letzt = _fraesBahn.punkte[_fraesBahn.punkte.length - 1];
+  // Punkte erst ab etwas Abstand sammeln. Jeder Mauspixel waere ein Punkt und
+  // damit ein Polygon in der Vereinigung — bei einem langen Zug waeren das
+  // hunderte. Ein Viertel der Werkzeuggroesse ist dicht genug; Luecken kann es
+  // ohnehin nicht geben, weil je Segment die konvexe Huelle gefraest wird.
+  const schritt = Math.max(5, (_fraesBahn.shape === 'circle' ? _fraesBahn.masse.dia : Math.min(_fraesBahn.masse.w, _fraesBahn.masse.h)) / 4);
+  if (Math.hypot(p.u - letzt.u, p.v - letzt.v) < schritt) return;
+  _fraesBahn.punkte.push(p);
+  _bahnVorschau();
+}
+
+// Die bisher gezogene Spur als Linie. Bewusst nur eine Linie statt echter
+// Geometrie — sehen soll man den Weg, gefraest wird beim Loslassen.
+function _bahnVorschau() {
+  const b = beams.find(x => x.id === _fraesBahn.beamId);
+  if (!b || !b.mesh || _fraesBahn.punkte.length < 2) return;
+  const fb = _panelFaceBasis(b);
+  const q = b.mesh.quaternion;
+  const wA = fb.eA.clone().applyQuaternion(q), wB = fb.eB.clone().applyQuaternion(q);
+  const wN = fb.eT.clone().applyQuaternion(q).normalize().multiplyScalar(fb.T / 2 + 3);
+  const mitte = _fraesBahn.shape === 'circle'
+    ? (p) => [p.u - fb.A / 2, p.v - fb.B / 2]
+    : (p) => [p.u + _fraesBahn.masse.w / 2 - fb.A / 2, p.v + _fraesBahn.masse.h / 2 - fb.B / 2];
+  // Der Mesh-Ursprung ist die Plattenmitte (buildPanelGeometry zentriert die
+  // Geometrie). EINMAL vor der Schleife holen — nicht je Punkt.
+  const zentrum = b.mesh.localToWorld(new THREE.Vector3());
+  const verts = _fraesBahn.punkte.flatMap(p => {
+    const [da, db] = mitte(p);
+    const pos = zentrum.clone()
+      .add(wA.clone().multiplyScalar(da))
+      .add(wB.clone().multiplyScalar(db))
+      .add(wN);
+    return [pos.x, pos.y, pos.z];
+  });
+  if (!_bahnLinie) {
+    _bahnLinie = new THREE.Line(new THREE.BufferGeometry(),
+      new THREE.LineBasicMaterial({ color: FRAES_BLAU }));
+    _bahnLinie.renderOrder = 1000;
+    scene.add(_bahnLinie);
+  }
+  _bahnLinie.geometry.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  _bahnLinie.geometry.computeBoundingSphere();
+  _bahnLinie.visible = true;
+}
+
+function _bahnEnde() {
+  if (!_fraesBahn) return;
+  const bahn = _fraesBahn;
+  _fraesBahn = null;
+  if (_bahnLinie) _bahnLinie.visible = false;
+  const b = beams.find(x => x.id === bahn.beamId);
+  if (!b) { cancelPlaceCutout(); return; }   // Platte mitten im Zug geloescht
+
   pushHistory();
+  // EIN Zug = EIN Versuch, egal wie lang die Bahn ist. Und erst hier, nicht
+  // beim Druecken: wer mit Esc abbricht, soll nichts verbraucht haben.
   if (!IS_PREMIUM) _fraesVerbrauchen();
   if (!b.cutouts) b.cutouts = [];
-  const clamp = (val, lo, hi) => Math.max(lo, Math.min(hi, val));
-  if (shape === 'circle') {
-    const r = def.dia / 2;
-    b.cutouts.push({ shape: 'circle', u: Math.round(clamp(hit.u, r, fb.A - r)), v: Math.round(clamp(hit.v, r, fb.B - r)), dia: def.dia });
-  } else {
-    const u0 = clamp(hit.u - def.w / 2, 0, fb.A - def.w), v0 = clamp(hit.v - def.h / 2, 0, fb.B - def.h);
-    b.cutouts.push({ shape: 'rect', u: Math.round(u0), v: Math.round(v0), w: def.w, h: def.h });
-  }
+  const c = bahn.shape === 'circle'
+    ? { shape: 'circle', u: bahn.punkte[0].u, v: bahn.punkte[0].v, dia: Math.round(bahn.masse.dia) }
+    : { shape: 'rect', u: bahn.punkte[0].u, v: bahn.punkte[0].v, w: Math.round(bahn.masse.w), h: Math.round(bahn.masse.h) };
+  // u/v bleiben der ERSTE Punkt und `punkte` kommt nur bei echter Bewegung
+  // dazu. Ein Klick erzeugt damit exakt das Objekt von frueher — alte Projekte,
+  // CNC-Export und Stueckliste merken nichts von der Neuerung.
+  if (bahn.punkte.length > 1) c.punkte = bahn.punkte;
+  b.cutouts.push(c);
+
   cancelPlaceCutout();
   rebuildMesh(b);
   renderCutoutPanel(b);
@@ -3580,7 +3870,11 @@ function placeCutoutAtCursor(cx, cy) {
 
 function cancelPlaceCutout() {
   _placingCutout = null;
+  _fraesBahn = null;                                  // laufender Zug wird verworfen
+  if (_bahnLinie) _bahnLinie.visible = false;
   _cutoutVorschauAus();   // Umriss UND Flaeche
+  document.getElementById('fraes-rect')?.classList.remove('aktiv');
+  document.getElementById('fraes-circle')?.classList.remove('aktiv');
   const hint = document.getElementById('place-hint');
   if (hint) hint.style.display = 'none';
 }
@@ -4198,6 +4492,13 @@ function _endDrag() {
   isDraggingDeco = false; dragDeco = null;
   dragSelectionSnapshot = {};
   dragLockBeams = {}; dragLockDecos = {};
+  // Die Fraesbahn gehoert genauso hierher — der Kommentar oben beschreibt ihren
+  // Fall woertlich. Ohne das ueberlebte ein angefangener Zug den Alt-Tab: die
+  // Bahn waere danach beim blossen Ueberfahren weitergewachsen, und der naechste
+  // Klick irgendwohin haette sie als fertige Fraesung abgegeben.
+  // Kein Verbrauch: _bahnEnde laeuft hier nicht, der Zug wird verworfen.
+  _fraesBahn = null;
+  if (_bahnLinie) _bahnLinie.visible = false;
 }
 window.addEventListener('blur', _endDrag);
 document.addEventListener('visibilitychange', () => { if (document.hidden) _endDrag(); });
@@ -4271,8 +4572,8 @@ function getGroundPoint(clientX, clientY) {
 function onPointerDown(e) {
   if (e.button === 2) e.preventDefault(); // prevent browser context menu for right click only
 
-  // Ausfräsung platzieren: Linksklick setzt das Loch an die Mausposition
-  if (_placingCutout && e.button === 0) { placeCutoutAtCursor(e.clientX, e.clientY); return; }
+  // Fraesen: Taste druecken startet den Zug, Loslassen fraest (siehe _bahnEnde)
+  if (_placingCutout && e.button === 0) { _bahnStart(e.clientX, e.clientY); return; }
   if (_placingCutout && e.button === 2) { cancelPlaceCutout(); return; }
 
   // Säge tool: left click → cut beam at hover position
@@ -4435,8 +4736,22 @@ function onPointerMove(e) {
   _lastMouseX = e.clientX;
   _lastMouseY = e.clientY;
 
-  // Ausfräsung platzieren: Vorschau an der Mausposition aktualisieren
-  if (_placingCutout) { updateCutoutPreview(e.clientX, e.clientY); return; }
+  // Fraesen: Werkzeug-Vorschau folgt der Maus; bei gedrueckter Taste waechst
+  // zusaetzlich die Bahn.
+  if (_placingCutout) {
+    // EIN Raycast fuer beide: Vorschau und Bahn brauchen denselben Treffer.
+    const hit = _cursorFaceUV(e.clientX, e.clientY);
+    updateCutoutPreview(e.clientX, e.clientY, hit);
+    if (_fraesBahn) {
+      // e.buttons statt nur "_fraesBahn ist gesetzt": geht das mouseup verloren
+      // (Taste in einem anderen Fenster losgelassen), waere der Zug sonst noch
+      // offen und die Bahn wuechse beim blossen Ueberfahren weiter. Der Browser
+      // sagt uns hier, was WIRKLICH gedrueckt ist — dem glauben wir.
+      if (e.buttons & 1) _bahnZiehen(e.clientX, e.clientY, hit);
+      else { _fraesBahn = null; if (_bahnLinie) _bahnLinie.visible = false; }
+    }
+    return;
+  }
 
   // Säge: update hover indicator (only when not dragging)
   if (sawActive && !isDragging && !isDraggingDeco) {
@@ -4576,6 +4891,10 @@ function onPointerMove(e) {
 }
 
 function onPointerUp(e) {
+  // Fraesbahn: Loslassen fraest. Muss VOR allem anderen stehen — waehrend eines
+  // Zuges ist kein anderes Werkzeug gemeint.
+  if (_fraesBahn && e.button === 0) { _bahnEnde(); return; }
+
   // Measure tool: commit second point on release
   if (measureActive && measureDragging && e.button === 0) {
     measureDragging = false;
@@ -5034,11 +5353,21 @@ document.addEventListener('keydown', e => {
     return;
   }
 
+  /* Esc muss den Fraeser auch aus einem Eingabefeld heraus abwerfen. Man stellt
+     die Werkzeuggroesse ein, ueberlegt es sich anders und drueckt Esc — das lief
+     frueher in die Sperre unten und tat nichts, waehrend der Fraeser weiter am
+     Cursor klebte. Nur DIESER Fall wird vorgezogen, alle anderen Kuerzel bleiben
+     bei Eingabefeldern gesperrt. */
+  if (e.key === 'Escape' && (_placingCutout || _fraesBahn)) {
+    cancelPlaceCutout();
+    if (inputFocused) document.activeElement.blur();
+    return;
+  }
+
   // Block other shortcuts when an input is focused
   if (inputFocused) return;
 
   if (e.key === 'Delete' || e.key === 'Backspace') { deleteSelected(); return; }
-  if (e.key === 'Escape' && _placingCutout) { cancelPlaceCutout(); return; }
   if (e.key === 'Escape') { closeCtxMenu(); selectBeam(null); if (measureActive) clearMeasure(); updateUI(); return; }
   if (e.key === '?' || (e.shiftKey && e.key === '/')) { toggleHelp(); return; }
   if (e.key === 'f' || e.key === 'F') { resetCamera(); return; }
@@ -5797,6 +6126,19 @@ function executeSawCut() {
   const depthDim = beam.B; // The "depth" of the cross-section (along Z for X-axis beams)
   const offset = depthDim * Math.tan(aRad); // length difference front vs back
 
+  /* Die Ausfraesungen des Originals gehoeren in KEINE der Haelften — an EINER
+     Stelle behandelt, weil unten drei Zweige (gerade, schraeg-X, schraeg-Z) je
+     zwei Teile per Spread bauen und einer davon sonst vergessen wuerde.
+     Warum ersatzlos verwerfen? Der flache Spread nahm `cutouts` bisher nur als
+     REFERENZ mit: beide Haelften und das Original zeigten auf dasselbe Array,
+     ein Loch in Haelfte 1 zu loeschen entfernte es auch aus Haelfte 2. Sie
+     stattdessen zu KOPIEREN waere aber genauso falsch: u/v beziehen sich auf
+     die alte Plattenlaenge, die Loecher saessen an voellig falschen Stellen,
+     und eine vom Schnitt durchtrennte Fraesbahn muesste zwischen den Haelften
+     aufgeteilt und neu gerechnet werden. Lieber sichtbar keine Loecher als
+     heimlich falsche — das sieht man sofort und fraest neu. */
+  const _ohneLoecher = (teil) => { delete teil.cutouts; return teil; };
+
   pushHistory();
 
   // ── Build piece data ──────────────────────────────
@@ -5811,7 +6153,7 @@ function executeSawCut() {
     else if (beam.axis === 'y') b2.y = beam.y + cutMM;
     else b2.z = beam.z + cutMM;
 
-    [b1, b2].forEach(nb => {
+    [b1, b2].map(_ohneLoecher).forEach(nb => {
       nb.mesh = createBeamMesh(nb);
       if (hiddenGroups.has(nb.group)) nb.mesh.visible = false;
       applyPhaseVisibility(nb);
@@ -5840,7 +6182,7 @@ function executeSawCut() {
       _sawBR: L - cutMM             // right end back  (flat, same x)
     };
 
-    [b1, b2].forEach(nb => {
+    [b1, b2].map(_ohneLoecher).forEach(nb => {
       nb.mesh = createBeamMesh(nb);
       if (hiddenGroups.has(nb.group)) nb.mesh.visible = false;
       applyPhaseVisibility(nb);
@@ -5864,7 +6206,7 @@ function executeSawCut() {
       _sawFR: L - cutMM, _sawBR: L - cutMM
     };
 
-    [b1, b2].forEach(nb => {
+    [b1, b2].map(_ohneLoecher).forEach(nb => {
       nb.mesh = createBeamMesh(nb);
       if (hiddenGroups.has(nb.group)) nb.mesh.visible = false;
       applyPhaseVisibility(nb);
@@ -7232,16 +7574,46 @@ let _lastPanelGroups = [];  // {material, thick, res, panelW, panelH} für CNC-D
 function _placementCutouts(pl) {
   const b = beams.find(x => x.id === pl.id);
   if (!b || !b.cutouts || !b.cutouts.length) return [];
-  return b.cutouts.map(c => {
+  // flatMap, nicht map: eine Fraesbahn ist EIN Cutout, wird auf der Platte aber
+  // zu einem Umriss-Polygon. Ohne das ginge sie im CNC-Plan als schlichtes
+  // Rechteck durch — die Maschine fraeste dann etwas anderes als das Modell
+  // zeigt, und das faellt erst am Werkstueck auf.
+  return b.cutouts.flatMap(c => {
     const cu = c.u || 0, cv = c.v || 0;   // u entlang A (=lange Seite), v entlang B
+
+    if (Array.isArray(c.punkte) && c.punkte.length > 1) {
+      const fb = _panelFaceBasis(b);
+      const polys = _cutoutPolygone(c, fb.A, fb.B);
+      // Die Bahnsegmente ueberlappen sich; als einzelne Polygone waeren sie im
+      // DXF ein Gewirr. Vereinen ergibt den echten Umriss der Nut.
+      let vereint = polys;
+      if (window.polygonClipping && polys.length > 1) {
+        try { vereint = window.polygonClipping.union(...polys); } catch (e) { vereint = polys; }
+      }
+      // ALLE Ringe, nicht nur poly[0]. Genau dieser Fehler steckte vorher in
+      // buildPanelGeometry: eine geschlossene Bahn laesst eine INSEL stehen,
+      // und die ist poly[1..]. Nimmt man nur den Aussenring, meldet der CNC-Plan
+      // die volle Scheibe statt des Rings — nachgerechnet 176% zu viel Flaeche.
+      // Das 3D-Modell zeigte die Insel, die Maschine haette sie weggefraest.
+      const umriss = (ring) => ring.map(([x, y]) => {
+        const u = x + fb.A / 2, v = y + fb.B / 2;   // zentriert -> Plattenecke
+        return pl.rotated ? [pl.x + v, pl.y + u] : [pl.x + u, pl.y + v];
+      });
+      return vereint.flatMap(poly => poly.map((ring, i) => ({
+        shape: 'poly',
+        insel: i > 0,          // Innenring = stehenbleibendes Material
+        pts: umriss(ring),
+      })));
+    }
+
     if (c.shape === 'circle') {
       const r = Math.max(1, (c.dia || 100) / 2);
       const x = pl.rotated ? cv : cu, y = pl.rotated ? cu : cv;
-      return { shape: 'circle', x: pl.x + x, y: pl.y + y, r };
+      return [{ shape: 'circle', x: pl.x + x, y: pl.y + y, r }];
     }
     const w = Math.max(1, c.w || 100), h = Math.max(1, c.h || 100);
-    if (pl.rotated) return { shape: 'rect', x: pl.x + cv, y: pl.y + cu, w: h, h: w };
-    return { shape: 'rect', x: pl.x + cu, y: pl.y + cv, w, h };
+    if (pl.rotated) return [{ shape: 'rect', x: pl.x + cv, y: pl.y + cu, w: h, h: w }];
+    return [{ shape: 'rect', x: pl.x + cu, y: pl.y + cv, w, h }];
   });
 }
 
@@ -7264,6 +7636,9 @@ function renderPanelGroupSVG(res, panelW, panelH) {
       }
       _placementCutouts(pl).forEach(hc => {
         if (hc.shape === 'circle') p.push(`<circle cx="${hc.x * s}" cy="${hc.y * s}" r="${hc.r * s}" fill="#fff" stroke="#c0392b" stroke-width="1.2"/>`);
+        // Insel = Material, das STEHEN bleibt: nicht weiss fuellen, sonst
+        // sieht der Ring aus wie eine volle Scheibe.
+        else if (hc.shape === 'poly') p.push(`<polygon points="${hc.pts.map(([x, y]) => (x * s).toFixed(2) + ',' + (y * s).toFixed(2)).join(' ')}" fill="${hc.insel ? 'none' : '#fff'}" stroke="#c0392b" stroke-width="1.2"/>`);
         else p.push(`<rect x="${hc.x * s}" y="${hc.y * s}" width="${hc.w * s}" height="${hc.h * s}" fill="#fff" stroke="#c0392b" stroke-width="1.2"/>`);
       });
     });
@@ -7330,7 +7705,20 @@ function panelsToCNCDXF() {
         line(pl.x, flip(pl.y + pl.h), pl.x, flip(pl.y), 'TEILE');
         _placementCutouts(pl).forEach(hc => {
           if (hc.shape === 'circle') circ(hc.x, flip(hc.y), hc.r, 'FRAESUNG');
-          else {
+          else if (hc.shape === 'poly') {
+            // Fraesbahn: als Linienzug. Bewusst aus dem vorhandenen line()
+            // gebaut statt LWPOLYLINE — dieselben Bausteine, die die Datei
+            // ohnehin schon schreibt, also kein neues DXF-Risiko.
+            // Der Ring ist bereits GESCHLOSSEN (letzter Punkt == erster, siehe
+            // _cutoutPolygone). Deshalb bis length-1 und kein Modulo — sonst
+            // stuende am Ende jedes Zuges eine LINE der Laenge null in der
+            // Datei, ueber die manche CAM-Programme stolpern.
+            for (let i = 0; i < hc.pts.length - 1; i++) {
+              const [x1, y1] = hc.pts[i];
+              const [x2, y2] = hc.pts[i + 1];
+              line(x1, flip(y1), x2, flip(y2), 'FRAESUNG');
+            }
+          } else {
             line(hc.x, flip(hc.y), hc.x + hc.w, flip(hc.y), 'FRAESUNG');
             line(hc.x + hc.w, flip(hc.y), hc.x + hc.w, flip(hc.y + hc.h), 'FRAESUNG');
             line(hc.x + hc.w, flip(hc.y + hc.h), hc.x, flip(hc.y + hc.h), 'FRAESUNG');
