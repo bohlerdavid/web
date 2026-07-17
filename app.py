@@ -16,7 +16,7 @@ from urllib.parse import urlparse, urljoin
 
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    flash, g, abort, jsonify, session
+    flash, g, abort, jsonify, session, Response
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
@@ -223,6 +223,20 @@ SCHEMA_STATEMENTS = [
         created      DATETIME     NOT NULL,
         updated      DATETIME     NULL,
         INDEX (user_id), INDEX (status)
+    )""",
+    # Protokoll jedes Cron-Aufrufs. Ohne das ist von aussen nicht zu sehen, ob
+    # der externe Dienst (cron-job.org) ueberhaupt anklopft — und genau das war
+    # monatelang unklar. ABGELEHNTE Aufrufe kommen bewusst MIT hinein: nur so
+    # laesst sich "der Cron ruft nie an" von "der Cron ruft mit falschem
+    # Schluessel an" unterscheiden. Beides sieht sonst gleich aus (= nichts).
+    """CREATE TABLE IF NOT EXISTS cron_runs (
+        id        INT PRIMARY KEY AUTO_INCREMENT,
+        job       VARCHAR(60)  NOT NULL,
+        ran_at    DATETIME     NOT NULL,
+        ok        TINYINT      NOT NULL DEFAULT 1,
+        note      TEXT         NULL,
+        ip        VARCHAR(45)  NULL,
+        INDEX (job), INDEX (ran_at)
     )""",
 ]
 
@@ -2003,6 +2017,83 @@ def admin_users():
     return render_template('admin_users.html', users=users)
 
 
+@app.route('/admin/mails')
+@admin_required
+def admin_mails():
+    """Uebersicht: welche Mails gehen raus, welcher Cron treibt sie, laeuft er?
+
+    Der wichtigste Teil ist der Cron-Zustand. Ob cron-job.org wirklich anklopft,
+    war von aussen nicht feststellbar — ein nie aufgerufener Job und ein mit
+    falschem Schluessel abgewiesener Job sehen beide aus wie: nichts passiert.
+    Seit cron_runs steht beides schwarz auf weiss."""
+    jobs = []
+    for j in CRON_JOBS:
+        letzter_ok = query_db(
+            'SELECT ran_at, note FROM cron_runs WHERE job=? AND ok=1 ORDER BY ran_at DESC LIMIT 1',
+            [j['job']], one=True)
+        letzter_fehl = query_db(
+            'SELECT ran_at, note FROM cron_runs WHERE job=? AND ok=0 ORDER BY ran_at DESC LIMIT 1',
+            [j['job']], one=True)
+        anzahl = query_db('SELECT COUNT(*) AS c FROM cron_runs WHERE job=? AND ok=1', [j['job']], one=True)
+        ok_dt = _to_dt(letzter_ok['ran_at']) if letzter_ok else None
+        stunden_her = ((datetime.utcnow() - ok_dt).total_seconds() / 3600.0) if ok_dt else None
+
+        if ok_dt is None and letzter_fehl:
+            zustand, text = 'abgewiesen', 'Der Job ruft an, wird aber abgewiesen (403). Der Schlüssel stimmt nicht.'
+        elif ok_dt is None:
+            zustand, text = 'nie', 'Dieser Job wurde noch NIE erfolgreich aufgerufen. Es ging bisher keine dieser Mails raus.'
+        elif stunden_her is not None and stunden_her > j['max_stunden']:
+            zustand, text = 'ueberfaellig', 'Der letzte erfolgreiche Lauf ist zu lange her — der Job scheint zu stehen.'
+        else:
+            zustand, text = 'laeuft', 'Läuft.'
+
+        jobs.append({
+            'job': j['job'], 'name': j['name'], 'plan': j['plan'], 'zweck': j['zweck'],
+            'zustand': zustand, 'text': text,
+            'letzter_ok': ok_dt, 'letzter_ok_note': letzter_ok['note'] if letzter_ok else None,
+            'stunden_her': round(stunden_her, 1) if stunden_her is not None else None,
+            'letzter_fehl': _to_dt(letzter_fehl['ran_at']) if letzter_fehl else None,
+            'letzter_fehl_note': letzter_fehl['note'] if letzter_fehl else None,
+            'laeufe': anzahl['c'] if anzahl else 0,
+            'url': (os.environ.get('BASE_URL', 'https://holzbau3d.app').rstrip('/')
+                    + '/cron/' + j['job'] + '?key=DEIN_CRON_SECRET'),
+        })
+
+    vorlagen = []
+    for v in MAIL_VORLAGEN:
+        eintrag = {k: v[k] for k in ('key', 'name', 'wann', 'ausloeser') if k in v}
+        eintrag['job'] = v.get('job')
+        eintrag['nur_de'] = v.get('nur_de', False)
+        try:
+            eintrag['betreff'] = v['render']('de')[0]
+        except Exception as e:
+            # Eine kaputte Vorlage darf die Uebersicht nicht mitreissen — sie
+            # soll im Gegenteil genau das anzeigen.
+            eintrag['betreff'] = None
+            eintrag['fehler'] = '%s: %s' % (type(e).__name__, e)
+        vorlagen.append(eintrag)
+
+    letzte = query_db('SELECT job, ran_at, ok, note, ip FROM cron_runs ORDER BY ran_at DESC LIMIT 20', [])
+    cron_secret_gesetzt = bool(os.environ.get('CRON_SECRET', ''))
+    return render_template('admin_mails.html', jobs=jobs, vorlagen=vorlagen,
+                           ohne_vorlage=MAIL_OHNE_VORLAGE, letzte=letzte,
+                           cron_secret_gesetzt=cron_secret_gesetzt)
+
+
+@app.route('/admin/mails/<key>')
+@admin_required
+def admin_mail_vorschau(key):
+    """Rendert eine Vorlage mit Beispielwerten — ueber DIESELBE Funktion, die
+    auch der echte Versand benutzt. Nachbauen waere wertlos: die Kopie stimmte
+    genau so lange, bis jemand die Vorlage aendert."""
+    v = next((x for x in MAIL_VORLAGEN if x['key'] == key), None)
+    if not v:
+        abort(404)
+    lang = _norm_lang(request.args.get('lang', 'de'))
+    _betreff, html = v['render'](lang)
+    return Response(html, mimetype='text/html')
+
+
 @app.route('/admin/delete_user', methods=['POST'])
 @admin_required
 def admin_delete_user():
@@ -2616,15 +2707,43 @@ def stripe_webhook():
         return jsonify(error='Webhook error'), 400
 
 
+def _cron_protokoll(job, ok, note):
+    """Haelt fest, dass der Cron angeklopft hat — erfolgreich ODER abgewiesen.
+    Bewusst in try/except: ein kaputtes Protokoll darf niemals den Versand
+    verhindern. Lieber eine Luecke in der Uebersicht als eine Mail, die nicht
+    rausgeht."""
+    try:
+        execute_db('INSERT INTO cron_runs (job, ran_at, ok, note, ip) VALUES (?, NOW(), ?, ?, ?)',
+                   [job, 1 if ok else 0, (note or '')[:2000],
+                    (request.headers.get('X-Forwarded-For', '') or request.remote_addr or '')[:45]])
+    except Exception as e:
+        logger.warning('cron_runs Protokoll fehlgeschlagen (%s): %s', job, type(e).__name__)
+
+
+def _cron_schluessel_pruefen(job):
+    """True = Aufruf ist echt. Schreibt jeden Versuch ins Protokoll."""
+    secret = os.environ.get('CRON_SECRET', '')
+    given = request.args.get('key') or request.headers.get('X-Cron-Key', '')
+    if not secret:
+        _cron_protokoll(job, False, 'CRON_SECRET ist auf dem Server nicht gesetzt — Aufruf abgewiesen')
+        return False
+    if given != secret:
+        # Den Schluessel NICHT protokollieren, auch nicht teilweise.
+        _cron_protokoll(job, False,
+                        'Falscher oder fehlender Schluessel — Aufruf abgewiesen (403). '
+                        + ('Es wurde gar kein Schluessel mitgeschickt.' if not given
+                           else 'Der mitgeschickte Schluessel passt nicht zu CRON_SECRET.'))
+        return False
+    return True
+
+
 @app.route('/cron/subscription-reminders', methods=['GET', 'POST'])
 def cron_subscription_reminders():
     """Täglich von einem Cron aufzurufen. Schützt per CRON_SECRET.
     1) synct alle Stripe-Abos (sperrt abgelaufene automatisch),
     2) sendet 7-Tage- und 2-Tage-Ablauf-Erinnerungen (gekündigte Abos),
     3) erinnert eine Woche vor der nächsten Abbuchung (aktive Abos)."""
-    secret = os.environ.get('CRON_SECRET', '')
-    given = request.args.get('key') or request.headers.get('X-Cron-Key', '')
-    if not secret or given != secret:
+    if not _cron_schluessel_pruefen('subscription-reminders'):
         abort(403)
     # 1) Stripe = Source of Truth: alle mit Stripe-Bezug aktualisieren
     synced = 0
@@ -2635,6 +2754,10 @@ def cron_subscription_reminders():
     log = _run_subscription_reminders()
     # 3) Verlängerungs-Erinnerungen (aktive Abos, ~7 Tage vor Abbuchung)
     renewals = _run_renewal_notices()
+    _cron_protokoll('subscription-reminders', True,
+                    '%d Abos mit Stripe abgeglichen · %d Ablaufwarnung(en) · %d Verlaengerungs-Erinnerung(en)%s'
+                    % (synced, len(log), len(renewals),
+                       ('\n' + '\n'.join(log + renewals)) if (log or renewals) else ''))
     return jsonify(ok=True, synced=synced, reminders=log, renewals=renewals)
 
 
@@ -2643,9 +2766,7 @@ def cron_premium_upsell():
     """Weekly upsell email to all non-premium users (trigger e.g. every Sunday ~18:00).
     Secured via CRON_SECRET (?key= or X-Cron-Key header). Throttled to once per 5 days
     per user, so an accidental double-trigger on the same day won't double-send."""
-    secret = os.environ.get('CRON_SECRET', '')
-    given = request.args.get('key') or request.headers.get('X-Cron-Key', '')
-    if not secret or given != secret:
+    if not _cron_schluessel_pruefen('premium-upsell'):
         abort(403)
     base_url = os.environ.get('BASE_URL', 'https://holzbau3d.app').rstrip('/')
     subscribe_url = base_url + '/subscribe'
@@ -2684,6 +2805,9 @@ def cron_premium_upsell():
             failed += 1
             logger.error('premium-upsell send failed for user %s: %s', r.get('id'), type(e).__name__)
     logger.info('premium-upsell: %s sent, %s failed, %s candidates', sent, failed, len(rows))
+    _cron_protokoll('premium-upsell', True,
+                    '%d Empfaenger in Frage · %d gesendet · %d fehlgeschlagen'
+                    % (len(rows), sent, failed))
     return jsonify(ok=True, candidates=len(rows), sent=sent, failed=failed)
 
 
@@ -3078,6 +3202,138 @@ def _send_cancel_email(user_id):
     end_txt = _filter_lokal_datum(pe) if pe else '—'
     subj = CANCEL_I18N[lang]['subject'].replace('{date}', end_txt)
     send_email(row['email'], subj, _email_cancel_html(row['full_name'] or row['username'], end_txt, lang))
+
+
+# ---------------------------------------------------------------------------
+# Mail-Uebersicht fuers Admin-Panel
+# ---------------------------------------------------------------------------
+# Eine Liste ALLER Mails, die das System verschickt — mit Ausloeser und einer
+# echten Vorschau. "Echt" heisst: die Vorschau ruft dieselbe Funktion auf, die
+# auch der Versand nutzt. Eine nachgebaute Vorschau waere wertlos, sie wuerde
+# genau dann noch stimmen, wenn die Vorlage sich aendert.
+#
+# 'render' bekommt die Sprache und liefert (Betreff, HTML). Die Beispielwerte
+# sind bewusst erkennbar erfunden (Max Mustermann), damit niemand eine Vorschau
+# fuer eine echte Mail haelt.
+def _mail_beispiel_datum(tage=7):
+    return _filter_lokal_datum(datetime.utcnow() + timedelta(days=tage))
+
+
+MAIL_VORLAGEN = [
+    {
+        'key': 'verify',
+        'name': 'E-Mail bestätigen',
+        'wann': 'Sofort nach der Registrierung.',
+        'ausloeser': 'ereignis',
+        'render': lambda lang: (
+            EMAIL_I18N[lang]['v_subject'],
+            _email_verify_html('Max Mustermann', 'https://holzbau3d.app/verify-email/BEISPIEL-TOKEN', lang)),
+    },
+    {
+        'key': 'reset',
+        'name': 'Passwort zurücksetzen',
+        'wann': 'Wenn jemand „Passwort vergessen“ nutzt.',
+        'ausloeser': 'ereignis',
+        'render': lambda lang: (
+            EMAIL_I18N[lang]['r_subject'],
+            _email_reset_html('Max Mustermann', 'https://holzbau3d.app/reset-password/BEISPIEL-TOKEN', lang)),
+    },
+    {
+        'key': 'premium',
+        'name': 'Premium aktiviert',
+        'wann': 'Nach erfolgreicher Zahlung (Stripe-Webhook).',
+        'ausloeser': 'ereignis',
+        'render': lambda lang: (
+            EMAIL_I18N[lang]['p_subject'],
+            _email_premium_html('Max Mustermann', _price_text('monthly'), 'monthly',
+                                'https://invoice.stripe.com/BEISPIEL', lang, _mail_beispiel_datum(30))),
+    },
+    {
+        'key': 'renewal',
+        'name': 'Verlängerung steht an',
+        'wann': 'Rund 7 Tage vor der nächsten Abbuchung eines aktiven Abos.',
+        'ausloeser': 'cron',
+        'job': 'subscription-reminders',
+        'render': lambda lang: (
+            RENEWAL_I18N[lang]['subject'].replace('{date}', _mail_beispiel_datum(7))
+                                         .replace('{amount}', _price_text('monthly')),
+            _email_renewal_html('Max Mustermann', _mail_beispiel_datum(7), _price_text('monthly'), 'monthly', lang)),
+    },
+    {
+        'key': 'expiry7',
+        'name': 'Abo läuft ab — 7 Tage',
+        'wann': '7 Tage bevor ein gekündigtes Abo endet.',
+        'ausloeser': 'cron',
+        'job': 'subscription-reminders',
+        'render': lambda lang: (
+            EXPIRY_I18N[lang]['subject'].replace('{days}', EXPIRY_I18N[lang]['d7']),
+            _email_expiry_html('Max Mustermann', _mail_beispiel_datum(7), '7d', lang)),
+    },
+    {
+        'key': 'expiry2',
+        'name': 'Abo läuft ab — 2 Tage',
+        'wann': '2 Tage bevor ein gekündigtes Abo endet.',
+        'ausloeser': 'cron',
+        'job': 'subscription-reminders',
+        'render': lambda lang: (
+            EXPIRY_I18N[lang]['subject'].replace('{days}', EXPIRY_I18N[lang]['d2']),
+            _email_expiry_html('Max Mustermann', _mail_beispiel_datum(2), '2d', lang)),
+    },
+    {
+        'key': 'cancel',
+        'name': 'Kündigung bestätigt',
+        'wann': 'Sofort nach einer Kündigung.',
+        'ausloeser': 'ereignis',
+        'render': lambda lang: (
+            CANCEL_I18N[lang]['subject'].replace('{date}', _mail_beispiel_datum(21)),
+            _email_cancel_html('Max Mustermann', _mail_beispiel_datum(21), lang)),
+    },
+    {
+        'key': 'feedback',
+        'name': 'Antwort auf Feedback',
+        'wann': 'Wenn du im Admin-Panel auf ein Feedback antwortest.',
+        'ausloeser': 'ereignis',
+        'render': lambda lang: (
+            FEEDBACK_I18N[lang]['subject'].replace('{subject}', 'Beispiel-Betreff'),
+            _email_feedback_html('Max Mustermann', 'Beispiel-Betreff',
+                                 'Das ist der Beispieltext deiner Antwort.',
+                                 _status_label('erledigt', lang), lang)),
+    },
+    {
+        'key': 'upsell',
+        'name': 'Premium-Werbung',
+        'wann': 'Wöchentlich an alle Nicht-Premium-Nutzer (höchstens alle 5 Tage pro Person).',
+        'ausloeser': 'cron',
+        'job': 'premium-upsell',
+        'nur_de': True,   # die Vorlage kennt keine Sprache — siehe Hinweis in der Uebersicht
+        'render': lambda lang: (
+            'Hol mehr aus deinen Holzprojekten – HolzBau 3D Premium',
+            _email_upsell_html('Max Mustermann', 'https://holzbau3d.app/subscribe',
+                               'https://holzbau3d.app/abmelden?token=BEISPIEL')),
+    },
+]
+
+# Diese zwei Mails bauen ihr HTML direkt an der Versandstelle zusammen, statt
+# eine eigene Vorlagen-Funktion zu haben. Sie ehrlich auflisten statt zu
+# verschweigen — eine Uebersicht, die etwas weglaesst, ist keine Uebersicht.
+MAIL_OHNE_VORLAGE = [
+    {'name': 'Konto gelöscht', 'wann': 'Nach der Konto-Löschung, kurz vor dem Entfernen der Daten.',
+     'wo': '_send_delete_email()'},
+    {'name': 'Neues Feedback (an dich)', 'wann': 'Sobald ein Nutzer Feedback abschickt.',
+     'wo': 'submit_feedback()'},
+]
+
+# Was der externe Dienst (cron-job.org) aufrufen SOLL. Der Zeitplan steht dort,
+# nicht hier — deshalb ist 'plan' reiner Beschreibungstext, den du beim Anlegen
+# des Jobs eingestellt hast. 'max_stunden' sagt, ab wann Schweigen verdaechtig ist.
+CRON_JOBS = [
+    {'job': 'subscription-reminders', 'name': 'Abo-Erinnerungen & Stripe-Abgleich',
+     'plan': 'täglich', 'max_stunden': 26,
+     'zweck': 'Gleicht alle Abos mit Stripe ab, warnt vor Ablauf (7/2 Tage) und erinnert an die Verlängerung.'},
+    {'job': 'premium-upsell', 'name': 'Premium-Werbung',
+     'plan': 'wöchentlich', 'max_stunden': 24 * 8,
+     'zweck': 'Schickt Nicht-Premium-Nutzern die Werbe-Mail.'},
+]
 
 
 def _send_delete_email(user_id, sub_info=None):

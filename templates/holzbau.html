@@ -1144,6 +1144,7 @@ body {
       {% endif %}
       {% if session.get('role') == 'admin' %}
       <a href="/admin/users" class="umenu-item"><span>🔧</span><span>Admin</span></a>
+      <a href="/admin/mails" class="umenu-item"><span>📧</span><span>Mails &amp; Cron</span></a>
       {% endif %}
       <div style="border-top:1px solid var(--border-2);"></div>
       <a href="/logout" class="umenu-item" style="color:#f87171;"><span>🚪</span><span>Abmelden</span></a>
@@ -3300,7 +3301,8 @@ function deleteCutout(i) {
 
 // ── Interaktives Platzieren einer Ausfräsung per Maus ──
 let _placingCutout = null;   // { beamId, shape }
-let _cutoutPreview = null;   // THREE.Line Vorschau
+let _cutoutPreview = null;   // THREE.Line — Umriss der Vorschau
+let _cutoutFill = null;      // THREE.Mesh — gefuellte Flaeche darunter
 
 // Flächen-Basis der Platte (welche lokalen Achsen die Fläche aufspannen + Dicke).
 function _panelFaceBasis(beam) {
@@ -3479,15 +3481,22 @@ function _cursorFaceUV(cx, cy) {
   return { b, fb, u: local.dot(fb.eA) + fb.A / 2, v: local.dot(fb.eB) + fb.B / 2, world: hits[0].point.clone() };
 }
 
+/* Vorschaufarbe: das Blau der Oberflaeche (--accent #4e8cdd).
+   Vorher war sie rot (0xe94560) — auf der orangebraunen Platte war die duenne
+   rote Linie kaum auszumachen. Dazu jetzt eine gefuellte Flaeche: eine blosse
+   Linie zeigt nicht, WIE VIEL Material weggeht. */
+const FRAES_BLAU = 0x4e8cdd;
+
 function updateCutoutPreview(cx, cy) {
   const hit = _cursorFaceUV(cx, cy);
-  if (!hit) { if (_cutoutPreview) _cutoutPreview.visible = false; return; }
+  if (!hit) { _cutoutVorschauAus(); return; }
   const def = _cutoutDefaults(_placingCutout.shape, hit.fb.A, hit.fb.B);
   const outline = _previewOutline(_placingCutout.shape, def);
   // Weltkoordinaten: Mittelpunkt = Treffer, Ebene aus eA/eB (durch Mesh-Quaternion gedreht)
   const q = hit.b.mesh.quaternion;
   const wA = hit.fb.eA.clone().applyQuaternion(q), wB = hit.fb.eB.clone().applyQuaternion(q);
-  const wN = hit.fb.eT.clone().applyQuaternion(q).multiplyScalar(hit.fb.T / 2 + 3);
+  const nEinheit = hit.fb.eT.clone().applyQuaternion(q).normalize();
+  const wN = nEinheit.clone().multiplyScalar(hit.fb.T / 2 + 3);
   const center = hit.world.clone();
   const verts = outline.flatMap(([da, db]) => {
     const p = center.clone().add(wA.clone().multiplyScalar(da)).add(wB.clone().multiplyScalar(db)).add(wN);
@@ -3495,13 +3504,46 @@ function updateCutoutPreview(cx, cy) {
   });
   if (!_cutoutPreview) {
     const g = new THREE.BufferGeometry();
-    _cutoutPreview = new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0xe94560, linewidth: 2 }));
+    _cutoutPreview = new THREE.Line(g, new THREE.LineBasicMaterial({ color: FRAES_BLAU }));
     _cutoutPreview.renderOrder = 999;
     scene.add(_cutoutPreview);
   }
   _cutoutPreview.geometry.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
   _cutoutPreview.geometry.computeBoundingSphere();
   _cutoutPreview.visible = true;
+
+  // ── Fuellflaeche ──
+  if (!_cutoutFill) {
+    _cutoutFill = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({
+      color: FRAES_BLAU, transparent: true, opacity: 0.35,
+      side: THREE.DoubleSide,      // Handedness der Basis egal — sie soll von
+                                   // beiden Seiten sichtbar sein
+      depthWrite: false,           // sonst verdeckt sie die Umrisslinie
+    }));
+    _cutoutFill.renderOrder = 998;   // unter der Linie
+    scene.add(_cutoutFill);
+  }
+  // Geometrie nur neu bauen, wenn sich Form oder Mass geaendert haben — sonst
+  // liefe bei jeder Mausbewegung eine Neuallokation.
+  const kennung = _placingCutout.shape + ':' + (def.dia || (def.w + 'x' + def.h));
+  if (_cutoutFill.userData.kennung !== kennung) {
+    _cutoutFill.geometry.dispose();
+    _cutoutFill.geometry = (_placingCutout.shape === 'circle')
+      ? new THREE.CircleGeometry(def.dia / 2, 40)
+      : new THREE.PlaneGeometry(def.w, def.h);
+    _cutoutFill.userData.kennung = kennung;
+  }
+  _cutoutFill.position.copy(center).add(wN);
+  _cutoutFill.quaternion.setFromRotationMatrix(
+    new THREE.Matrix4().makeBasis(wA, wB, nEinheit));
+  _cutoutFill.visible = true;
+}
+
+// Beide Teile der Vorschau zusammen ausblenden — sonst bliebe die Flaeche
+// stehen, waehrend die Linie verschwindet.
+function _cutoutVorschauAus() {
+  if (_cutoutPreview) _cutoutPreview.visible = false;
+  if (_cutoutFill) _cutoutFill.visible = false;
 }
 
 function placeCutoutAtCursor(cx, cy) {
@@ -3530,7 +3572,7 @@ function placeCutoutAtCursor(cx, cy) {
 
 function cancelPlaceCutout() {
   _placingCutout = null;
-  if (_cutoutPreview) { _cutoutPreview.visible = false; }
+  _cutoutVorschauAus();   // Umriss UND Flaeche
   const hint = document.getElementById('place-hint');
   if (hint) hint.style.display = 'none';
 }
