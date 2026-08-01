@@ -2507,7 +2507,8 @@ def admin_sub_check():
     L.append('=== Benutzer & Abo-Status (Datenbank) ===')
     try:
         users = query_db(
-            'SELECT u.id, u.username, u.email, s.plan, s.status, s.plan_interval, s.stripe_sub_id, s.current_period_end '
+            'SELECT u.id, u.username, u.email, s.plan, s.status, s.plan_interval, s.stripe_sub_id, '
+            's.current_period_end, s.renewal_notice_for '
             'FROM app_users u LEFT JOIN subscriptions s ON s.user_id = u.id ORDER BY u.id', []
         )
         for u in users:
@@ -2516,7 +2517,8 @@ def admin_sub_check():
                      + '  status=' + str(u['status'] or '-')
                      + '  intervall=' + str(u['plan_interval'] or '-')
                      + '  sub=' + str(u['stripe_sub_id'] or '-')
-                     + '  bis=' + str(u['current_period_end'] or '-'))
+                     + '  bis=' + str(u['current_period_end'] or '-')
+                     + '  verlaeng.-mail_fuer=' + str(u['renewal_notice_for'] or '-'))
     except Exception as e:
         L.append('DB-FEHLER: ' + type(e).__name__ + ': ' + str(e)[:200])
     L.append('')
