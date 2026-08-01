@@ -279,6 +279,9 @@ SCHEMA_MIGRATIONS = [
     # (reminder_stage taugt dafuer nicht: _activate_premium setzt es bei jeder
     #  Verlaengerung auf '' zurueck.)
     "ALTER TABLE subscriptions ADD COLUMN renewal_notice_for DATETIME NULL",
+    # Welche Verlaengerungs-Erinnerungen fuer die aktuelle Periode schon raus sind
+    # ('7d' und/oder '1d'), damit 7-Tage- UND 1-Tag-Erinnerung getrennt feuern.
+    "ALTER TABLE subscriptions ADD COLUMN renewal_stage VARCHAR(8) NOT NULL DEFAULT ''",
     # Grund der Abweisung als Code statt nur im Fliesstext. Noetig, um "der Cron
     # ruft mit falschem Schluessel an" von "irgendjemand hat die URL ohne
     # Schluessel aufgerufen" zu unterscheiden — die Uebersicht hat das sonst
@@ -2508,7 +2511,7 @@ def admin_sub_check():
     try:
         users = query_db(
             'SELECT u.id, u.username, u.email, s.plan, s.status, s.plan_interval, s.stripe_sub_id, '
-            's.current_period_end, s.renewal_notice_for '
+            's.current_period_end, s.renewal_notice_for, s.renewal_stage '
             'FROM app_users u LEFT JOIN subscriptions s ON s.user_id = u.id ORDER BY u.id', []
         )
         for u in users:
@@ -2518,7 +2521,8 @@ def admin_sub_check():
                      + '  intervall=' + str(u['plan_interval'] or '-')
                      + '  sub=' + str(u['stripe_sub_id'] or '-')
                      + '  bis=' + str(u['current_period_end'] or '-')
-                     + '  verlaeng.-mail_fuer=' + str(u['renewal_notice_for'] or '-'))
+                     + '  verlaeng.-mail_fuer=' + str(u['renewal_notice_for'] or '-')
+                     + '  stufen=' + str(u['renewal_stage'] or '-'))
     except Exception as e:
         L.append('DB-FEHLER: ' + type(e).__name__ + ': ' + str(e)[:200])
     L.append('')
@@ -3669,16 +3673,16 @@ def _price_text(interval):
 
 
 def _run_renewal_notices():
-    """Erinnert eine Woche vor der naechsten Abbuchung eines AKTIVEN Abos.
-    Damit weiss jeder, dass sein Abo laeuft, und wird von der Abbuchung nicht
+    """Erinnert vor der naechsten Abbuchung eines AKTIVEN Abos — in ZWEI Stufen:
+    ~7 Tage vorher UND ~1 Tag vorher. Damit wird niemand von der Abbuchung
     ueberrascht. Nur fuer nicht gekuendigte Abos — gekuendigte bekommen die
     Ablaufwarnung aus _run_subscription_reminders().
-    Idempotent ueber renewal_notice_for (= das Periodenende, fuer das bereits
-    gemailt wurde). Gibt eine Log-Liste zurueck."""
+    Idempotent pro Periode ueber renewal_notice_for (= Periodenende) + renewal_stage
+    (welche Stufen '7d'/'1d' schon raus sind). Gibt eine Log-Liste zurueck."""
     out = []
     rows = query_db(
         "SELECT s.user_id, s.current_period_end, s.plan_interval, s.renewal_notice_for, "
-        "u.email, u.full_name, u.username, u.lang "
+        "s.renewal_stage, u.email, u.full_name, u.username, u.lang "
         "FROM subscriptions s JOIN app_users u ON u.id = s.user_id "
         "WHERE s.plan='premium' AND s.status='active'", []
     )
@@ -3688,15 +3692,29 @@ def _run_renewal_notices():
         if not pe or not r['email']:
             continue
         days_left = (pe - now).total_seconds() / 86400.0
-        # Ab 8 Tagen vorher, nicht als enges Fenster: faellt der Cron mal mehrere
-        # Tage aus, wuerde ein enges Fenster die Erinnerung still verschlucken.
-        # So kommt sie notfalls spaeter — spaet ist besser als eine ueberraschende
-        # Abbuchung. Doppelt kann sie durch renewal_notice_for nicht kommen.
-        if not (0 < days_left <= 8.0):
+        if days_left <= 0 or days_left > 8.0:
             continue
-        already = _to_dt(r['renewal_notice_for'])
-        if already and abs((already - pe).total_seconds()) < 3600:
-            continue   # fuer genau diese Periode schon erinnert
+
+        # Welche Stufen wurden fuer GENAU diese Periode schon gesendet?
+        already_for = _to_dt(r['renewal_notice_for'])
+        same_period = already_for and abs((already_for - pe).total_seconds()) < 3600
+        if same_period:
+            sent = set(x for x in (r['renewal_stage'] or '').split(',') if x)
+            # Altbestand: frueher gab es nur eine Mail (~7 Tage vorher) ohne Stufe.
+            # Die zaehlt als '7d', damit sie nicht ein zweites Mal als Wochen-Mail kommt.
+            if not sent:
+                sent = {'7d'}
+        else:
+            sent = set()   # neue Periode -> Stufen zuruecksetzen
+
+        # Faellige Stufe bestimmen: 1-Tag hat Vorrang, wenn wir schon nah dran sind.
+        if 0 < days_left <= 1.5 and '1d' not in sent:
+            stage = '1d'
+        elif 1.5 < days_left <= 8.0 and '7d' not in sent:
+            stage = '7d'
+        else:
+            continue   # fuer die aktuelle Naehe schon erinnert
+
         interval = r['plan_interval'] or 'monthly'
         u_lang = _norm_lang(r['lang'])
         date_txt = _filter_lokal_datum(pe)
@@ -3707,9 +3725,10 @@ def _run_renewal_notices():
                         _email_renewal_html(r['full_name'] or r['username'],
                                             date_txt, amount_txt, interval, u_lang))
         if ok:
-            execute_db('UPDATE subscriptions SET renewal_notice_for=? WHERE user_id=?',
-                       [pe.strftime('%Y-%m-%d %H:%M:%S'), r['user_id']])
-            out.append(f"user {r['user_id']}: Verlaengerungs-Erinnerung gesendet "
+            sent.add(stage)
+            execute_db('UPDATE subscriptions SET renewal_notice_for=?, renewal_stage=? WHERE user_id=?',
+                       [pe.strftime('%Y-%m-%d %H:%M:%S'), ','.join(sorted(sent)), r['user_id']])
+            out.append(f"user {r['user_id']}: Verlaengerungs-Erinnerung [{stage}] gesendet "
                        f"(Abbuchung {date_txt}, {amount_txt}, in {days_left:.1f}d)")
         else:
             out.append(f"user {r['user_id']}: Mail-Versand fehlgeschlagen")
