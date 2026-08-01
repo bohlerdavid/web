@@ -2559,6 +2559,51 @@ def admin_sub_check():
                 L.append('AKTIVIERUNG FEHLGESCHLAGEN (' + type(e).__name__ + '): ' + str(e)[:300])
     else:
         L.append('Tipp: ?activate=USER_ID anhaengen, um Premium fuer einen User mit bezahlter Session zu aktivieren.')
+        L.append('Tipp: ?renew1d=USER_ID anhaengen, um die 1-Tag-Verlaengerungsmail sofort an diesen User zu senden.')
+
+    renew1d = request.args.get('renew1d', type=int)
+    if renew1d:
+        L.append('')
+        L.append('=== 1-Tag-Verlaengerungsmail sofort senden fuer User #' + str(renew1d) + ' ===')
+        try:
+            r = query_db(
+                "SELECT s.current_period_end, s.plan_interval, s.renewal_notice_for, s.renewal_stage, "
+                "u.email, u.full_name, u.username, u.lang "
+                "FROM subscriptions s JOIN app_users u ON u.id = s.user_id WHERE s.user_id=?",
+                [renew1d], one=True)
+            if not r:
+                L.append('Kein Abo/User gefunden.')
+            elif not r['email']:
+                L.append('Keine E-Mail hinterlegt.')
+            else:
+                pe = _to_dt(r['current_period_end'])
+                interval = r['plan_interval'] or 'monthly'
+                u_lang = _norm_lang(r['lang'])
+                date_txt = _filter_lokal_datum(pe) if pe else '-'
+                amount_txt = _price_text(interval)
+                subject = (RENEWAL_I18N[u_lang]['d1_subject']
+                           .replace('{date}', date_txt).replace('{amount}', amount_txt))
+                ok = send_email(r['email'], subject,
+                                _email_renewal_html(r['full_name'] or r['username'],
+                                                    date_txt, amount_txt, interval, u_lang, '1d'))
+                if ok:
+                    # Stufe merken, damit der taegliche Cron sie nicht ein zweites Mal schickt
+                    sent = set(x for x in (r['renewal_stage'] or '').split(',') if x)
+                    if not sent and r['renewal_notice_for']:
+                        sent = {'7d'}
+                    sent.add('1d')
+                    if pe:
+                        execute_db('UPDATE subscriptions SET renewal_notice_for=?, renewal_stage=? WHERE user_id=?',
+                                   [pe.strftime('%Y-%m-%d %H:%M:%S'), ','.join(sorted(sent)), renew1d])
+                    else:
+                        execute_db('UPDATE subscriptions SET renewal_stage=? WHERE user_id=?',
+                                   [','.join(sorted(sent)), renew1d])
+                    L.append('OK -> 1-Tag-Mail an ' + str(r['email']) + ' gesendet. stufen jetzt: ' + ','.join(sorted(sent)))
+                else:
+                    L.append('Mail-Versand FEHLGESCHLAGEN (send_email=False) — ist BREVO_API_KEY gesetzt?')
+        except Exception as e:
+            L.append('FEHLER (' + type(e).__name__ + '): ' + str(e)[:300])
+
     html = ('<html><body style="font-family:Consolas,monospace;background:#0e1117;color:#dde5f4;padding:24px;">'
             '<h2 style="color:#4e8cdd;">HolzBau 3D - Abo Diagnose</h2>'
             '<pre style="white-space:pre-wrap;font-size:13px;line-height:1.7;background:#161b27;'
