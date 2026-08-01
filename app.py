@@ -3300,6 +3300,10 @@ def _email_feedback_html(display_name, subject, reply, status_txt, lang='de'):
 RENEWAL_I18N = {
     'de': {
         'subject': 'HolzBau 3D – Dein Abo verlängert sich am {date} ({amount})',
+        'd1_subject': 'HolzBau 3D – Morgen wird dein Abo verlängert ({amount})',
+        'd1_title': 'Morgen wird dein Abo verlängert',
+        'd1_body': 'kurze Erinnerung: dein <strong>{plan}</strong> verlängert sich <strong>morgen, am {date}</strong>. '
+                   'Dann werden <strong>{amount}</strong> über Stripe abgebucht.',
         'title': 'Erinnerung: dein Abo verlängert sich',
         'body': 'nur damit du Bescheid weißt: dein <strong>{plan}</strong> ist aktiv und verlängert sich '
                 'automatisch am <strong>{date}</strong>. Dann werden <strong>{amount}</strong> über Stripe abgebucht.',
@@ -3310,6 +3314,10 @@ RENEWAL_I18N = {
     },
     'en': {
         'subject': 'HolzBau 3D – Your subscription renews on {date} ({amount})',
+        'd1_subject': 'HolzBau 3D – Your subscription renews tomorrow ({amount})',
+        'd1_title': 'Your subscription renews tomorrow',
+        'd1_body': 'a quick reminder: your <strong>{plan}</strong> renews <strong>tomorrow, on {date}</strong>. '
+                   '<strong>{amount}</strong> will then be charged via Stripe.',
         'title': 'Reminder: your subscription renews',
         'body': 'just so you know: your <strong>{plan}</strong> is active and will renew automatically on '
                 '<strong>{date}</strong>. <strong>{amount}</strong> will then be charged via Stripe.',
@@ -3320,6 +3328,10 @@ RENEWAL_I18N = {
     },
     'fr': {
         'subject': 'HolzBau 3D – Votre abonnement se renouvelle le {date} ({amount})',
+        'd1_subject': 'HolzBau 3D – Votre abonnement se renouvelle demain ({amount})',
+        'd1_title': 'Votre abonnement se renouvelle demain',
+        'd1_body': 'petit rappel : votre <strong>{plan}</strong> se renouvelle <strong>demain, le {date}</strong>. '
+                   '<strong>{amount}</strong> seront alors prélevés via Stripe.',
         'title': 'Rappel : votre abonnement se renouvelle',
         'body': 'pour information : votre <strong>{plan}</strong> est actif et se renouvellera automatiquement le '
                 '<strong>{date}</strong>. <strong>{amount}</strong> seront alors prélevés via Stripe.',
@@ -3358,14 +3370,17 @@ EXPIRY_I18N = {
 }
 
 
-def _email_renewal_html(display_name, date_txt, amount_txt, interval, lang='de'):
+def _email_renewal_html(display_name, date_txt, amount_txt, interval, lang='de', stage='7d'):
     T = RENEWAL_I18N.get(_norm_lang(lang), RENEWAL_I18N['de'])
     L = EMAIL_I18N.get(_norm_lang(lang), EMAIL_I18N['de'])
     plan_txt = L['p_plan_y'] if interval == 'yearly' else L['p_plan_m']
     base_url = os.environ.get('BASE_URL', 'https://holzbau3d.app')
-    body = T['body'].replace('{date}', date_txt).replace('{amount}', amount_txt).replace('{plan}', plan_txt)
+    # 1-Tag-Stufe: dringlicherer Titel/Text ("morgen"); sonst die Wochen-Variante.
+    title = T.get('d1_title', T['title']) if stage == '1d' else T['title']
+    body_tpl = T.get('d1_body', T['body']) if stage == '1d' else T['body']
+    body = body_tpl.replace('{date}', date_txt).replace('{amount}', amount_txt).replace('{plan}', plan_txt)
     cancel = T['cancel'].replace('{date}', date_txt)
-    return _email_shell(f'''    <h2 style="margin:0 0 16px;font-size:1.15rem;color:#1a1a1a;font-weight:700;">{T['title']}</h2>
+    return _email_shell(f'''    <h2 style="margin:0 0 16px;font-size:1.15rem;color:#1a1a1a;font-weight:700;">{title}</h2>
     <p style="margin:0 0 10px;color:#374151;line-height:1.65;font-size:.95rem;">{L['hello']} <strong>{display_name}</strong>,</p>
     <p style="margin:0 0 16px;color:#374151;line-height:1.65;font-size:.95rem;">{body}</p>
     <p style="margin:0 0 16px;color:#374151;line-height:1.65;font-size:.95rem;">{T['nothing']}</p>
@@ -3488,14 +3503,25 @@ MAIL_VORLAGEN = [
     },
     {
         'key': 'renewal',
-        'name': 'Verlängerung steht an',
+        'name': 'Verlängerung — 7 Tage vorher',
         'wann': 'Rund 7 Tage vor der nächsten Abbuchung eines aktiven Abos.',
         'ausloeser': 'cron',
         'job': 'subscription-reminders',
         'render': lambda lang: (
             RENEWAL_I18N[lang]['subject'].replace('{date}', _mail_beispiel_datum(7))
                                          .replace('{amount}', _price_text('monthly')),
-            _email_renewal_html('Max Mustermann', _mail_beispiel_datum(7), _price_text('monthly'), 'monthly', lang)),
+            _email_renewal_html('Max Mustermann', _mail_beispiel_datum(7), _price_text('monthly'), 'monthly', lang, '7d')),
+    },
+    {
+        'key': 'renewal1d',
+        'name': 'Verlängerung — 1 Tag vorher',
+        'wann': 'Rund 1 Tag vor der nächsten Abbuchung eines aktiven Abos.',
+        'ausloeser': 'cron',
+        'job': 'subscription-reminders',
+        'render': lambda lang: (
+            RENEWAL_I18N[lang]['d1_subject'].replace('{date}', _mail_beispiel_datum(1))
+                                            .replace('{amount}', _price_text('monthly')),
+            _email_renewal_html('Max Mustermann', _mail_beispiel_datum(1), _price_text('monthly'), 'monthly', lang, '1d')),
     },
     {
         'key': 'expiry7',
@@ -3719,11 +3745,12 @@ def _run_renewal_notices():
         u_lang = _norm_lang(r['lang'])
         date_txt = _filter_lokal_datum(pe)
         amount_txt = _price_text(interval)
-        subject = (RENEWAL_I18N[u_lang]['subject']
+        subj_key = 'd1_subject' if stage == '1d' else 'subject'
+        subject = (RENEWAL_I18N[u_lang].get(subj_key, RENEWAL_I18N[u_lang]['subject'])
                    .replace('{date}', date_txt).replace('{amount}', amount_txt))
         ok = send_email(r['email'], subject,
                         _email_renewal_html(r['full_name'] or r['username'],
-                                            date_txt, amount_txt, interval, u_lang))
+                                            date_txt, amount_txt, interval, u_lang, stage))
         if ok:
             sent.add(stage)
             execute_db('UPDATE subscriptions SET renewal_notice_for=?, renewal_stage=? WHERE user_id=?',
