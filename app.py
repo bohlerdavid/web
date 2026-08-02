@@ -2809,6 +2809,98 @@ def _sync_user_from_stripe(user_id):
         return sub
 
 
+def _stripe_abgleich(user_id, email):
+    """Sucht in Stripe einen Kunden mit dieser E-Mail und verknuepft dessen Abo
+    mit dem lokalen Konto. Rueckgabe: (ok, Meldung).
+
+    WARUM DAS NOETIG IST: Ein von Hand im Stripe-Dashboard angelegtes Abo erzeugt
+    KEINE Checkout-Session. Damit greift keiner der bestehenden Wege:
+      - Webhook 'checkout.session.completed' feuert nie,
+      - Webhook 'customer.subscription.*' findet ueber stripe_sub_id keine Zeile,
+      - _sync_user_from_stripe steigt bei fehlender Zeile/Stripe-ID sofort aus,
+      - der ?sync=1-Fallback durchsucht Checkout-Sessions, die es nicht gibt.
+    Der Nutzer bliebe also dauerhaft 'free', obwohl er in Stripe bezahlt.
+    Diese Funktion stellt die fehlende Verknuepfung ueber die E-Mail her; den
+    Rest (Plan, Status, Laufzeit) uebernimmt danach _sync_user_from_stripe.
+    """
+    if not os.environ.get('STRIPE_SECRET_KEY'):
+        return False, 'STRIPE_SECRET_KEY ist auf dem Server nicht gesetzt.'
+    if not email:
+        return False, 'Dieser Nutzer hat keine E-Mail-Adresse hinterlegt.'
+    try:
+        kunden = (_stripe_api_get('customers', {'email': email, 'limit': 10}) or {}).get('data') or []
+    except Exception as e:
+        logger.error('stripe_abgleich(%s): Kundensuche fehlgeschlagen: %s', user_id, type(e).__name__)
+        return False, 'Stripe war nicht erreichbar (%s).' % type(e).__name__
+    if not kunden:
+        return False, 'Kein Stripe-Kunde mit der E-Mail %s gefunden. Stimmt die Adresse im Stripe-Eintrag?' % email
+
+    # Bestes Abo waehlen: aktiv schlaegt gekuendigt, bei Gleichstand das neuere.
+    RANG = {'active': 0, 'trialing': 1, 'past_due': 2}
+    bester = None
+    for k in kunden:
+        try:
+            subs = (_stripe_api_get('subscriptions',
+                                    {'customer': k['id'], 'status': 'all', 'limit': 10}) or {}).get('data') or []
+        except Exception:
+            continue
+        for s in subs:
+            schluessel = (RANG.get(s.get('status'), 9), -(s.get('created') or 0))
+            if bester is None or schluessel < bester[0]:
+                bester = (schluessel, k['id'], s)
+    if not bester:
+        return False, ('Stripe-Kunde %s gefunden, aber kein Abo daran. Wurde das Abo wirklich '
+                       'unter diesem Kunden angelegt?' % kunden[0]['id'])
+
+    _, customer_id, s = bester
+    sub_id = s.get('id')
+
+    # Sicherheitsnetz: ein Abo darf nicht einem zweiten Konto zugeschlagen werden.
+    fremd = query_db('SELECT user_id FROM subscriptions WHERE stripe_sub_id=? AND user_id<>?',
+                     [sub_id, user_id], one=True)
+    if fremd:
+        return False, ('Das Stripe-Abo %s haengt bereits an Nutzer #%s — nicht uebernommen.'
+                       % (sub_id, fremd['user_id']))
+
+    if query_db('SELECT user_id FROM subscriptions WHERE user_id=?', [user_id], one=True):
+        execute_db('UPDATE subscriptions SET stripe_customer_id=?, stripe_sub_id=? WHERE user_id=?',
+                   [customer_id, sub_id, user_id])
+    else:
+        execute_db('INSERT INTO subscriptions (user_id, stripe_customer_id, stripe_sub_id, plan, status) '
+                   'VALUES (?, ?, ?, ?, ?)', [user_id, customer_id, sub_id, 'free', 'active'])
+
+    neu = _sync_user_from_stripe(user_id)
+    if not neu:
+        return False, 'Verknuepft, aber der anschliessende Abgleich lieferte nichts zurueck.'
+    neu = row_to_dict(neu)
+    ende = neu.get('current_period_end')
+    ende_txt = ''
+    try:
+        pe = _to_dt(ende)
+        if pe:
+            ende_txt = ', Laufzeit bis ' + _filter_lokal_datum(pe)
+    except Exception:
+        pass
+    return True, ('Verknuepft: Stripe-Kunde %s, Abo %s (Stripe-Status "%s"). Lokal jetzt Plan "%s", '
+                  'Status "%s"%s.' % (customer_id, sub_id, s.get('status'),
+                                      neu.get('plan'), neu.get('status'), ende_txt))
+
+
+@app.route('/admin/users/<int:uid>/stripe-abgleich', methods=['POST'])
+@admin_required
+def admin_stripe_abgleich(uid):
+    """Holt ein in Stripe angelegtes Abo per E-Mail ins lokale Konto."""
+    if not validate_csrf(request.form.get('csrf_token', '')):
+        abort(403)
+    u = query_db('SELECT id, email FROM app_users WHERE id=?', [uid], one=True)
+    if not u:
+        flash('Nutzer nicht gefunden.', 'danger')
+        return redirect(url_for('admin_users'))
+    ok, meldung = _stripe_abgleich(uid, u['email'])
+    flash(meldung, 'success' if ok else 'warning')
+    return redirect(url_for('admin_users'))
+
+
 @app.route('/subscribe')
 @login_required
 def subscribe():
@@ -3908,11 +4000,41 @@ def _handle_stripe_event(event):
         plan_type = data.get('metadata', {}).get('plan_type', 'monthly')
         interval = 'yearly' if plan_type == 'yearly' else 'monthly'
         _activate_premium(user_id, data.get('customer'), data.get('subscription'), interval)
-    elif etype in ('customer.subscription.deleted', 'customer.subscription.updated'):
+    elif etype in ('customer.subscription.created', 'customer.subscription.deleted',
+                   'customer.subscription.updated'):
+        # 'created' war frueher nicht dabei — dadurch kam ein von Hand im Stripe-
+        # Dashboard angelegtes Abo nie in der App an (es gibt dazu keine
+        # Checkout-Session, also auch kein checkout.session.completed).
         sub_id = data.get('id')
+        cust = data.get('customer')
         row = query_db('SELECT user_id FROM subscriptions WHERE stripe_sub_id=?', [sub_id], one=True)
+        if not row and cust:
+            # Kunde schon bekannt, nur dieses Abo noch nicht -> nachtragen.
+            row = query_db('SELECT user_id FROM subscriptions WHERE stripe_customer_id=?', [cust], one=True)
+            if row:
+                execute_db('UPDATE subscriptions SET stripe_sub_id=? WHERE user_id=?', [sub_id, row['user_id']])
+        if not row and cust:
+            # Letzter Weg: Kunde bei Stripe nachschlagen und ueber die E-Mail zuordnen.
+            try:
+                mail = ((_stripe_api_get('customers/' + cust) or {}).get('email') or '').strip()
+                if mail:
+                    u = query_db('SELECT id FROM app_users WHERE LOWER(email)=LOWER(?)', [mail], one=True)
+                    if u:
+                        if query_db('SELECT user_id FROM subscriptions WHERE user_id=?', [u['id']], one=True):
+                            execute_db('UPDATE subscriptions SET stripe_customer_id=?, stripe_sub_id=? '
+                                       'WHERE user_id=?', [cust, sub_id, u['id']])
+                        else:
+                            execute_db('INSERT INTO subscriptions (user_id, stripe_customer_id, '
+                                       'stripe_sub_id, plan, status) VALUES (?, ?, ?, ?, ?)',
+                                       [u['id'], cust, sub_id, 'free', 'active'])
+                        row = {'user_id': u['id']}
+                        logger.info('Stripe-Abo %s ueber E-Mail dem Nutzer %s zugeordnet', sub_id, u['id'])
+            except Exception as e:
+                logger.error('Zuordnung ueber Kunden-E-Mail fehlgeschlagen (%s): %s', sub_id, type(e).__name__)
         if row:
             _sync_user_from_stripe(row['user_id'])
+        else:
+            logger.warning('Stripe-Event %s fuer Abo %s: kein passendes Konto gefunden', etype, sub_id)
 
 
 # ---------------------------------------------------------------------------
