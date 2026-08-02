@@ -1987,23 +1987,34 @@ const MAX_FREE_BEAMS = 20;
    "hat dieser Nutzer Feature X benutzt", nicht wie oft. keepalive, damit der
    Funkspruch auch beim Schliessen des Tabs noch rausgeht; Fehler sind egal. */
 const _featureGemeldet = new Set();
-function _premiumBeacon(feature) {
-  if (!feature || _featureGemeldet.has(feature)) return;
-  _featureGemeldet.add(feature);
+function _premiumBeacon(feature, art) {
+  // art: 'used' = Funktion wurde benutzt, 'blocked' = Free-Nutzer prallte an der
+  // Bezahlschranke ab. Der Schluessel im Set enthaelt die Art, damit derselbe
+  // Knopf beides melden kann (erst abgeprallt, spaeter nach Upgrade benutzt).
+  art = art || 'used';
+  const schluessel = art + '|' + feature;
+  if (!feature || _featureGemeldet.has(schluessel)) return;
+  _featureGemeldet.add(schluessel);
   try {
     fetch('/telemetry/feature', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: 'feature=' + encodeURIComponent(feature) + '&csrf_token=' + encodeURIComponent(CSRF_TOKEN),
+      body: 'feature=' + encodeURIComponent(feature)
+          + '&event=' + encodeURIComponent(art)
+          + '&csrf_token=' + encodeURIComponent(CSRF_TOKEN),
       keepalive: true,
     }).catch(() => {});
   } catch (e) {}
 }
 
 function requirePremium(featureName, featureDesc) {
-  // Gate passiert (echtes Premium ODER gefaelschtes IS_PREMIUM) -> melden.
-  // Ein wirklich gesperrter Free-Nutzer laeuft unten in return false, kein Beacon.
-  if (IS_PREMIUM) { _premiumBeacon(featureName); return true; }
+  // Gate passiert (echtes Premium ODER gefaelschtes IS_PREMIUM) -> als Nutzung melden.
+  if (IS_PREMIUM) { _premiumBeacon(featureName, 'used'); return true; }
+  // Free-Nutzer prallt ab. GENAU DAS war bisher die groesste Luecke: der
+  // Abpraller hinterliess keine Spur, dadurch war nicht feststellbar, an
+  // welchem Schloss die Nicht-Zahler haengenbleiben. Melden BEVOR das Fenster
+  // aufgeht — was danach passiert, haengt am Nutzer.
+  _premiumBeacon(featureName, 'blocked');
   document.getElementById('upgrade-modal-title').textContent = featureName;
   document.getElementById('upgrade-modal-desc').textContent = featureDesc || 'Diese Funktion ist nur im Premium-Abo verfügbar.';
   const modal = document.getElementById('upgrade-modal');

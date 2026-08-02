@@ -333,6 +333,25 @@ SCHEMA_MIGRATIONS = [
     # stuetzt sich auf berechtigtes Interesse — dann muss ein Widerspruch
     # moeglich und wirksam sein, nicht nur in der Erklaerung erwaehnt.
     "ALTER TABLE app_users ADD COLUMN stats_opt_out TINYINT NOT NULL DEFAULT 0",
+    # Bezahlschranken-Treffer erfassen. Bisher meldete requirePremium NUR den
+    # Fall, dass jemand die Schranke PASSIERT — der abgeprallte Free-Nutzer
+    # hinterliess keine Spur. Genau diese Zahl fehlt aber fuer die Frage, warum
+    # so wenige zahlen. DEFAULT 'used' gibt allen Altzeilen rueckwirkend die
+    # richtige Bedeutung, ohne Datenwanderung.
+    "ALTER TABLE feature_use ADD COLUMN event VARCHAR(10) NOT NULL DEFAULT 'used'",
+    # Stabiler ASCII-Schluessel neben der Roh-Beschriftung. Die bisherigen Namen
+    # sind deutsche UI-Texte mit Emoji ("📋 Stückliste exportieren") — benennt
+    # man einen Knopf um, zerfaellt die Statistik in zwei Haelften. Ausserdem gibt
+    # es bereits eine echte Dublette: 'Vorlagen' und '📦 Vorlagen' fuer dieselbe
+    # Schranke.
+    "ALTER TABLE feature_use ADD COLUMN fkey VARCHAR(40) NULL",
+    "ALTER TABLE feature_use ADD INDEX idx_user_zeit (user_id, used_at)",
+    # Echte Wiederkehr statt Schaetzung: last_login wird bei jedem Login
+    # ueberschrieben, damit ist "war schon mal wieder da" nur heuristisch
+    # (Abstand zu created_at). Ein Zaehler und der VORIGE Login beantworten die
+    # Frage exakt.
+    "ALTER TABLE app_users ADD COLUMN login_count INT NOT NULL DEFAULT 0",
+    "ALTER TABLE app_users ADD COLUMN prev_login DATETIME NULL",
 ]
 
 
@@ -1751,7 +1770,12 @@ def login():
             session['username'] = user['username']
             session['full_name'] = user['full_name'] or user['username']
             session['role'] = 'admin' if user['username'] == 'admin' else 'user'
-            execute_db("UPDATE app_users SET last_login = NOW() WHERE id = ?", (user['id'],))
+            # prev_login MUSS den alten last_login uebernehmen, BEVOR dieser
+            # ueberschrieben wird — in einer Anweisung, sonst geht der Vorwert
+            # verloren. MySQL wertet die SET-Ausdruecke von links nach rechts
+            # aus, darum steht prev_login zuerst.
+            execute_db("UPDATE app_users SET prev_login = last_login, last_login = NOW(), "
+                       "login_count = login_count + 1 WHERE id = ?", (user['id'],))
             raw_next = request.form.get('next') or request.args.get('next', '')
             next_url = raw_next if _is_safe_redirect(raw_next) else url_for('holzbau')
             return redirect(next_url)
@@ -1898,7 +1922,11 @@ def verify_email(token):
     session['username']  = user['username']
     session['full_name'] = user['full_name'] or user['username']
     session['role']      = 'admin' if user['username'] == 'admin' else 'user'
-    execute_db("UPDATE app_users SET last_login = NOW() WHERE id = ?", (user['id'],))
+    # Die Bestaetigung meldet direkt an — das ist der ERSTE Login und muss
+    # mitgezaehlt werden, sonst steht bei jedem neuen Konto 0 und die Zahl
+    # "war schon mal wieder da" haette einen systematischen Versatz.
+    execute_db("UPDATE app_users SET prev_login = last_login, last_login = NOW(), "
+               "login_count = login_count + 1 WHERE id = ?", (user['id'],))
     flash('E-Mail erfolgreich bestätigt. Willkommen bei HolzBau 3D! 🪵', 'success')
     return redirect(url_for('holzbau'))
 
@@ -2134,10 +2162,17 @@ def telemetry_feature():
     feature = (request.form.get('feature', '') or '').strip()[:60]
     if not feature:
         return ('', 204)
+    # Feste Auswahl statt Durchreichen: der Browser darf nicht bestimmen, was in
+    # der Spalte landet. Unbekanntes faellt auf 'used' zurueck — so kann ein
+    # alter, noch zwischengespeicherter Editor ohne event weiterhin melden.
+    art = (request.form.get('event', '') or '').strip().lower()
+    if art not in ('used', 'blocked'):
+        art = 'used'
     try:
         plan = get_user_plan(session['user_id'])
-        execute_db('INSERT INTO feature_use (user_id, feature, plan, used_at) VALUES (?, ?, ?, NOW())',
-                   [session['user_id'], feature, plan])
+        execute_db('INSERT INTO feature_use (user_id, feature, event, plan, used_at) '
+                   'VALUES (?, ?, ?, ?, NOW())',
+                   [session['user_id'], feature, art, plan])
     except Exception as e:
         logger.warning('feature_use Protokoll fehlgeschlagen: %s', type(e).__name__)
     return ('', 204)
@@ -2397,7 +2432,7 @@ def admin_nutzer_analyse():
     nutzer = query_db("""
         SELECT u.id, u.username, u.full_name, u.email, u.created_at, u.last_login,
                COALESCE(u.email_verified, 1) AS email_verified, u.lang,
-               u.email_verify_token,
+               u.email_verify_token, COALESCE(u.login_count, 0) AS login_count,
                COALESCE(s.plan, 'free') AS plan, COALESCE(s.status, '') AS sub_status
         FROM app_users u
         LEFT JOIN subscriptions s ON s.user_id = u.id
@@ -2429,6 +2464,13 @@ def admin_nutzer_analyse():
             # Nie bestaetigt und nie eingeloggt -> mit Abstand haeufigste Form
             # von Bot- und Karteileichen-Registrierungen.
             return 'unbestaetigt'
+        # Der Zaehler ist die harte Zahl — aber erst seit seinem Einbau. Alle
+        # vorher angelegten Konten stehen auf 0, obwohl sie eingeloggt waren.
+        # Darum nur als Beleg NACH OBEN verwenden, nie zum Abwerten: >= 2 ist
+        # sicher "wiedergekommen", alles andere faellt auf die alte Schaetzung
+        # zurueck.
+        if (u.get('login_count') or 0) >= 2:
+            return 'wiedergekommen'
         if not zuletzt or not angelegt:
             return 'nie_aktiv'
         # verify_email setzt last_login mit — ein Abstand unter 30 Minuten heisst
@@ -2523,7 +2565,7 @@ def admin_feature_use():
     # Je Feature: wie oft und von wie vielen VERSCHIEDENEN Nutzern, getrennt nach Plan.
     zeilen = query_db(
         "SELECT feature, plan, COUNT(*) AS n, COUNT(DISTINCT user_id) AS nutzer "
-        "FROM feature_use WHERE " + seit + " GROUP BY feature, plan", [])
+        "FROM feature_use WHERE event='used' AND " + seit + " GROUP BY feature, plan", [])
     feat = {}
     for r in zeilen:
         f = feat.setdefault(r['feature'], {'feature': r['feature'], 'free_n': 0, 'free_u': 0, 'prem_n': 0, 'prem_u': 0})
@@ -2535,8 +2577,12 @@ def admin_feature_use():
 
     # Die Kennzahl, um die es geht: wie viele UNTERSCHIEDLICHE Free-Nutzer haben
     # ueberhaupt ein Premium-Feature benutzt?
+    # event='used' ist hier ZWINGEND: seit die Bezahlschranken-Treffer in
+    # derselben Tabelle landen, wuerde diese Seite sonst jeden voellig normalen
+    # Free-Nutzer als "Client-Sperre umgangen" melden — und damit genau den
+    # Zweck zerstoeren, fuer den sie gebaut wurde.
     kz = query_db("SELECT COUNT(DISTINCT user_id) AS u, COUNT(*) AS n "
-                  "FROM feature_use WHERE plan='free' AND " + seit, [], one=True)
+                  "FROM feature_use WHERE event='used' AND plan='free' AND " + seit, [], one=True)
     free_nutzer = kz['u'] if kz else 0
     free_ereignisse = kz['n'] if kz else 0
 
@@ -2544,9 +2590,10 @@ def admin_feature_use():
     letzte = query_db(
         "SELECT fu.feature, fu.used_at, u.username, u.email "
         "FROM feature_use fu LEFT JOIN app_users u ON u.id = fu.user_id "
-        "WHERE fu.plan='free' AND " + seit + " ORDER BY fu.used_at DESC LIMIT 40", [])
+        "WHERE fu.event='used' AND fu.plan='free' AND " + seit
+        + " ORDER BY fu.used_at DESC LIMIT 40", [])
 
-    gesamt = query_db("SELECT COUNT(*) AS c FROM feature_use", [], one=True)
+    gesamt = query_db("SELECT COUNT(*) AS c FROM feature_use WHERE event='used'", [], one=True)
     return render_template('admin_feature_use.html', features=features, letzte=letzte,
                            free_nutzer=free_nutzer, free_ereignisse=free_ereignisse,
                            tage=tage, gesamt=(gesamt['c'] if gesamt else 0))
