@@ -17,17 +17,7 @@
   </style>
 </head>
 <body>
-  <nav class="navbar navbar-light bg-white border-bottom px-4">
-    <a class="navbar-brand" href="/">
-      <span class="logo-holz">Holz</span><span class="logo-bau">BAU</span><span class="logo-holz"> 3D</span>
-    </a>
-    <div>
-      <a href="{{ url_for('admin_users') }}" class="btn btn-sm btn-outline-secondary me-2"><i class="bi bi-people"></i> Benutzer</a>
-      <a href="{{ url_for('admin_nutzer_analyse') }}" class="btn btn-sm btn-outline-secondary me-2"><i class="bi bi-pie-chart"></i> Nutzer-Analyse</a>
-      <a href="{{ url_for('holzbau') }}" class="btn btn-sm btn-outline-secondary me-2"><i class="bi bi-arrow-left"></i> Zur App</a>
-      <a href="{{ url_for('logout') }}" class="btn btn-sm btn-outline-danger"><i class="bi bi-box-arrow-right"></i> Logout</a>
-    </div>
-  </nav>
+  {% include '_admin_nav.html' %}
 
   <div class="container-fluid px-4 py-4" style="max-width:1000px">
     {% with messages = get_flashed_messages(with_categories=true) %}

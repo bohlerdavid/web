@@ -1,0 +1,66 @@
+{# ══ GEMEINSAME ADMIN-LEISTE ═══════════════════════════════════════════════
+   Bewusst EINE Datei statt einer handgepflegten Liste je Seite. Vorher hatte
+   jede Admin-Seite ihre eigene Auswahl und keine war vollstaendig: die
+   Nutzer-Analyse fehlte auf vier Seiten, die Stripe-Zuordnung auf fuenf, und
+   das Feedback hatte gar keine Leiste. Jede neue Seite musste an sechs Stellen
+   nachgetragen werden — und wurde es nicht.
+
+   Neue Admin-Seite? Nur hier einen Eintrag in `seiten` ergaenzen.
+
+   Aufruf:
+     {% include '_admin_nav.html' %}                    -> mit Markenzeile
+     {% set admin_nav_ohne_marke = true %}...{% include %} -> nur die Knopfreihe
+   Letzteres fuer Seiten, die von base.html erben und schon eine Leiste haben.
+
+   Eigene Klassennamen (adminnav-*), damit die Leiste nicht davon abhaengt,
+   welches <style> die einbindende Seite zufaellig mitbringt.
+#}
+<style>
+  .adminnav-holz { color: #1a1a1a; font-weight: 800; }
+  .adminnav-bau  { color: #4e8cdd; font-weight: 800; }
+  /* flex-wrap: bei sieben Knoepfen bricht die Reihe auf schmalen Fenstern um,
+     statt aus dem Bild zu laufen. */
+  .adminnav { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+</style>
+{% set seiten = [
+     ('admin_users',            'bi-people',     'Benutzer'),
+     ('admin_nutzer_analyse',   'bi-pie-chart',  'Nutzer-Analyse'),
+     ('admin_feature_use',      'bi-graph-up',   'Feature-Nutzung'),
+     ('admin_feedback',         'bi-chat-dots',  'Feedback'),
+     ('admin_mails',            'bi-envelope',   'Mails & Cron'),
+     ('admin_stripe_zuordnung', 'bi-link-45deg', 'Stripe-Zuordnung'),
+   ] %}
+{% if admin_nav_ohne_marke %}
+  <div class="adminnav mb-3">
+{% else %}
+<nav class="navbar navbar-light bg-white border-bottom px-4">
+  <a class="navbar-brand" href="/">
+    <span class="adminnav-holz">Holz</span><span class="adminnav-bau">BAU</span><span class="adminnav-holz"> 3D</span>
+  </a>
+  <div class="adminnav">
+{% endif %}
+    {% for endpunkt, symbol, name in seiten %}
+      {# Die aktuelle Seite ausgefuellt statt umrandet — sonst weiss man auf
+         einer Unterseite nicht, wo man ist. #}
+      <a href="{{ url_for(endpunkt) }}"
+         class="btn btn-sm {% if request.endpoint == endpunkt %}btn-secondary{% else %}btn-outline-secondary{% endif %}">
+        <i class="bi {{ symbol }}"></i> {{ name }}
+      </a>
+    {% endfor %}
+    {# "Zur App" und "Logout" nur bei den eigenstaendigen Seiten. Wer von
+       base.html erbt, hat beides schon in der Kopfleiste — sonst staenden hier
+       zwei Logout-Knoepfe untereinander. #}
+    {% if not admin_nav_ohne_marke %}
+    <a href="{{ url_for('holzbau') }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-arrow-left"></i> Zur App
+    </a>
+    <a href="{{ url_for('logout') }}" class="btn btn-sm btn-outline-danger">
+      <i class="bi bi-box-arrow-right"></i> Logout
+    </a>
+    {% endif %}
+{% if admin_nav_ohne_marke %}
+  </div>
+{% else %}
+  </div>
+</nav>
+{% endif %}

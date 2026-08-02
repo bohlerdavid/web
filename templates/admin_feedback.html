@@ -20,9 +20,13 @@
             background:#faf6f0; border-radius:6px; padding:6px 9px; margin-top:8px; word-break:break-all; }
 </style>
 
+{# Diese Seite erbt von base.html und hat oben schon eine Leiste — darum hier
+   nur die Knopfreihe ohne zweite Markenzeile. #}
+{% set admin_nav_ohne_marke = true %}
+{% include '_admin_nav.html' %}
+
 <div class="d-flex align-items-center gap-3 flex-wrap mb-1">
   <h4 class="mb-0"><i class="bi bi-chat-left-text me-2" style="color:#d97706;"></i>Feedback-Tickets</h4>
-  <a href="{{ url_for('admin_users') }}" class="btn btn-outline-secondary btn-sm ms-auto">Nutzer</a>
 </div>
 <p class="text-muted" style="font-size:.85rem;">Meldungen von Premium-Nutzern. Eine Antwort geht per E-Mail raus.</p>
 

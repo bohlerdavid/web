@@ -24,35 +24,7 @@
   </style>
 </head>
 <body>
-  <nav class="navbar navbar-light bg-white border-bottom px-4">
-    <a class="navbar-brand" href="/">
-      <span class="logo-holz">Holz</span><span class="logo-bau">BAU</span>
-      <span class="logo-holz"> 3D</span>
-    </a>
-    <div>
-      <a href="{{ url_for('admin_feedback') }}" class="btn btn-sm btn-outline-secondary me-2">
-        <i class="bi bi-chat-dots"></i> Feedback
-      </a>
-      <a href="{{ url_for('admin_mails') }}" class="btn btn-sm btn-outline-secondary me-2">
-        <i class="bi bi-envelope"></i> Mails &amp; Cron
-      </a>
-      <a href="{{ url_for('admin_feature_use') }}" class="btn btn-sm btn-outline-secondary me-2">
-        <i class="bi bi-graph-up"></i> Feature-Nutzung
-      </a>
-      <a href="{{ url_for('admin_nutzer_analyse') }}" class="btn btn-sm btn-outline-secondary me-2">
-        <i class="bi bi-pie-chart"></i> Nutzer-Analyse
-      </a>
-      <a href="{{ url_for('admin_stripe_zuordnung') }}" class="btn btn-sm btn-outline-secondary me-2">
-        <i class="bi bi-link-45deg"></i> Stripe-Zuordnung
-      </a>
-      <a href="{{ url_for('holzbau') }}" class="btn btn-sm btn-outline-secondary me-2">
-        <i class="bi bi-arrow-left"></i> Zur App
-      </a>
-      <a href="{{ url_for('logout') }}" class="btn btn-sm btn-outline-danger">
-        <i class="bi bi-box-arrow-right"></i> Logout
-      </a>
-    </div>
-  </nav>
+  {% include '_admin_nav.html' %}
 
   <div class="container py-4">
     {% with messages = get_flashed_messages(with_categories=true) %}
