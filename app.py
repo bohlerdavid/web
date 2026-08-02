@@ -2227,6 +2227,121 @@ def admin_mails():
                            protokoll_seit=protokoll_seit)
 
 
+# Wegwerf-/Einweg-Mailanbieter. Bewusst kurz und offensichtlich gehalten: die
+# Liste soll einen Verdacht anzeigen, keine Wahrheit behaupten.
+WEGWERF_DOMAINS = (
+    'mailinator.com', 'guerrillamail.com', 'guerrillamail.info', '10minutemail.com',
+    'tempmail.com', 'temp-mail.org', 'yopmail.com', 'trashmail.com', 'wegwerfmail.de',
+    'sharklasers.com', 'getnada.com', 'maildrop.cc', 'dispostable.com', 'mailnesia.com',
+    'throwawaymail.com', 'fakeinbox.com', 'spam4.me', 'moakt.com', 'emailondeck.com',
+)
+
+
+@app.route('/admin/nutzer-analyse')
+@admin_required
+def admin_nutzer_analyse():
+    """Wie viele der Registrierungen sind ECHTE, erreichbare Menschen?
+
+    Hintergrund: Aus den nackten Zahlen 'X Registrierte, Y Abos' laesst sich keine
+    Konversionsrate ableiten, solange unklar ist, wie viele der Konten Testkonten,
+    Bekannte oder Bots sind. Diese Seite teilt die Nutzer daher in Stufen auf und
+    nennt bei jeder Zahl ihre Unsicherheit, statt eine Quote zu behaupten.
+    """
+    heute = datetime.utcnow()
+
+    nutzer = query_db("""
+        SELECT u.id, u.username, u.full_name, u.email, u.created_at, u.last_login,
+               COALESCE(u.email_verified, 1) AS email_verified, u.lang,
+               u.email_verify_token,
+               COALESCE(s.plan, 'free') AS plan, COALESCE(s.status, '') AS sub_status
+        FROM app_users u
+        LEFT JOIN subscriptions s ON s.user_id = u.id
+        WHERE u.username <> 'admin'
+        ORDER BY u.created_at
+    """) or []
+
+    # Ab wann ist email_verified ueberhaupt aussagekraeftig? Die Migration hat
+    # allen damals vorhandenen Zeilen DEFAULT 1 gegeben — erst seit die
+    # Registrierung 0 setzt, bedeutet eine 1 wirklich "hat bestaetigt". Wir
+    # leiten den Stichtag aus den Daten ab: das aelteste Konto, das je einen
+    # Bestaetigungs-Token hatte oder unbestaetigt ist.
+    stichtag = None
+    for u in nutzer:
+        if (not u['email_verified']) or u['email_verify_token']:
+            stichtag = u['created_at']
+            break
+
+    def _stufe(u):
+        """Grobe Einordnung eines Kontos. Bewusst konservativ."""
+        angelegt = _to_dt(u['created_at'])
+        zuletzt = _to_dt(u['last_login'])
+        domain = (u['email'] or '').split('@')[-1].lower()
+        if u['plan'] == 'premium':
+            return 'zahlend'
+        if domain in WEGWERF_DOMAINS:
+            return 'wegwerf'
+        if not u['email_verified']:
+            # Nie bestaetigt und nie eingeloggt -> mit Abstand haeufigste Form
+            # von Bot- und Karteileichen-Registrierungen.
+            return 'unbestaetigt'
+        if not zuletzt or not angelegt:
+            return 'nie_aktiv'
+        # verify_email setzt last_login mit — ein Abstand unter 30 Minuten heisst
+        # also "einmal angemeldet und nie wieder", nicht "war zweimal da".
+        if (zuletzt - angelegt).total_seconds() < 1800:
+            return 'einmal'
+        return 'wiedergekommen'
+
+    stufen = {'zahlend': [], 'wiedergekommen': [], 'einmal': [], 'nie_aktiv': [],
+              'unbestaetigt': [], 'wegwerf': []}
+    for u in nutzer:
+        stufen[_stufe(u)].append(u)
+
+    # Registrierungen je Kalenderwoche — zum Abgleich mit dem Suchverkehr.
+    wochen = {}
+    for u in nutzer:
+        d = _to_dt(u['created_at'])
+        if not d:
+            continue
+        montag = (d - timedelta(days=d.weekday())).strftime('%Y-%m-%d')
+        w = wochen.setdefault(montag, {'woche': montag, 'n': 0, 'bestaetigt': 0})
+        w['n'] += 1
+        if u['email_verified']:
+            w['bestaetigt'] += 1
+    wochen = sorted(wochen.values(), key=lambda w: w['woche'])
+
+    # E-Mail-Domains: eine ungewoehnliche Haeufung ist ein Bot-Hinweis.
+    domains = {}
+    for u in nutzer:
+        d = (u['email'] or '').split('@')[-1].lower() or '—'
+        e = domains.setdefault(d, {'domain': d, 'n': 0, 'bestaetigt': 0})
+        e['n'] += 1
+        if u['email_verified']:
+            e['bestaetigt'] += 1
+    domains = sorted(domains.values(), key=lambda d: -d['n'])[:15]
+
+    sprachen = {}
+    for u in nutzer:
+        sprachen[u['lang'] or 'de'] = sprachen.get(u['lang'] or 'de', 0) + 1
+
+    # "Erreichbar" = bestaetigte Adresse, keine Wegwerfdomain. Nur diese Menge
+    # ist ueberhaupt ein sinnvoller Nenner fuer eine Konversionsrate.
+    erreichbar = len(stufen['zahlend']) + len(stufen['wiedergekommen']) \
+        + len(stufen['einmal']) + len(stufen['nie_aktiv'])
+    zahlend = len(stufen['zahlend'])
+    quote_alle = (zahlend / len(nutzer) * 100) if nutzer else 0
+    quote_erreichbar = (zahlend / erreichbar * 100) if erreichbar else 0
+    aktiv = len(stufen['zahlend']) + len(stufen['wiedergekommen'])
+    quote_aktiv = (zahlend / aktiv * 100) if aktiv else 0
+
+    return render_template('admin_nutzer_analyse.html',
+                           gesamt=len(nutzer), stufen=stufen, wochen=wochen,
+                           domains=domains, sprachen=sorted(sprachen.items()),
+                           erreichbar=erreichbar, aktiv=aktiv, zahlend=zahlend,
+                           quote_alle=quote_alle, quote_erreichbar=quote_erreichbar,
+                           quote_aktiv=quote_aktiv, stichtag=stichtag, heute=heute)
+
+
 @app.route('/admin/feature-use')
 @admin_required
 def admin_feature_use():

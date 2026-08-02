@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin — Nutzer-Analyse</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <style>
+    body { background: #faf6f0; }
+    .logo-holz { color: #1a1a1a; font-weight: 800; }
+    .logo-bau  { color: #4e8cdd; font-weight: 800; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .78rem; }
+    .kpi { border-radius: 12px; padding: 18px 20px; height: 100%; }
+    .kpi-zahl { font-size: 1.9rem; font-weight: 800; line-height: 1; }
+    .kpi-lab { font-size: .78rem; text-transform: uppercase; letter-spacing: .5px; color: #6b7280; margin-bottom: 6px; }
+    .kpi-hint { font-size: .74rem; color: #9ca3af; margin-top: 6px; line-height: 1.35; }
+    .k-grau { background: #f3f4f6; border: 1px solid #e5e7eb; }
+    .k-blau { background: #eff6ff; border: 1px solid #bfdbfe; }
+    .k-gruen{ background: #f0fdf4; border: 1px solid #86efac; }
+    .k-gold { background: #fffbeb; border: 1px solid #fcd34d; }
+    /* Trichterbalken */
+    .bar { height: 26px; border-radius: 5px; display: flex; align-items: center;
+           padding: 0 8px; color: #fff; font-size: .8rem; font-weight: 700; min-width: 30px; }
+    .wo-bar { height: 16px; background: #4e8cdd; border-radius: 3px; }
+    .hinweis { font-size: .82rem; color: #6b7280; line-height: 1.6; }
+    td, th { font-size: .86rem; }
+  </style>
+</head>
+<body>
+  <nav class="navbar navbar-light bg-white border-bottom px-4">
+    <a class="navbar-brand" href="/">
+      <span class="logo-holz">Holz</span><span class="logo-bau">BAU</span><span class="logo-holz"> 3D</span>
+    </a>
+    <div>
+      <a href="{{ url_for('admin_users') }}" class="btn btn-sm btn-outline-secondary me-2"><i class="bi bi-people"></i> Benutzer</a>
+      <a href="{{ url_for('admin_feature_use') }}" class="btn btn-sm btn-outline-secondary me-2"><i class="bi bi-graph-up"></i> Feature-Nutzung</a>
+      <a href="{{ url_for('admin_mails') }}" class="btn btn-sm btn-outline-secondary me-2"><i class="bi bi-envelope"></i> Mails &amp; Cron</a>
+      <a href="{{ url_for('holzbau') }}" class="btn btn-sm btn-outline-secondary me-2"><i class="bi bi-arrow-left"></i> Zur App</a>
+      <a href="{{ url_for('logout') }}" class="btn btn-sm btn-outline-danger"><i class="bi bi-box-arrow-right"></i> Logout</a>
+    </div>
+  </nav>
+
+  <div class="container-fluid px-4 py-4" style="max-width:1100px">
+    <h4 class="mb-1">Nutzer-Analyse</h4>
+    <p class="hinweis mb-4" style="max-width:760px">
+      Die Frage, die diese Seite beantwortet: <strong>Wie viele der Registrierungen sind echte,
+      erreichbare Menschen?</strong> Ohne diese Zahl ist jede Konversionsquote wertlos — ein
+      Testkonto, eine Bot-Registrierung und ein echter Interessent zählen sonst gleich viel.
+    </p>
+
+    {# ── Kennzahlen ────────────────────────────────────────────────────────── #}
+    <div class="row g-3 mb-2">
+      <div class="col-6 col-lg-3">
+        <div class="kpi k-grau">
+          <div class="kpi-lab">Konten gesamt</div>
+          <div class="kpi-zahl">{{ gesamt }}</div>
+          <div class="kpi-hint">ohne das Admin-Konto</div>
+        </div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="kpi k-blau">
+          <div class="kpi-lab">Erreichbar</div>
+          <div class="kpi-zahl">{{ erreichbar }}</div>
+          <div class="kpi-hint">E-Mail bestätigt, keine Wegwerf-Adresse</div>
+        </div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="kpi k-gruen">
+          <div class="kpi-lab">Wiedergekommen</div>
+          <div class="kpi-zahl">{{ aktiv }}</div>
+          <div class="kpi-hint">mind. einmal deutlich nach der Anmeldung wieder da</div>
+        </div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="kpi k-gold">
+          <div class="kpi-lab">Zahlend</div>
+          <div class="kpi-zahl">{{ zahlend }}</div>
+          <div class="kpi-hint">Plan premium</div>
+        </div>
+      </div>
+    </div>
+
+    {# ── Drei Quoten, drei Nenner ──────────────────────────────────────────── #}
+    <div class="card shadow-sm mb-4">
+      <div class="card-body">
+        <h6 class="fw-bold mb-1">Konversionsquote — je nachdem, was man als Nenner nimmt</h6>
+        <p class="hinweis mb-3">
+          Alle drei Zahlen sind richtig. Sie beantworten nur unterschiedliche Fragen —
+          und genau darum ist eine einzelne „Konversionsrate“ hier irreführend.
+        </p>
+        <table class="table table-sm mb-0">
+          <tbody>
+            <tr>
+              <td style="width:190px">Von <strong>allen Konten</strong></td>
+              <td class="mono">{{ zahlend }} / {{ gesamt }}</td>
+              <td class="fw-bold" style="width:80px">{{ '%.1f'|format(quote_alle) }} %</td>
+              <td class="hinweis">Enthält Testkonten, Karteileichen und Bots — die pessimistischste Sicht.</td>
+            </tr>
+            <tr>
+              <td>Von den <strong>Erreichbaren</strong></td>
+              <td class="mono">{{ zahlend }} / {{ erreichbar }}</td>
+              <td class="fw-bold">{{ '%.1f'|format(quote_erreichbar) }} %</td>
+              <td class="hinweis">Menschen mit bestätigter Adresse. <strong>Das ist die Zahl, die mit
+                Branchen-Benchmarks vergleichbar ist</strong> (Freemium: 3–5 % gilt als gut).</td>
+            </tr>
+            <tr>
+              <td>Von den <strong>Wiedergekommenen</strong></td>
+              <td class="mono">{{ zahlend }} / {{ aktiv }}</td>
+              <td class="fw-bold">{{ '%.1f'|format(quote_aktiv) }} %</td>
+              <td class="hinweis">Wer das Produkt wirklich benutzt hat. Zeigt, ob das <em>Produkt</em>
+                überzeugt — unabhängig davon, wie viele es je gesehen haben.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {# ── Trichter ──────────────────────────────────────────────────────────── #}
+    <div class="card shadow-sm mb-4">
+      <div class="card-body">
+        <h6 class="fw-bold mb-3">Wo stehen die {{ gesamt }} Konten?</h6>
+        {% set reihen = [
+          ('zahlend',        'Zahlend',                       '#d97706', 'Premium-Abo aktiv oder gekündigt-aber-laufend.'),
+          ('wiedergekommen', 'Wiedergekommen',                '#16a34a', 'Letzter Login deutlich nach der Registrierung — hat das Produkt wirklich benutzt.'),
+          ('einmal',         'Einmal da, nie wieder',         '#4e8cdd', 'Angemeldet und nicht zurückgekehrt. Die wichtigste Gruppe: hier entscheidet sich alles.'),
+          ('nie_aktiv',      'Bestätigt, nie eingeloggt',     '#a78bfa', 'E-Mail bestätigt, aber der Editor wurde nie geöffnet.'),
+          ('unbestaetigt',   'E-Mail nie bestätigt',          '#9ca3af', 'Kommt gar nicht erst rein. Teils verlorene Interessenten, teils Bots.'),
+          ('wegwerf',        'Wegwerf-Adresse',               '#ef4444', 'Einweg-Mailanbieter — mit hoher Wahrscheinlichkeit kein echter Nutzer.'),
+        ] %}
+        <table class="table table-sm align-middle mb-0">
+          <tbody>
+          {% for key, name, farbe, erklaerung in reihen %}
+            {% set n = stufen[key]|length %}
+            <tr>
+              <td style="width:210px" class="fw-semibold">{{ name }}</td>
+              <td style="width:56px" class="text-end fw-bold">{{ n }}</td>
+              <td style="width:300px">
+                <div class="bar" style="background:{{ farbe }};width:{{ (n / gesamt * 100) if gesamt else 0 }}%">
+                  {% if gesamt and (n / gesamt * 100) > 8 %}{{ '%.0f'|format(n / gesamt * 100) }} %{% endif %}
+                </div>
+              </td>
+              <td class="hinweis">{{ erklaerung }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {# ── Registrierungen je Woche ──────────────────────────────────────────── #}
+    <div class="card shadow-sm mb-4">
+      <div class="card-body">
+        <h6 class="fw-bold mb-1">Registrierungen je Woche</h6>
+        <p class="hinweis mb-3">
+          Zum Abgleich: Nennenswerter Google-Suchverkehr läuft erst seit dem <strong>05.07.2026</strong>.
+          Alles, was davor registriert wurde, kam nachweislich aus einer anderen Quelle.
+        </p>
+        {% if wochen %}
+        {% set maxw = wochen|map(attribute='n')|max %}
+        <table class="table table-sm align-middle mb-0">
+          <thead><tr><th>Woche ab</th><th class="text-end">Neu</th><th class="text-end">davon bestätigt</th><th style="width:45%"></th></tr></thead>
+          <tbody>
+          {% for w in wochen %}
+            <tr {% if w.woche < '2026-07-05' %}style="background:#fafafa"{% endif %}>
+              <td class="mono">{{ w.woche }}{% if w.woche < '2026-07-05' %} <span class="text-muted" style="font-size:.72rem">vor Suchverkehr</span>{% endif %}</td>
+              <td class="text-end fw-bold">{{ w.n }}</td>
+              <td class="text-end text-muted">{{ w.bestaetigt }}</td>
+              <td><div class="wo-bar" style="width:{{ (w.n / maxw * 100) if maxw else 0 }}%"></div></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted mb-0">Noch keine Registrierungen.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+      {# ── Domains ─────────────────────────────────────────────────────────── #}
+      <div class="col-lg-7">
+        <div class="card shadow-sm h-100">
+          <div class="card-body">
+            <h6 class="fw-bold mb-1">E-Mail-Domains</h6>
+            <p class="hinweis mb-3">
+              Eine ungewöhnliche Häufung bei einer exotischen Domain ist ein Bot-Hinweis.
+              Viele unbestätigte Adressen bei derselben Domain ebenso.
+            </p>
+            <table class="table table-sm mb-0">
+              <thead><tr><th>Domain</th><th class="text-end">Konten</th><th class="text-end">bestätigt</th></tr></thead>
+              <tbody>
+              {% for d in domains %}
+                <tr>
+                  <td class="mono">{{ d.domain }}</td>
+                  <td class="text-end">{{ d.n }}</td>
+                  <td class="text-end {% if d.bestaetigt == 0 and d.n > 1 %}text-danger fw-bold{% else %}text-muted{% endif %}">{{ d.bestaetigt }}</td>
+                </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      {# ── Sprachen ────────────────────────────────────────────────────────── #}
+      <div class="col-lg-5">
+        <div class="card shadow-sm h-100">
+          <div class="card-body">
+            <h6 class="fw-bold mb-1">Sprache bei der Registrierung</h6>
+            <p class="hinweis mb-3">Zeigt, ob sich der Aufwand für EN und FR in Konten niederschlägt.</p>
+            <table class="table table-sm mb-0">
+              <tbody>
+              {% for lang, n in sprachen %}
+                <tr><td class="mono">{{ lang }}</td><td class="text-end fw-bold">{{ n }}</td></tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# ── Ehrliche Einschränkungen ──────────────────────────────────────────── #}
+    <div class="card shadow-sm mb-5" style="border-color:#fcd34d;background:#fffbeb">
+      <div class="card-body">
+        <h6 class="fw-bold mb-2"><i class="bi bi-exclamation-triangle me-1"></i>Was diese Zahlen NICHT können</h6>
+        <ul class="hinweis mb-0" style="padding-left:1.1rem">
+          <li><strong>„Wiedergekommen“ ist eine Untergrenze.</strong> Gespeichert wird nur der
+            <em>letzte</em> Login, kein Zähler. Wer zehnmal da war, sieht genauso aus wie jemand,
+            der zweimal da war.</li>
+          <li><strong>„Einmal da“ kann auch „lange geblieben“ heißen.</strong> Die Verweildauer im
+            Editor wird nirgends erfasst — jemand kann zwei Stunden konstruiert haben und zählt hier
+            trotzdem als „einmal“.</li>
+          {% if stichtag %}
+          <li><strong>Bestätigungsstatus ist erst ab {{ stichtag|lokal_datum }} verlässlich.</strong>
+            Ältere Konten wurden bei der Umstellung pauschal als bestätigt eingetragen — die Quote
+            davor ist geschönt.</li>
+          {% else %}
+          <li><strong>Bestätigungsstatus mit Vorsicht lesen:</strong> Konten aus der Zeit vor der
+            E-Mail-Bestätigung wurden pauschal als bestätigt eingetragen.</li>
+          {% endif %}
+          <li><strong>Testkonten erkennt die Seite nicht automatisch.</strong> Eigene Konten und die
+            von Bekannten musst du in der <a href="{{ url_for('admin_users') }}">Benutzerliste</a>
+            selbst abziehen — erst dann steht die echte Zahl.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
