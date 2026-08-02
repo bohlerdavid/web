@@ -2233,13 +2233,41 @@ def profile_send_reset():
 # Admin
 # ---------------------------------------------------------------------------
 
+ADMIN_USERS_PRO_SEITE = 20
+
+
 @app.route('/admin/users')
 @admin_required
 def admin_users():
-    # Stripe = Source of Truth: alle User mit Stripe-Bezug live aktualisieren
-    for r in query_db("SELECT user_id FROM subscriptions WHERE stripe_sub_id IS NOT NULL OR stripe_customer_id IS NOT NULL", []):
+    try:
+        seite = max(1, int(request.args.get('seite', 1)))
+    except (TypeError, ValueError):
+        seite = 1
+
+    gesamt = (query_db('SELECT COUNT(*) AS c FROM app_users', [], one=True) or {}).get('c', 0) or 0
+    seiten = max(1, (gesamt + ADMIN_USERS_PRO_SEITE - 1) // ADMIN_USERS_PRO_SEITE)
+    seite = min(seite, seiten)                     # ?seite=999 landet auf der letzten
+    versatz = (seite - 1) * ADMIN_USERS_PRO_SEITE
+
+    # Erst nur die IDs dieser Seite holen — damit der Stripe-Abgleich gleich
+    # weiss, welche Konten ueberhaupt sichtbar sind.
+    ids = [r['id'] for r in (query_db(
+        'SELECT id FROM app_users ORDER BY created_at DESC LIMIT ? OFFSET ?',
+        [ADMIN_USERS_PRO_SEITE, versatz]) or [])]
+    if not ids:
+        return render_template('admin_users.html', users=[], gesamt=gesamt,
+                               seite=1, seiten=1, pro_seite=ADMIN_USERS_PRO_SEITE, von=0, bis=0)
+
+    platzhalter = ','.join(['?'] * len(ids))
+    # Stripe = Source of Truth — aber nur fuer die 20 sichtbaren Konten. Vorher
+    # lief bei JEDEM Seitenaufruf ein Stripe-Aufruf fuer JEDES verknuepfte Konto;
+    # das waechst mit der Nutzerzahl, obwohl man ohnehin nur eine Seite sieht.
+    for r in query_db('SELECT user_id FROM subscriptions WHERE user_id IN (%s) '
+                      'AND (stripe_sub_id IS NOT NULL OR stripe_customer_id IS NOT NULL)'
+                      % platzhalter, ids) or []:
         _sync_user_from_stripe(r['user_id'])
 
+    # Erst NACH dem Abgleich lesen, sonst zeigt die Seite den Stand von vorher.
     users = query_db("""
         SELECT u.id, u.username, u.full_name, u.email, u.created_at, u.last_login,
                COALESCE(u.email_verified, 1) as email_verified,
@@ -2247,9 +2275,13 @@ def admin_users():
                s.plan_interval, s.sub_started, s.current_period_end
         FROM app_users u
         LEFT JOIN subscriptions s ON s.user_id = u.id
+        WHERE u.id IN (%s)
         ORDER BY u.created_at DESC
-    """)
-    return render_template('admin_users.html', users=users)
+    """ % platzhalter, ids) or []
+
+    return render_template('admin_users.html', users=users, gesamt=gesamt,
+                           seite=seite, seiten=seiten, pro_seite=ADMIN_USERS_PRO_SEITE,
+                           von=versatz + 1, bis=versatz + len(users))
 
 
 @app.route('/admin/mails')

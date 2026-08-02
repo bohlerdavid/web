@@ -39,7 +39,12 @@
     {% endwith %}
 
     <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
-      <h4 class="fw-bold mb-0"><i class="bi bi-people me-2"></i>Registrierte Benutzer ({{ users|length }})</h4>
+      <div>
+        <h4 class="fw-bold mb-0"><i class="bi bi-people me-2"></i>Registrierte Benutzer ({{ gesamt }})</h4>
+        {% if seiten > 1 %}
+        <div class="text-muted" style="font-size:.8rem;">{{ von }}–{{ bis }} von {{ gesamt }} · Seite {{ seite }} von {{ seiten }}</div>
+        {% endif %}
+      </div>
       {# EIN Knopf fuer alle statt einer je Zeile: technisch guenstiger (die
          Abo-Liste wird einmal geholt statt ~90 Einzelabfragen) und die Tabelle
          bleibt uebersichtlich. Noetig, weil ein von Hand in Stripe angelegtes
@@ -65,6 +70,27 @@
        festen Breiten, fallen sie auf 0 zusammen und die Tabelle wirkt leer.
        Mit min-width scrollt stattdessen der .table-responsive-Container. */
     #user-table { table-layout: fixed; width: 100%; min-width: 1200px; }
+    /* Ruhigeres Bild: schmalere Zeilen, E-Mail einheitlich klein und einzeilig
+       mit Auslassungspunkten statt mitten im Wort umgebrochen ("stefan.j.schauer@g
+       mail.com" war genau das Problem). Die volle Adresse steht im title. */
+    #user-table td, #user-table th { padding-top: .5rem; padding-bottom: .5rem; }
+    .u-mail { display: block; font-size: .82rem; color: #4b5563;
+              overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .u-nichts { color: #c7c2b8; }
+    .u-lauf { font-size: .78rem; line-height: 1.45; }
+    .u-lauf .u-takt { font-weight: 600; color: #374151; }
+    .u-lauf .u-zeit { color: #9ca3af; white-space: nowrap; }
+    .u-gek { display: inline-block; margin-top: 2px; font-size: .7rem; font-weight: 700;
+             color: #b91c1c; background: #fef2f2; border-radius: 999px; padding: 1px 7px; }
+    /* Blaetterleiste */
+    .seiten { display: flex; gap: 4px; align-items: center; justify-content: center;
+              flex-wrap: wrap; padding: 14px; border-top: 1px solid #eee; }
+    .seiten a, .seiten span { min-width: 34px; text-align: center; padding: 4px 9px;
+              border: 1px solid #e8ddd0; border-radius: 7px; font-size: .84rem;
+              text-decoration: none; color: #6b7280; background: #fff; }
+    .seiten a:hover { background: #faf6f0; color: #d97706; }
+    .seiten .jetzt { background: #d97706; border-color: #d97706; color: #fff; font-weight: 700; }
+    .seiten .luecke { border: none; background: none; color: #c7c2b8; min-width: 18px; }
     #user-table th { position: relative; user-select: none; }
     #user-table th[data-sort] { cursor: pointer; }
     #user-table th[data-sort]:hover { background: #f3ede3; }
@@ -78,7 +104,12 @@
     .col-grip:hover, .col-grip.aktiv { background: #d97706; opacity: .5; }
     #tbl-hinweis { font-size: .78rem; color: #9ca3af; margin-bottom: 6px; }
   </style>
-  <div id="tbl-hinweis">Spaltenkopf klicken = sortieren · Trennlinie zwischen den Köpfen ziehen = Breite ändern</div>
+  {# Ehrlich sagen, dass die Sortierung im Browser laeuft und darum nur die
+     angezeigte Seite umsortiert — sonst haelt man sie fuer eine Gesamtsortierung
+     und uebersieht Eintraege auf anderen Seiten. #}
+  <div id="tbl-hinweis">Spaltenkopf klicken = sortieren (nur diese Seite) ·
+    Trennlinie zwischen den Köpfen ziehen = Breite ändern ·
+    Grundordnung: neueste Registrierung zuerst</div>
 <table id="user-table" class="table table-hover mb-0 align-middle">
           <thead class="table-light">
             <tr>
@@ -99,22 +130,26 @@
             <tr>
               <td class="text-muted" data-v="{{ u.id }}">{{ u.id }}</td>
               <td><strong>{{ u.username }}</strong></td>
-              <td>{{ u.full_name or '—' }}</td>
-              <td>{{ u.email or '—' }}</td>
+              <td>{% if u.full_name %}{{ u.full_name }}{% else %}<span class="u-nichts">—</span>{% endif %}</td>
+              <td>
+                {% if u.email %}
+                  <span class="u-mail" title="{{ u.email }}">{{ u.email }}</span>
+                {% else %}<span class="u-nichts">—</span>{% endif %}
+              </td>
               <td>
                 <span class="badge {% if u.plan == 'premium' %}badge-premium{% else %}badge-free{% endif %}">
                   {% if u.plan == 'premium' %}✨ Premium{% else %}Free{% endif %}
                 </span>
               </td>
-              <td class="small">
+              <td class="u-lauf">
                 {% if u.plan == 'premium' %}
-                  <span style="font-weight:600;">{% if u.plan_interval == 'yearly' %}Jährlich{% else %}Monatlich{% endif %}</span><br>
-                  <span class="text-muted" style="white-space:nowrap;">
+                  <span class="u-takt">{% if u.plan_interval == 'yearly' %}Jährlich{% else %}Monatlich{% endif %}</span><br>
+                  <span class="u-zeit">
                     {{ u.sub_started|lokal_datum if u.sub_started else '?' }} &rarr; {{ u.current_period_end|lokal_datum if u.current_period_end else '?' }}
                   </span>
-                  {% if u.sub_status == 'cancelled' %}<br><span class="text-danger" style="font-size:.72rem;">gekündigt</span>{% endif %}
+                  {% if u.sub_status == 'cancelled' %}<br><span class="u-gek">gekündigt</span>{% endif %}
                 {% else %}
-                  <span class="text-muted">—</span>
+                  <span class="u-nichts">—</span>
                 {% endif %}
               </td>
               <td>
@@ -154,6 +189,43 @@
           </tbody>
         </table>
       </div>
+
+      {% if seiten > 1 %}
+      {# Blaetterleiste: erste/letzte Seite immer sichtbar, um die aktuelle je
+         zwei Nachbarn, dazwischen Auslassungspunkte. So bleibt sie auch bei
+         50 Seiten kurz. #}
+      <nav class="seiten" aria-label="Seiten">
+        {% if seite > 1 %}
+          <a href="{{ url_for('admin_users', seite=seite-1) }}" aria-label="Vorherige Seite">‹</a>
+        {% else %}
+          <span class="u-nichts">‹</span>
+        {% endif %}
+
+        {% set fenster = [] %}
+        {% for n in range(1, seiten + 1) %}
+          {% if n == 1 or n == seiten or (n >= seite - 2 and n <= seite + 2) %}
+            {% set _ = fenster.append(n) %}
+          {% endif %}
+        {% endfor %}
+
+        {% set letzte = namespace(n=0) %}
+        {% for n in fenster %}
+          {% if letzte.n and n > letzte.n + 1 %}<span class="luecke">…</span>{% endif %}
+          {% if n == seite %}
+            <span class="jetzt" aria-current="page">{{ n }}</span>
+          {% else %}
+            <a href="{{ url_for('admin_users', seite=n) }}">{{ n }}</a>
+          {% endif %}
+          {% set letzte.n = n %}
+        {% endfor %}
+
+        {% if seite < seiten %}
+          <a href="{{ url_for('admin_users', seite=seite+1) }}" aria-label="Nächste Seite">›</a>
+        {% else %}
+          <span class="u-nichts">›</span>
+        {% endif %}
+      </nav>
+      {% endif %}
     </div>
   </div>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
