@@ -1799,8 +1799,13 @@ body {
     <div style="font-size:40px;margin-bottom:12px">✨</div>
     <h3 style="color:var(--text);font-size:1.2rem;margin-bottom:8px" id="upgrade-modal-title">Premium-Feature</h3>
     <p style="color:var(--text-2);font-size:.9rem;line-height:1.6;margin-bottom:20px" id="upgrade-modal-desc">Diese Funktion ist im Premium-Abo verfügbar.</p>
+    <p style="color:var(--text-3);font-size:.8rem;line-height:1.5;margin:-12px 0 18px">
+      Weiterplanen kannst du kostenlos — ohne Begrenzung der Bauteilanzahl.
+    </p>
     <div style="background:var(--bg-input);border-radius:var(--r);padding:16px;margin-bottom:20px;text-align:left">
-      <div style="font-size:.8rem;color:var(--text-2);margin-bottom:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Premium beinhaltet:</div>
+      {# Botschaft bewusst nicht "du darfst nicht", sondern "es geht schneller":
+         Planen bleibt gratis und unbegrenzt, Premium spart Arbeit. #}
+      <div style="font-size:.8rem;color:var(--text-2);margin-bottom:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Mit Premium schneller ans Ziel:</div>
       {# Speichern, Laden und die CSV-Stueckliste sind seit der Einloesung der
          Preiszusage GRATIS — sie duerfen hier nicht mehr als Premium-Vorteil
          beworben werden, sonst ist es derselbe Wortbruch nur andersherum. #}
@@ -1812,7 +1817,6 @@ body {
         ✅ Kalkulation &amp; Angebot<br>
         ✅ Säge- &amp; Fräs-Werkzeug<br>
         ✅ Deko-Objekte<br>
-        ✅ Unbegrenzt Balken<br>
         ✅ Keine Werbung
       </div>
     </div>
@@ -1982,7 +1986,6 @@ const IS_PREMIUM = USER_PLAN === 'premium';
 // Demo-Modus: oeffentliche, login-freie Ansicht (/demo). Laedt ein Beispielmodell
 // und schaltet Auto-Speichern in localStorage ab (kein Konto = nichts zu sichern).
 const DEMO = {% if demo|default(false) %}true{% else %}false{% endif %};
-const MAX_FREE_BEAMS = 20;
 
 /* Meldet dem Server EINMAL pro Sitzung, dass ein Premium-Feature benutzt wird.
    Der Server stellt den echten Plan selbst fest — ein gefaelschtes IS_PREMIUM
@@ -3221,14 +3224,14 @@ function selectDeco(id) {
   updateObjList();
 }
 
+/* Kein Balkenlimit mehr — auch nicht im Gratis-Plan. Das alte Limit von 20 lag
+   UNTER fast jeder mitgelieferten Vorlage (Satteldach 15, Wand mit Fenster 17,
+   Pergola 19, Gartenhaus 27): der Gratis-Nutzer lief also schon beim ersten
+   ernsthaften Bauteil dagegen und konnte nie ein vollstaendiges Projekt sehen.
+   Ueber die ungepruefte Kopierfunktion war es ohnehin umgehbar.
+   Bezahlt wird jetzt ausschliesslich die Aufbereitung (Vorlagen, PDF, DXF/CNC,
+   Schnittplan, Kalkulation) — nicht die Groesse der Konstruktion. */
 function addBeam() {
-  if (!IS_PREMIUM && beams.length >= MAX_FREE_BEAMS) {
-    requirePremium('Maximale Balkenanzahl erreicht', `Im kostenlosen Plan sind maximal ${MAX_FREE_BEAMS} Balken möglich. Upgrade für unbegrenzte Balken.`);
-    return;
-  }
-  // Ueber dem Gratis-Limit -> nutzt die Premium-Faehigkeit "unbegrenzte Balken".
-  // Wie bei der Saege faengt requirePremium den Bypasser nicht, also eigener Beacon.
-  if (beams.length >= MAX_FREE_BEAMS) _premiumBeacon('Unbegrenzte Balken');
   const woodType = document.getElementById('wood-type').value;
   const axis = document.getElementById('beam-axis').value;
   let name = document.getElementById('beam-name').value.trim();
@@ -3587,7 +3590,7 @@ function _previewOutline(shape, def) {
 let fraesActive = false;
 
 /* Fraesen ist eine Premium-Funktion, im Free-Plan zum Ausprobieren 3 Mal.
-   Gezaehlt wird im localStorage — wie MAX_FREE_BEAMS ist das eine Huerde,
+   Gezaehlt wird im localStorage — das ist eine Huerde,
    keine Schranke: wer will, leert den Browserspeicher. Das ist bewusst so,
    der Zaehler soll zum Upgrade anstupsen, nicht Buchhaltung sein. */
 const MAX_FREE_FRAES = 3;
