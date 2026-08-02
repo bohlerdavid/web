@@ -244,14 +244,26 @@
             </tbody>
           </table>
         {% else %}
-          <p class="hinweis mb-0">
-            Keine Adresse kommt doppelt vor — der Datenbestand ist sauber. Damit kann die E-Mail
-            gefahrlos als Anmeldename dienen und ein <span class="mono">UNIQUE</span>-Index auf die
-            Spalte gesetzt werden. <strong>Hinweis:</strong> Die Datenbank erzwingt das bisher
-            <em>nicht</em> — nur der Registrierungs-Code prüft es, und der hat bei zwei gleichzeitigen
-            Anmeldungen eine Lücke.
-          </p>
+          <p class="hinweis mb-2">Keine Adresse kommt doppelt vor — der Datenbestand ist sauber.</p>
         {% endif %}
+
+        {# Ob der Index wirklich gesetzt ist, MUSS nachgesehen werden: die
+           Migrationen laufen in einem stillen try/except. #}
+        <div class="mt-2 pt-2" style="border-top:1px solid rgba(0,0,0,.08)">
+          {% if unique_aktiv %}
+            <span class="badge bg-success">UNIQUE-Index aktiv</span>
+            <span class="hinweis ms-2">Die Datenbank erzwingt jetzt selbst, dass jede
+              E-Mail-Adresse nur einmal vorkommt — nicht mehr nur der Registrierungs-Code.</span>
+          {% elif unique_aktiv is none %}
+            <span class="badge bg-secondary">Index-Status nicht feststellbar</span>
+            <span class="hinweis ms-2">Die Abfrage <span class="mono">SHOW INDEX</span> war nicht möglich.</span>
+          {% else %}
+            <span class="badge bg-danger">UNIQUE-Index FEHLT</span>
+            <span class="hinweis ms-2">Die Migration ist nicht durchgelaufen — die Eindeutigkeit
+              hängt weiterhin allein am Registrierungs-Code. Bei doppelten Adressen oben zuerst
+              bereinigen, dann neu starten.</span>
+          {% endif %}
+        </div>
       </div>
     </div>
 

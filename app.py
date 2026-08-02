@@ -287,6 +287,14 @@ SCHEMA_MIGRATIONS = [
     # Schluessel aufgerufen" zu unterscheiden — die Uebersicht hat das sonst
     # verwechselt und einen Testaufruf als Cron-Problem gemeldet.
     "ALTER TABLE cron_runs ADD COLUMN grund VARCHAR(24) NULL",
+    # E-Mail eindeutig machen. Bisher stand UNIQUE nur auf username; die
+    # Eindeutigkeit der Adresse pruefte allein der Registrierungs-Code — und der
+    # hat bei zwei gleichzeitigen Anmeldungen eine Luecke. Ohne diese Bedingung
+    # trifft ausserdem das Passwort-Zuruecksetzen (WHERE email=?, one=True) bei
+    # Doppeleintraegen stillschweigend das falsche Konto.
+    # NULL bleibt mehrfach erlaubt (MySQL zaehlt NULL nicht als Dublette), das
+    # Admin-Konto ohne Adresse stoert also nicht.
+    "ALTER TABLE app_users ADD UNIQUE INDEX uniq_email (email)",
 ]
 
 
@@ -1749,12 +1757,22 @@ def register():
         verify_expires = (datetime.utcnow() + timedelta(hours=48)).strftime('%Y-%m-%d %H:%M:%S')
         user_lang      = _request_lang()
 
-        execute_db(
-            "INSERT INTO app_users "
-            "(username, password_hash, full_name, email, email_verified, email_verify_token, email_verify_expires, lang) "
-            "VALUES (?,?,?,?,0,?,?,?)",
-            (username, generate_password_hash(password), full_name, email, verify_token, verify_expires, user_lang)
-        )
+        # Seit dem UNIQUE-Index auf email kann die Datenbank die Anlage abweisen.
+        # Das passiert genau dann, wenn zwei Anmeldungen mit derselben Adresse
+        # gleichzeitig durch die Pruefung oben gerutscht sind — genau die Luecke,
+        # die der Index schliesst. Ohne dieses except saehe der Zweite einen
+        # Serverfehler statt einer verstaendlichen Meldung.
+        try:
+            execute_db(
+                "INSERT INTO app_users "
+                "(username, password_hash, full_name, email, email_verified, email_verify_token, email_verify_expires, lang) "
+                "VALUES (?,?,?,?,0,?,?,?)",
+                (username, generate_password_hash(password), full_name, email, verify_token, verify_expires, user_lang)
+            )
+        except Exception as e:
+            logger.warning('Registrierung abgewiesen (vermutlich Dublette): %s', type(e).__name__)
+            flash('Dieser Benutzername oder diese E-Mail-Adresse ist bereits vergeben.', 'danger')
+            return render_template('register.html', csrf_token=generate_csrf())
 
         base_url   = os.environ.get('BASE_URL', 'https://holzbau3d.app')
         verify_url = f"{base_url}/verify-email/{verify_token}"
@@ -2338,6 +2356,14 @@ def admin_nutzer_analyse():
     doppelte = sorted(({'email': m, 'konten': k} for m, k in _per_mail.items() if len(k) > 1),
                       key=lambda d: -len(d['konten']))
 
+    # Hat der UNIQUE-Index wirklich gegriffen? Die Migrationen laufen in einem
+    # stillen try/except (init_db) — ein fehlgeschlagener ALTER faellt sonst
+    # niemandem auf. Darum hier direkt nachsehen statt hoffen.
+    try:
+        unique_aktiv = bool(query_db("SHOW INDEX FROM app_users WHERE Key_name = 'uniq_email'", []))
+    except Exception:
+        unique_aktiv = None      # nicht feststellbar
+
     # "Erreichbar" = bestaetigte Adresse, keine Wegwerfdomain. Nur diese Menge
     # ist ueberhaupt ein sinnvoller Nenner fuer eine Konversionsrate.
     erreichbar = len(stufen['zahlend']) + len(stufen['wiedergekommen']) \
@@ -2354,7 +2380,7 @@ def admin_nutzer_analyse():
                            erreichbar=erreichbar, aktiv=aktiv, zahlend=zahlend,
                            quote_alle=quote_alle, quote_erreichbar=quote_erreichbar,
                            quote_aktiv=quote_aktiv, stichtag=stichtag, heute=heute,
-                           doppelte=doppelte)
+                           doppelte=doppelte, unique_aktiv=unique_aktiv)
 
 
 @app.route('/admin/feature-use')
