@@ -37,7 +37,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,72,400;0,72,500;0,72,600;1,72,500&family=Work+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
-  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1405082500215735" crossorigin="anonymous"></script>
+  {# KEIN AdSense auf der Startseite. Hier landen laut Search Console 107 von
+     163 Suchklicks — also zwei Drittel des gesamten Verkehrs. Google blendet
+     auf einer Seite ueber Holzkonstruktionen thematisch Passendes ein: Angebote
+     von Carport-Anbietern und Konkurrenz-Software. Das ist die Verkaufsseite;
+     dort fuer die Konkurrenz zu werben kostet mehr, als die Anzeigen einbringen.
+     Im Ratgeber (blog_index/blog_article) laeuft AdSense weiter — dort gehoert
+     es hin und dort ist es fuer die AdSense-Pruefung auch sichtbar. #}
   <script src="/static/i18n.js" defer></script>
   <!-- Nur eine Deklaration, laedt selbst nichts. OrbitControls importiert intern
        den nackten Specifier 'three' — ohne diese Map schlaegt genau das fehl. -->

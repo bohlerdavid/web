@@ -591,7 +591,7 @@ EMAIL_I18N = {
         'p_thanks':  'merci de votre confiance ! Votre <strong>{plan}</strong> ({amount}) est désormais actif — toutes les fonctionnalités Premium sont débloquées.',
         'p_plan_y':  'abonnement annuel',
         'p_plan_m':  'abonnement mensuel',
-        'p_features': '✅ Poutres &amp; projets illimités<br>✅ Sans aucune publicité<br>✅ Export PDF &amp; plans d’impression<br>✅ Outil scie &amp; optimisation du plan de coupe',
+        'p_features': '✅ Modèles prêts : carport, pergola &amp; plus<br>✅ Sans aucune publicité<br>✅ Export PDF, DXF &amp; CNC<br>✅ Outil scie, plan de coupe &amp; chiffrage',
         'p_invoice': '📄 Voir &amp; télécharger la facture',
         'p_box_title': 'Vos données contractuelles',
         'p_box_plan': 'Abonnement',
@@ -855,7 +855,7 @@ SEO_META = {
 
 FAQ_ITEMS = {
     'de': [
-        ('Ist HolzBau 3D kostenlos?', 'Ja. Du kannst Holzkonstruktionen kostenlos in 3D planen. Premium schaltet zusätzlich PDF-Export, Säge-Tool, Schnittplan-Optimierung und unbegrenzte Projekte frei.'),
+        ('Ist HolzBau 3D kostenlos?', 'Ja. Du kannst Holzkonstruktionen kostenlos in 3D planen. Es gibt keine Begrenzung der Bauteilanzahl, du kannst speichern, laden und die Stückliste als CSV exportieren. Premium macht das Planen vielfältiger und schneller: fertige Vorlagen, PDF-, DXF- und CNC-Export, Schnittplan-Optimierung, Kalkulation und Säge-Werkzeug — werbefrei.'),
         ('Kann ich eine Pergola selbst planen?', 'Ja. Mit HolzBau 3D planst du Pergola, Carport, Dachstuhl, Terrassenüberdachung und beliebige Holzkonstruktionen selbst – inklusive Stückliste und Schnittplan.'),
         ('Muss ich etwas installieren?', 'Nein. HolzBau 3D läuft komplett im Browser – ohne Installation, auf PC, Tablet und Smartphone.'),
         ('Welche Konstruktionen kann ich bauen?', 'Vom Carport über die Pergola bis zum kompletten Dachstuhl: Du setzt Balken, Pfosten, Pfetten und Sparren maßstabsgetreu in 3D und drehst die Konstruktion frei im Raum.'),
@@ -865,7 +865,7 @@ FAQ_ITEMS = {
         ('Bekomme ich mein Geld zurück?', 'Nein, bereits gezahlte Beträge werden nicht erstattet. Stattdessen behältst du nach der Kündigung deinen vollen Premium-Zugang bis zum Ende des bezahlten Zeitraums – danach wird das Abo einfach nicht verlängert.'),
     ],
     'en': [
-        ('Is HolzBau 3D free?', 'Yes. You can plan wood constructions in 3D for free. Premium additionally unlocks PDF export, the saw tool, cutting-plan optimisation and unlimited projects.'),
+        ('Is HolzBau 3D free?', 'Yes. You can plan wood constructions in 3D for free. There is no limit on the number of parts, and you can save, load and export the parts list as CSV. Premium makes planning richer and faster: ready-made templates, PDF, DXF and CNC export, cutting-plan optimisation, costing and the saw tool — ad-free.'),
         ('Can I design a pergola myself?', 'Yes. With HolzBau 3D you design pergolas, carports, roof trusses, patio roofs and any wood construction yourself – including parts list and cutting plan.'),
         ('Do I need to install anything?', 'No. HolzBau 3D runs entirely in your browser – no installation, on PC, tablet and smartphone.'),
         ('What can I build?', 'From a carport and a pergola to a complete roof truss: you place beams, posts, purlins and rafters to scale in 3D and rotate the structure freely in space.'),
@@ -875,7 +875,7 @@ FAQ_ITEMS = {
         ('Do I get a refund?', 'No, amounts already paid are not refunded. Instead, after cancelling you keep full Premium access until the end of the paid period – the subscription is then simply not renewed.'),
     ],
     'fr': [
-        ('HolzBau 3D est-il gratuit ?', 'Oui. Vous pouvez concevoir des constructions bois en 3D gratuitement. Premium débloque en plus l’export PDF, l’outil scie, l’optimisation du plan de coupe et les projets illimités.'),
+        ('HolzBau 3D est-il gratuit ?', 'Oui. Vous pouvez concevoir des constructions bois en 3D gratuitement. Le nombre de pièces n’est pas limité, et vous pouvez enregistrer, charger et exporter la liste de pièces en CSV. Premium rend la conception plus riche et plus rapide : modèles prêts à l’emploi, export PDF, DXF et CNC, optimisation du plan de coupe, chiffrage et outil scie — sans publicité.'),
         ('Puis-je concevoir une pergola moi-même ?', 'Oui. Avec HolzBau 3D, vous concevez pergola, carport, charpente, couverture de terrasse et toute construction bois vous-même – liste de pièces et plan de coupe inclus.'),
         ('Dois-je installer quelque chose ?', 'Non. HolzBau 3D fonctionne entièrement dans le navigateur – sans installation, sur PC, tablette et smartphone.'),
         ('Que puis-je construire ?', 'Du carport à la pergola jusqu’à une charpente complète : vous placez poutres, poteaux, pannes et chevrons à l’échelle en 3D et faites pivoter la structure librement.'),
@@ -3760,7 +3760,7 @@ def _email_premium_html(display_name, amount_txt, interval, invoice_url, lang='d
 UPSELL_I18N = {
     'de': {
         'subject':   'Hol mehr aus deinen Holzprojekten – HolzBau 3D Premium',
-        'preheader': 'Mehr aus deinen Holzprojekten: werbefrei, PDF-Export, Säge-Tool & unbegrenzte Projekte – 2 Monate gratis im Jahresabo.',
+        'preheader': 'Schneller planen: fertige Vorlagen, PDF- & CNC-Export, Schnittplan – werbefrei, 2 Monate gratis im Jahresabo.',
         'fallback_name': 'Holzbauer',
         'h1':        'Hallo {name}, hol das Maximum<br>aus deinen Holzprojekten.',
         'intro':     'Du planst deine Konstruktionen schon kostenlos in 3D – stark! Mit <strong style="color:#9a5b2c;">HolzBau&nbsp;3D&nbsp;Premium</strong> arbeitest du schneller, sauberer und ganz ohne Werbung. Alles freigeschaltet, für ein faires Abo.',
@@ -3782,7 +3782,7 @@ UPSELL_I18N = {
     },
     'en': {
         'subject':   'Get more out of your timber projects – HolzBau 3D Premium',
-        'preheader': 'More from your timber projects: ad-free, PDF export, saw tool & unlimited projects – 2 months free on the yearly plan.',
+        'preheader': 'Plan faster: ready-made templates, PDF & CNC export, cutting plan – ad-free, 2 months free on the yearly plan.',
         'fallback_name': 'there',
         'h1':        'Hello {name}, get the most<br>out of your timber projects.',
         'intro':     'You are already planning your structures in 3D for free – nice work! With <strong style="color:#9a5b2c;">HolzBau&nbsp;3D&nbsp;Premium</strong> you work faster, cleaner and completely without ads. Everything unlocked, for a fair subscription.',
@@ -3804,7 +3804,7 @@ UPSELL_I18N = {
     },
     'fr': {
         'subject':   'Tirez le meilleur de vos projets bois – HolzBau 3D Premium',
-        'preheader': 'Plus de vos projets bois : sans publicité, export PDF, outil scie et projets illimités – 2 mois offerts sur l’abonnement annuel.',
+        'preheader': 'Concevez plus vite : modèles prêts, export PDF & CNC, plan de coupe – sans publicité, 2 mois offerts sur l’abonnement annuel.',
         'fallback_name': 'à vous',
         'h1':        'Bonjour {name}, tirez le meilleur<br>de vos projets bois.',
         'intro':     'Vous concevez déjà vos structures en 3D gratuitement – bravo ! Avec <strong style="color:#9a5b2c;">HolzBau&nbsp;3D&nbsp;Premium</strong>, vous travaillez plus vite, plus proprement et sans aucune publicité. Tout est débloqué, pour un abonnement au juste prix.',
