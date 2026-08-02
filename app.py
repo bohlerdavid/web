@@ -1282,6 +1282,7 @@ def sitemap():
   {home}
   {guide_idx}
   {guide_arts}
+  <url><loc>{SITE}/demo</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
   <url><loc>{SITE}/pricing</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>{SITE}/ueber-uns</loc><changefreq>yearly</changefreq><priority>0.5</priority></url>
   <url><loc>{SITE}/impressum</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
@@ -2665,6 +2666,24 @@ def holzbau():
     # validate_csrf() jede Meldung mit 403 abweisen.
     return render_template('holzbau.html', show_ads=(plan == 'free'), user_plan=plan,
                            csrf_token=generate_csrf())
+
+
+@app.route('/demo')
+def demo():
+    """Oeffentliche, login-freie Ansicht des 3D-Planers.
+
+    Zweck: Googlebot (und jeder Besucher) sieht das eigentliche Produkt sofort,
+    ohne Konto. Bisher landete Googlebot auf /holzbau -> 302 /login, das Produkt
+    war fuer die AdSense-Pruefung unsichtbar ("minderwertige Inhalte").
+
+    Bewusst KEIN session['user_id']: der Plan wird direkt 'free' gesetzt, sonst
+    wuerde get_user_plan(session['user_id']) fuer anonyme Anfragen crashen.
+    show_ads=False, weil vor der AdSense-Freigabe keine Anzeigen laufen sollen;
+    demo=True schaltet im Template das Beispielmodell + die Registrieren-CTA frei.
+    Speichern/Export bleiben client-seitig premium-gesperrt -> Funnel zur Anmeldung.
+    """
+    return render_template('holzbau.html', show_ads=False, user_plan='free',
+                           demo=True, csrf_token=generate_csrf())
 
 
 # ---------------------------------------------------------------------------

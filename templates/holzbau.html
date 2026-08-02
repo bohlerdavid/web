@@ -3,7 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Holzkonstruktion 3D</title>
+<title>{% if demo|default(false) %}Holzkonstruktion online in 3D planen – kostenlose Demo · HolzBau 3D{% else %}Holzkonstruktion 3D{% endif %}</title>
+{% if demo|default(false) %}
+{# Nur die oeffentliche Demo ist indexierbar und braucht daher vollstaendige
+   SEO-Meta. Der Editor hinter dem Login bleibt bewusst ohne. #}
+<meta name="description" content="Teste den HolzBau-3D-Planer direkt im Browser – ohne Installation, ohne Anmeldung. Balken setzen, Dachstuhl oder Pergola konstruieren, Stückliste erzeugen. Kostenlose Live-Demo.">
+<link rel="canonical" href="https://holzbau3d.app/demo">
+<meta name="robots" content="index,follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="HolzBau 3D – kostenlose Live-Demo im Browser">
+<meta property="og:description" content="Holzkonstruktion online in 3D planen – ohne Installation, ohne Anmeldung.">
+<meta property="og:url" content="https://holzbau3d.app/demo">
+<meta property="og:image" content="https://holzbau3d.app/static/og-image.png">
+{% endif %}
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <script src="/static/i18n.js" defer></script>
   <script src="/static/hb_tools.js"></script>
@@ -1121,7 +1133,12 @@ body {
 
   <div class="tb-divider"></div>
   <button class="tb-btn" id="theme-toggle" onclick="toggleTheme()" title="Hell/Dunkel-Modus wechseln" style="font-size:15px;padding:0 6px">🌙</button>
-  {% if not show_ads %}
+  {% if demo|default(false) %}
+  {# Demo-Modus: keine Sitzung. Statt eines leeren Kontomenues die klare
+     Aufforderung zum Registrieren/Anmelden — das ist der Funnel. #}
+  <a href="/login" style="margin-left:auto;display:flex;align-items:center;gap:4px;background:none;border:none;padding:2px 8px;font-size:12px;color:var(--text-2);font-weight:600;text-decoration:none;flex-shrink:0">Anmelden</a>
+  <a href="/register" style="display:flex;align-items:center;gap:5px;background:var(--green);border:1px solid var(--green);border-radius:var(--r-sm);padding:3px 12px;font-size:12px;color:#06281c;font-weight:700;text-decoration:none;flex-shrink:0;margin-left:2px">🔓 Kostenlos registrieren</a>
+  {% elif not show_ads %}
   {# "Feedback senden" sitzt jetzt im Benutzermenue — die Leiste war voll.
      margin-left:auto hing am Feedback-Knopf und muss hierher, sonst klebt
      die rechte Gruppe nicht mehr am Rand. #}
@@ -1129,6 +1146,7 @@ body {
   {% else %}
   <a href="/subscribe" style="margin-left:auto;display:flex;align-items:center;gap:5px;background:rgba(78,140,221,.1);border:1px solid rgba(78,140,221,.25);border-radius:var(--r-sm);padding:2px 10px;font-size:11px;color:var(--accent);font-weight:600;text-decoration:none;flex-shrink:0">⬆ Upgrade</a>
   {% endif %}
+  {% if not demo|default(false) %}
   <div style="position:relative;flex-shrink:0;margin-left:4px;" id="user-menu-wrap">
     <button onclick="toggleUserMenu(event)" class="tb-btn" style="padding:0 10px;color:var(--text);display:flex;align-items:center;gap:5px;font-size:13px;background:none;border:none;cursor:pointer;">
       <span style="font-size:15px;">👤</span>
@@ -1160,6 +1178,7 @@ body {
       <a href="/logout" class="umenu-item" style="color:#f87171;"><span>🚪</span><span>Abmelden</span></a>
     </div>
   </div>
+  {% endif %}
 
 </div>
 
@@ -1796,7 +1815,11 @@ body {
     </div>
     <div style="display:flex;gap:10px">
       <button onclick="document.getElementById('upgrade-modal').style.display='none'" style="flex:1;padding:10px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r);color:var(--text-2);cursor:pointer;font-family:var(--font);font-size:.9rem">Abbrechen</button>
+      {% if demo|default(false) %}
+      <a href="/register" style="flex:1;padding:10px;background:var(--accent);border:none;border-radius:var(--r);color:#fff;cursor:pointer;font-family:var(--font);font-size:.9rem;font-weight:700;text-decoration:none;display:flex;align-items:center;justify-content:center;gap:6px">🔓 Kostenlos registrieren</a>
+      {% else %}
       <a href="/subscribe" style="flex:1;padding:10px;background:var(--accent);border:none;border-radius:var(--r);color:#fff;cursor:pointer;font-family:var(--font);font-size:.9rem;font-weight:700;text-decoration:none;display:flex;align-items:center;justify-content:center;gap:6px">✨ Upgrade — 9,99€/Monat</a>
+      {% endif %}
     </div>
     <button onclick="document.getElementById('upgrade-modal').style.display='none'" style="position:absolute;top:12px;right:14px;background:none;border:none;color:var(--text-3);font-size:18px;cursor:pointer">✕</button>
   </div>
@@ -1953,6 +1976,9 @@ import { clone as skeletonClone } from 'three/addons/utils/SkeletonUtils.js';
 // ── PLAN (injected by Flask) ──
 const USER_PLAN = '{{ user_plan|default("free") }}';
 const IS_PREMIUM = USER_PLAN === 'premium';
+// Demo-Modus: oeffentliche, login-freie Ansicht (/demo). Laedt ein Beispielmodell
+// und schaltet Auto-Speichern in localStorage ab (kein Konto = nichts zu sichern).
+const DEMO = {% if demo|default(false) %}true{% else %}false{% endif %};
 const MAX_FREE_BEAMS = 20;
 
 /* Meldet dem Server EINMAL pro Sitzung, dass ein Premium-Feature benutzt wird.
@@ -2670,6 +2696,27 @@ function loadTemplate(key) {
   });
   updateUI();
   showTab('balken');
+}
+
+// Demo-Startmodell: baut das Satteldach OHNE Premium-Sperre, damit die
+// oeffentliche /demo-Ansicht (und Googlebot) sofort eine echte Konstruktion
+// sieht statt einer leeren Buehne. Bewusst NICHT ueber loadTemplate (das ist
+// premium-gesperrt) — hier bauen wir die Balken direkt.
+function loadDemoModel() {
+  try {
+    const tpl = TEMPLATES['satteldach'];
+    if (!tpl) return;
+    const groupName = 'Satteldach 1';
+    if (!groups.includes(groupName)) groups.push(groupName);
+    tpl.beams.forEach(s => {
+      const beam = { rx:0, ry:0, rz:0, phase:null, shape:'rect', ...s, group: groupName, id: idCounter++, mesh:null };
+      beam.mesh = createBeamMesh(beam);
+      scene.add(beam.mesh);
+      beams.push(beam);
+    });
+    updateUI();
+    resetCamera();
+  } catch (e) { console.error('Demo-Modell konnte nicht geladen werden:', e); }
 }
 
 function setDims(b, h) {
@@ -8324,10 +8371,16 @@ try {
   updateUndoRedoButtons();
   initPanelToggles();
   initHelpPanel();
-  checkAutosaveOnLoad();
-  // Auto-Speichern alle 8s + beim Verlassen der Seite (Free — verhindert Datenverlust)
-  setInterval(autosaveNow, 8000);
-  window.addEventListener('beforeunload', autosaveNow);
+  if (DEMO) {
+    // Oeffentliche Demo: Beispielmodell statt Autosave. Kein Konto → nichts
+    // zu sichern, und der Besucher soll sofort eine Konstruktion sehen.
+    loadDemoModel();
+  } else {
+    checkAutosaveOnLoad();
+    // Auto-Speichern alle 8s + beim Verlassen der Seite (Free — verhindert Datenverlust)
+    setInterval(autosaveNow, 8000);
+    window.addEventListener('beforeunload', autosaveNow);
+  }
 } catch(e) {
   console.error('Init error:', e);
 }
@@ -8517,6 +8570,10 @@ document.addEventListener('keydown', function(e) {
 });
 </script>
 
+{% if not demo|default(false) %}
+{# Sitzungs-Timeout gibt es nur mit Konto. In der oeffentlichen Demo (keine
+   Sitzung) waere der Auto-Logout nach 1h sinnlos und wuerde den Besucher auf
+   /logout werfen — darum hier komplett aus. #}
 <div id="sw-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999999;align-items:center;justify-content:center;">
   <div style="background:#1e1e1e;border:1px solid #333;border-radius:14px;padding:32px;max-width:380px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.6);text-align:center;">
     <div style="font-size:36px;margin-bottom:12px">⏱️</div>
@@ -8557,6 +8614,7 @@ document.addEventListener('keydown', function(e) {
   reset();
 })();
 </script>
+{% endif %}
 
 {# ── HANDY-EINSTIEG ─────────────────────────────────────────────────────────
    Der Editor ist fuer PC und Tablet gemacht. Trotzdem landet man nach dem
@@ -8572,6 +8630,10 @@ document.addEventListener('keydown', function(e) {
     <h1 class="mg-titel">Der Editor braucht einen größeren Bildschirm</h1>
     <p class="mg-text">Zum Konstruieren ist ein Handy zu klein — dafür bitte PC oder Tablet nehmen. Alles andere erreichst du hier:</p>
 
+    {% if demo|default(false) %}
+    <a href="/register" class="mg-btn"><span>🔓</span><span>Kostenlos registrieren</span></a>
+    <a href="/login" class="mg-btn"><span>👤</span><span>Anmelden</span></a>
+    {% else %}
     <a href="/profile" class="mg-btn"><span>👤</span><span>Profil &amp; Passwort</span></a>
     <a href="/subscribe" class="mg-btn"><span>⭐</span><span>Abonnement</span></a>
     {% if session.get('role') == 'admin' %}
@@ -8579,6 +8641,7 @@ document.addEventListener('keydown', function(e) {
     <a href="/admin/feedback" class="mg-btn"><span>💬</span><span>Admin: Feedback</span></a>
     {% endif %}
     <a href="/logout" class="mg-btn mg-rot"><span>🚪</span><span>Abmelden</span></a>
+    {% endif %}
 
     <button type="button" class="mg-trotzdem" onclick="window.hbGateAus()">Editor trotzdem öffnen</button>
   </div>
