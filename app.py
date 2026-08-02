@@ -1234,6 +1234,22 @@ def security_txt_legacy():
     return app.response_class(_security_txt_body(), mimetype='text/plain')
 
 
+@app.route('/figures/<slug>.svg')
+def figure_svg(slug):
+    """Artikel-eigenes Diagramm als eigenstaendige SVG-Datei — fuers JSON-LD-
+    und og:image. So hat jeder Artikel ein passendes Bild statt fuer alle
+    dasselbe og-image.png."""
+    key = _figures.hero_key(slug)
+    if not key:
+        abort(404)
+    # XML-Deklaration nur fuer die EIGENSTAENDIGE Datei (Scraper/als Bild geladen);
+    # INLINE im Artikel darf sie NICHT stehen, dort kommt die Figur ohne Prolog.
+    svg = '<?xml version="1.0" encoding="UTF-8"?>\n' + _figures._F[key][0]()
+    resp = app.response_class(svg, mimetype='image/svg+xml')
+    resp.headers['Cache-Control'] = 'public, max-age=86400'
+    return resp
+
+
 @app.route('/sitemap.xml')
 def sitemap():
     def alts():
@@ -1521,6 +1537,7 @@ def index_fr():
 # Ratgeber / Blog (SEO-Content, DE/EN/FR)
 # ---------------------------------------------------------------------------
 import blog_content as _blog
+import blog_figures as _figures
 
 
 def _blog_index(lang):
@@ -1544,6 +1561,14 @@ def _blog_article(slug, lang):
     if slug not in _blog.ARTICLES:
         abort(404)
     a = _blog.ARTICLES[slug].get(lang) or _blog.ARTICLES[slug]['de']
+    # Technische Diagramme einspeisen — dieselbe Quelle bleibt unveraendert, nur
+    # die gerenderte Kopie bekommt die SVGs. Behebt "null Bilder" ohne die grossen
+    # Content-Strings anzufassen.
+    a = dict(a)
+    a['body_html'] = _figures.inject(a['body_html'], slug, lang)
+    # Artikel-eigenes Bild fuers JSON-LD/OG statt fuer alle dasselbe og-image.
+    hero = _figures.hero_key(slug)
+    bild_url = (SITE + '/figures/' + slug + '.svg') if hero else (SITE + '/static/og-image.png')
     alts = [(l, SITE + _blog.article_url(slug, l)) for l in ('de', 'en', 'fr')]
     alts.append(('x-default', SITE + _blog.article_url(slug, 'de')))
     url = SITE + _blog.article_url(slug, lang)
@@ -1554,7 +1579,7 @@ def _blog_article(slug, lang):
         'author': {'@type': 'Person', 'name': 'David Bohler', 'url': SITE + '/ueber-uns'},
         'publisher': {'@type': 'Organization', 'name': 'HolzBau 3D',
                       'logo': {'@type': 'ImageObject', 'url': SITE + '/static/og-image.png'}},
-        'image': SITE + '/static/og-image.png',
+        'image': bild_url,
         'mainEntityOfPage': {'@type': 'WebPage', '@id': url},
     }, ensure_ascii=False)
     crumb_ld = json.dumps({
