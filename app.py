@@ -189,6 +189,40 @@ def row_to_dict(row):
     return dict(row)
 
 
+# Alle Tabellen mit Personenbezug, absteigend nach Abhaengigkeit. app_users
+# kommt zuletzt, sonst zeigen die uebrigen Zeilen auf ein Konto, das es nicht
+# mehr gibt.
+PERSONENBEZOGENE_TABELLEN = (
+    ('feedback', 'user_id'),        # Betreff, Nachricht, Screenshot, Projekt-JSON
+    ('feature_use', 'user_id'),     # welche Funktion wann benutzt wurde
+    ('subscriptions', 'user_id'),
+)
+
+
+def _nutzerdaten_loeschen(user_id):
+    """Loescht ALLE personenbezogenen Zeilen eines Kontos.
+
+    Bisher raeumten beide Loeschpfade (Selbstloeschung und Admin-Loeschung) nur
+    subscriptions und app_users ab. Liegen geblieben sind feedback — mit
+    Betreff, Nachrichtentext, Screenshot und dem mitgeschickten Projekt-JSON —
+    und feature_use. Fremdschluessel, die das automatisch erledigen wuerden,
+    gibt es nicht. Die Datenschutzerklaerung sagt aber zu, "alle
+    personenbezogenen Daten innerhalb von 30 Tagen" zu loeschen.
+
+    Fehler beim Aufraeumen werden protokolliert, halten die Kontoloeschung aber
+    nicht auf: ein Nutzer, der sein Konto loescht, darf nicht an einer
+    Nebentabelle scheitern.
+    """
+    for tabelle, spalte in PERSONENBEZOGENE_TABELLEN:
+        try:
+            execute_db('DELETE FROM %s WHERE %s=?' % (tabelle, spalte), [user_id])
+        except Exception as e:
+            logger.error('Loeschen aus %s fuer Nutzer %s fehlgeschlagen: %s',
+                         tabelle, user_id, type(e).__name__)
+    execute_db('DELETE FROM app_users WHERE id=?', [user_id])
+    logger.info('Konto %s und zugehoerige Daten geloescht', user_id)
+
+
 SCHEMA_STATEMENTS = [
     """CREATE TABLE IF NOT EXISTS app_users (
         id            INT PRIMARY KEY AUTO_INCREMENT,
@@ -295,6 +329,10 @@ SCHEMA_MIGRATIONS = [
     # NULL bleibt mehrfach erlaubt (MySQL zaehlt NULL nicht als Dublette), das
     # Admin-Konto ohne Adresse stoert also nicht.
     "ALTER TABLE app_users ADD UNIQUE INDEX uniq_email (email)",
+    # Widerspruch gegen die Nutzungsstatistik (Art. 21 DSGVO). Die Erhebung
+    # stuetzt sich auf berechtigtes Interesse — dann muss ein Widerspruch
+    # moeglich und wirksam sein, nicht nur in der Erklaerung erwaehnt.
+    "ALTER TABLE app_users ADD COLUMN stats_opt_out TINYINT NOT NULL DEFAULT 0",
 ]
 
 
@@ -309,6 +347,20 @@ def init_db():
                     cur.execute(migration)
                 except Exception:
                     pass
+            # Waisen aufraeumen: Zeilen aus frueher geloeschten Konten. Bis
+            # _nutzerdaten_loeschen existierte, raeumten beide Loeschpfade nur
+            # subscriptions und app_users ab — feedback und feature_use blieben
+            # mit ihrer user_id stehen, obwohl das Konto weg war. Idempotent,
+            # laeuft bei jedem Start und findet danach nichts mehr.
+            for tabelle, spalte in PERSONENBEZOGENE_TABELLEN:
+                try:
+                    cur.execute('DELETE FROM %s WHERE %s IS NOT NULL AND %s NOT IN '
+                                '(SELECT id FROM app_users)' % (tabelle, spalte, spalte))
+                    if cur.rowcount:
+                        logger.warning('%d verwaiste Zeile(n) aus %s entfernt (Konto existiert nicht mehr)',
+                                       cur.rowcount, tabelle)
+                except Exception as e:
+                    logger.error('Waisen-Aufraeumen in %s fehlgeschlagen: %s', tabelle, type(e).__name__)
             cur.execute("SELECT COUNT(*) as c FROM app_users")
             count = cur.fetchone()['c']
             if count == 0:
@@ -2052,8 +2104,7 @@ def profile_delete():
                 logger.error('Stripe cancel on self-delete failed user %s: %s', user_id, e)
 
         _send_delete_email(user_id, sub_info=dict(sub) if sub else None)
-        execute_db('DELETE FROM subscriptions WHERE user_id=?', [user_id])
-        execute_db('DELETE FROM app_users WHERE id=?', [user_id])
+        _nutzerdaten_loeschen(user_id)
         session.clear()
         flash('Dein Konto wurde dauerhaft gelöscht.', 'success')
         return redirect(url_for('index'))
@@ -2076,6 +2127,10 @@ def telemetry_feature():
     verschluckt. Telemetrie darf die App nie stoeren."""
     if not validate_csrf(request.form.get('csrf_token', '')):
         return ('', 204)   # still schlucken, nicht 403 — ein Beacon soll nie auffallen
+    # Widerspruch zuerst pruefen, VOR jeder Verarbeitung. Ein Schalter, der nur
+    # in der Oberflaeche steht, aber den Schreibpfad nicht anhaelt, ist wertlos.
+    if _stats_abgelehnt(session['user_id']):
+        return ('', 204)
     feature = (request.form.get('feature', '') or '').strip()[:60]
     if not feature:
         return ('', 204)
@@ -2086,6 +2141,46 @@ def telemetry_feature():
     except Exception as e:
         logger.warning('feature_use Protokoll fehlgeschlagen: %s', type(e).__name__)
     return ('', 204)
+
+
+def _stats_abgelehnt(user_id):
+    """Hat dieses Konto der Nutzungsstatistik widersprochen?
+
+    Bei Zweifel (Spalte fehlt, DB-Fehler) wird NICHT erfasst — im Zweifel gegen
+    die Datenverarbeitung, nicht dafuer.
+    """
+    try:
+        r = query_db('SELECT stats_opt_out FROM app_users WHERE id=?', [user_id], one=True)
+        return bool(r and r['stats_opt_out'])
+    except Exception as e:
+        logger.warning('stats_opt_out nicht lesbar (%s) — im Zweifel nicht erfassen', type(e).__name__)
+        return True
+
+
+@app.route('/profile/set-stats', methods=['POST'])
+@login_required
+def profile_set_stats():
+    """Widerspruch gegen die Nutzungsstatistik (Art. 21 DSGVO) ein-/ausschalten.
+
+    Beim Widerspruch werden die bereits erhobenen Zeilen geloescht — sonst waere
+    es nur ein Stopp fuer die Zukunft, und die Datenschutzerklaerung sagt
+    ausdruecklich Loeschung zu.
+    """
+    if not validate_csrf(request.form.get('csrf_token', '')):
+        abort(403)
+    user_id = session['user_id']
+    # Checkbox "Statistik erlauben": nicht angehakt -> Widerspruch
+    erlauben = bool(request.form.get('stats_erlauben'))
+    execute_db('UPDATE app_users SET stats_opt_out=? WHERE id=?', [0 if erlauben else 1, user_id])
+    if not erlauben:
+        try:
+            execute_db('DELETE FROM feature_use WHERE user_id=?', [user_id])
+        except Exception as e:
+            logger.error('Statistik-Loeschung fuer Nutzer %s fehlgeschlagen: %s', user_id, type(e).__name__)
+        flash('Widerspruch gespeichert. Deine bisherigen Statistikdaten wurden gelöscht.', 'success')
+    else:
+        flash('Danke — die anonyme Auswertung hilft uns, die App zu verbessern.', 'success')
+    return redirect(url_for('profile'))
 
 
 @app.route('/profile/set-lang', methods=['POST'])
@@ -2474,9 +2569,8 @@ def admin_delete_user():
         except Exception as e:
             logger.error('Stripe cancel on delete failed for user %s: %s', user_id, e)
 
-    execute_db('DELETE FROM subscriptions WHERE user_id=?', [user_id])
     username = user['username']
-    execute_db('DELETE FROM app_users WHERE id=?', [user_id])
+    _nutzerdaten_loeschen(user_id)
 
     flash(f'Benutzer „{username}" wurde gelöscht.', 'success')
     return redirect(url_for('admin_users'))

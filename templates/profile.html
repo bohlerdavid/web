@@ -50,6 +50,31 @@
 </div>
 
 <div class="info-card">
+  <h5><i class="bi bi-bar-chart me-2" style="color:#d97706;"></i>Nutzungsstatistik</h5>
+  <p class="text-muted" style="font-size:.85rem;margin-bottom:14px;">
+    Damit wir sehen, welche Funktionen gebraucht werden und wo es hakt, halten wir fest,
+    <strong>welche Funktion du benutzt hast</strong> — nur den Namen der Funktion, deinen Tarif
+    und den Zeitpunkt. <strong>Deine Konstruktionen werden dabei nicht erfasst</strong>: keine Maße,
+    keine Bauteilnamen, keine Kalkulationen. Du kannst jederzeit widersprechen; bereits erhobene
+    Daten löschen wir dann. Details in der
+    <a href="/datenschutz" style="color:#d97706;">Datenschutzerklärung</a>.
+  </p>
+  <form method="POST" action="{{ url_for('profile_set_stats') }}" class="d-flex align-items-center gap-3 flex-wrap">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="form-check">
+      {# Nicht angehakt = Widerspruch. Voreinstellung ist erlaubt (berechtigtes
+         Interesse), der Schalter macht den Widerspruch aber sofort wirksam. #}
+      <input class="form-check-input" type="checkbox" name="stats_erlauben" id="stats_erlauben"
+             {% if not user.get('stats_opt_out') %}checked{% endif %}>
+      <label class="form-check-label" for="stats_erlauben">
+        Anonyme Auswertung der Funktionsnutzung erlauben
+      </label>
+    </div>
+    <button type="submit" class="btn btn-wood px-4"><i class="bi bi-check-lg me-1"></i>Speichern</button>
+  </form>
+</div>
+
+<div class="info-card">
   <h5><i class="bi bi-lock me-2" style="color:#d97706;"></i>Passwort ändern</h5>
   <form method="POST" action="{{ url_for('profile') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
