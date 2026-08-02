@@ -221,6 +221,40 @@
       </div>
     </div>
 
+    {# ── Doppelte E-Mail-Adressen ──────────────────────────────────────────── #}
+    <div class="card shadow-sm mb-4" style="{% if doppelte %}border-color:#fca5a5;background:#fef2f2{% else %}border-color:#86efac;background:#f0fdf4{% endif %}">
+      <div class="card-body">
+        <h6 class="fw-bold mb-1">
+          <i class="bi bi-{% if doppelte %}exclamation-octagon{% else %}check-circle{% endif %} me-1"></i>
+          Doppelte E-Mail-Adressen
+        </h6>
+        {% if doppelte %}
+          <p class="hinweis mb-2">
+            <strong>{{ doppelte|length }} Adresse(n) kommen mehrfach vor.</strong> Das muss bereinigt
+            werden, bevor die E-Mail als Anmeldename dienen kann — und es ist schon jetzt ein echtes
+            Risiko: Das Passwort-Zurücksetzen sucht mit <span class="mono">WHERE email = ?</span> und
+            trifft bei Doppeleinträgen stillschweigend das falsche Konto.
+          </p>
+          <table class="table table-sm mb-0">
+            <thead><tr><th>E-Mail</th><th>Konten</th></tr></thead>
+            <tbody>
+              {% for d in doppelte %}
+              <tr><td class="mono">{{ d.email }}</td><td class="mono">{{ d.konten|join(', ') }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="hinweis mb-0">
+            Keine Adresse kommt doppelt vor — der Datenbestand ist sauber. Damit kann die E-Mail
+            gefahrlos als Anmeldename dienen und ein <span class="mono">UNIQUE</span>-Index auf die
+            Spalte gesetzt werden. <strong>Hinweis:</strong> Die Datenbank erzwingt das bisher
+            <em>nicht</em> — nur der Registrierungs-Code prüft es, und der hat bei zwei gleichzeitigen
+            Anmeldungen eine Lücke.
+          </p>
+        {% endif %}
+      </div>
+    </div>
+
     {# ── Ehrliche Einschränkungen ──────────────────────────────────────────── #}
     <div class="card shadow-sm mb-5" style="border-color:#fcd34d;background:#fffbeb">
       <div class="card-body">

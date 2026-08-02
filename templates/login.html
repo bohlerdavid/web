@@ -66,14 +66,17 @@
       {% endif %}
 
       <div class="mb-3">
-        <label class="form-label fw-semibold" for="username">Benutzername oder E-Mail</label>
+        <label class="form-label fw-semibold" for="username">E-Mail-Adresse</label>
         <div class="input-group">
-          <span class="input-group-text bg-light"><i class="bi bi-person text-muted"></i></span>
+          <span class="input-group-text bg-light"><i class="bi bi-envelope text-muted"></i></span>
+          {# type bleibt "text", NICHT "email": der Benutzername funktioniert
+             weiterhin, und die Browser-Pruefung wuerde ihn sonst abweisen. #}
           <input type="text" id="username" name="username" class="form-control"
                  autocomplete="username" required autofocus
-                 placeholder="Benutzername oder E-Mail-Adresse"
+                 placeholder="name@beispiel.de"
                  value="{{ request.form.get('username', '') }}">
         </div>
+        <div class="form-text" style="font-size:.78rem">Dein bisheriger Benutzername funktioniert weiterhin.</div>
       </div>
 
       <div class="mb-1">

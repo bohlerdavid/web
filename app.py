@@ -2324,6 +2324,20 @@ def admin_nutzer_analyse():
     for u in nutzer:
         sprachen[u['lang'] or 'de'] = sprachen.get(u['lang'] or 'de', 0) + 1
 
+    # Doppelte E-Mail-Adressen. Wichtig, weil die Spalte KEINE UNIQUE-Bedingung
+    # hat — die Eindeutigkeit prueft nur der Registrierungs-Code (app.py ca. 1744),
+    # und der hat eine Luecke bei gleichzeitigen Anmeldungen. Solange hier etwas
+    # steht, kann weder ein UNIQUE-Index gesetzt noch der Login sicher auf die
+    # E-Mail umgestellt werden — und das Passwort-Zuruecksetzen (WHERE email=?,
+    # one=True) wuerde stillschweigend das falsche Konto treffen.
+    _per_mail = {}
+    for u in nutzer:
+        m = (u['email'] or '').strip().lower()
+        if m:
+            _per_mail.setdefault(m, []).append(u['username'])
+    doppelte = sorted(({'email': m, 'konten': k} for m, k in _per_mail.items() if len(k) > 1),
+                      key=lambda d: -len(d['konten']))
+
     # "Erreichbar" = bestaetigte Adresse, keine Wegwerfdomain. Nur diese Menge
     # ist ueberhaupt ein sinnvoller Nenner fuer eine Konversionsrate.
     erreichbar = len(stufen['zahlend']) + len(stufen['wiedergekommen']) \
@@ -2339,7 +2353,8 @@ def admin_nutzer_analyse():
                            domains=domains, sprachen=sorted(sprachen.items()),
                            erreichbar=erreichbar, aktiv=aktiv, zahlend=zahlend,
                            quote_alle=quote_alle, quote_erreichbar=quote_erreichbar,
-                           quote_aktiv=quote_aktiv, stichtag=stichtag, heute=heute)
+                           quote_aktiv=quote_aktiv, stichtag=stichtag, heute=heute,
+                           doppelte=doppelte)
 
 
 @app.route('/admin/feature-use')
