@@ -60,7 +60,21 @@
     {% endif %}
     {% endwith %}
 
-    <h4 class="fw-bold mb-4"><i class="bi bi-people me-2"></i>Registrierte Benutzer ({{ users|length }})</h4>
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
+      <h4 class="fw-bold mb-0"><i class="bi bi-people me-2"></i>Registrierte Benutzer ({{ users|length }})</h4>
+      {# EIN Knopf fuer alle statt einer je Zeile: technisch guenstiger (die
+         Abo-Liste wird einmal geholt statt ~90 Einzelabfragen) und die Tabelle
+         bleibt uebersichtlich. Noetig, weil ein von Hand in Stripe angelegtes
+         Abo keine Checkout-Session erzeugt und darum sonst nie ankommt. #}
+      <form method="post" action="{{ url_for('admin_stripe_abgleich') }}" class="mb-0"
+            onsubmit="return confirm('Alle Stripe-Abos mit den Konten abgleichen? Die Zuordnung läuft über die E-Mail-Adresse.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn-sm btn-outline-secondary"
+                title="Holt alle Abos aus Stripe und verknüpft sie über die E-Mail mit den Konten">
+          <i class="bi bi-arrow-repeat me-1"></i>Stripe-Abgleich
+        </button>
+      </form>
+    </div>
 
     <div class="card shadow-sm">
       <div class="table-responsive">
@@ -134,18 +148,6 @@
                     <option value="premium" {% if u.plan == 'premium' %}selected{% endif %}>Premium</option>
                   </select>
                   <button type="submit">Setzen</button>
-                </form>
-                {# Holt ein direkt in Stripe angelegtes Abo per E-Mail ins Konto.
-                   Ohne das bleibt so ein Abo unsichtbar: es entsteht keine
-                   Checkout-Session, an der der normale Abgleich haengt. #}
-                <form method="post" action="{{ url_for('admin_stripe_abgleich', uid=u.id) }}"
-                      style="margin-top:4px;"
-                      onsubmit="return confirm('Stripe nach einem Abo für {{ u.email }} durchsuchen und verknüpfen?');">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                  <button type="submit" style="font-size:.72rem;padding:2px 8px;"
-                          title="Sucht in Stripe nach einem Kunden mit dieser E-Mail und übernimmt dessen Abo">
-                    ⟳ Stripe-Abgleich
-                  </button>
                 </form>
               </td>
               <td class="text-muted small" data-v="{{ u.created_at|string }}">{{ u.created_at|lokal }}</td>
