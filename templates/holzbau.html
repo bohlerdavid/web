@@ -1086,9 +1086,9 @@ body {
 
   <div class="tb-group">
     <button class="tb-btn" onclick="newProject()" title="Neues Projekt">Neu</button>
-    <button class="tb-btn" onclick="saveProject()" title="Projekt speichern">💾 Speichern{% if show_ads %} 🔒{% endif %}</button>
-    <label class="tb-btn" style="cursor:pointer" title="Projekt laden">📂 Laden{% if show_ads %} 🔒{% endif %}<input type="file" id="load-file-input" accept=".json,application/json" style="display:none" onchange="handleLoadFile(event)"></label>
-    <button class="tb-btn" onclick="exportStückliste()" title="Stückliste exportieren">📋 Export{% if show_ads %} 🔒{% endif %}</button>
+    <button class="tb-btn" onclick="saveProject()" title="Projekt speichern">💾 Speichern</button>
+    <label class="tb-btn" style="cursor:pointer" title="Projekt laden">📂 Laden<input type="file" id="load-file-input" accept=".json,application/json" style="display:none" onchange="handleLoadFile(event)"></label>
+    <button class="tb-btn" onclick="exportStückliste()" title="Stückliste exportieren">📋 Export</button>
   </div>
 
   <div class="tb-divider"></div>
@@ -1801,14 +1801,17 @@ body {
     <p style="color:var(--text-2);font-size:.9rem;line-height:1.6;margin-bottom:20px" id="upgrade-modal-desc">Diese Funktion ist im Premium-Abo verfügbar.</p>
     <div style="background:var(--bg-input);border-radius:var(--r);padding:16px;margin-bottom:20px;text-align:left">
       <div style="font-size:.8rem;color:var(--text-2);margin-bottom:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Premium beinhaltet:</div>
+      {# Speichern, Laden und die CSV-Stueckliste sind seit der Einloesung der
+         Preiszusage GRATIS — sie duerfen hier nicht mehr als Premium-Vorteil
+         beworben werden, sonst ist es derselbe Wortbruch nur andersherum. #}
       <div style="font-size:.85rem;color:var(--text);line-height:1.8">
-        ✅ Speichern &amp; Laden<br>
-        ✅ Stückliste exportieren<br>
-        ✅ Drucken / PDF<br>
-        ✅ Schnittplan-Optimierung<br>
-        ✅ Säge-Tool<br>
+        ✅ Fertige Vorlagen (Carport, Pergola …)<br>
+        ✅ Drucken / PDF-Plan<br>
+        ✅ Schnittplan &amp; Plattenzuschnitt<br>
+        ✅ DXF- &amp; CNC-Export<br>
+        ✅ Kalkulation &amp; Angebot<br>
+        ✅ Säge- &amp; Fräs-Werkzeug<br>
         ✅ Deko-Objekte<br>
-        ✅ Parallelreihe<br>
         ✅ Unbegrenzt Balken<br>
         ✅ Keine Werbung
       </div>
@@ -5890,8 +5893,11 @@ function serializeProject(includeImage) {
   return out;
 }
 
+/* Speichern und Laden sind FREI. Zwei Gruende: die Preisseite sagt es in allen
+   drei Sprachen zu ("Bis zu 3 Projekte"), und wer seine Arbeit nicht sichern
+   kann, kommt nicht wieder — ohne Wiederkehr entsteht die Kaufentscheidung nie.
+   Es ist ohnehin nur ein Datei-Download, kein Serverspeicher. */
 function saveProject() {
-  if (!requirePremium('💾 Projekt speichern', 'Projekte speichern und laden ist eine Premium-Funktion. Upgrade für unbegrenzte Projektverwaltung.')) return;
   const data = serializeProject(true);   // Bild-Vorlage in Datei mit einbetten
   const json = JSON.stringify(data, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
@@ -5905,7 +5911,6 @@ function saveProject() {
 
 function handleLoadFile(e) {
   const input = e.target || e;
-  if (!requirePremium('📂 Projekt laden', 'Gespeicherte Projekte laden ist eine Premium-Funktion.')) { input.value=''; return; }
   const file = input.files[0];
   input.value = ''; // reset so same file can be loaded again
   if (!file) return;
@@ -6072,8 +6077,10 @@ function screenshotPNG() {
 // EXPORT STÜCKLISTE
 // ══════════════════════════════════════════════
 
+/* Die CSV-Stueckliste ist FREI — die Preisseite sagt sie in allen drei Sprachen
+   fuer den Gratis-Plan zu. Bezahlt wird die AUFBEREITUNG: PDF, Schnittplan,
+   Plattenzuschnitt, DXF und CNC. */
 function exportStückliste() {
-  if (!requirePremium('📋 Stückliste exportieren', 'CSV-Export der Stückliste ist eine Premium-Funktion.')) return;
   const groups = groupBeamsForList();
 
   let csv = 'Pos;Anzahl;Bezeichnung;Holzart;Länge (mm);Breite (mm);Höhe (mm);Volumen gesamt (dm³)\n';

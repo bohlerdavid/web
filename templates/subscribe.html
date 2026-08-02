@@ -121,20 +121,24 @@
 <div class="info-card">
   <h5><i class="bi bi-grid me-2" style="color:#d97706;"></i>Dein Plan enthält</h5>
   <ul class="feature-list">
+    {# In BEIDEN Plaenen enthalten — steht darum ausserhalb der Verzweigung. #}
     <li><span style="color:#16a34a;font-size:1rem;">✓</span> 3D Holzkonstruktion im Browser</li>
+    <li><span style="color:#16a34a;font-size:1rem;">✓</span> Gruppen &amp; Ebenen</li>
+    <li><span style="color:#16a34a;font-size:1rem;">✓</span> Projekte speichern &amp; laden</li>
     <li><span style="color:#16a34a;font-size:1rem;">✓</span> Stückliste als CSV</li>
     {% if plan == 'premium' %}
-    <li><span style="color:#16a34a;font-size:1rem;">✓</span> Unbegrenzte Balken &amp; Projekte</li>
+    <li><span style="color:#16a34a;font-size:1rem;">✓</span> Unbegrenzte Balken</li>
     <li><span style="color:#16a34a;font-size:1rem;">✓</span> <strong>Werbefrei</strong></li>
-    <li><span style="color:#16a34a;font-size:1rem;">✓</span> PDF Export &amp; Druckpläne</li>
-    <li><span style="color:#16a34a;font-size:1rem;">✓</span> Säge-Tool &amp; Schnittplan</li>
-    <li><span style="color:#16a34a;font-size:1rem;">✓</span> Gruppen &amp; Ebenen</li>
+    <li><span style="color:#16a34a;font-size:1rem;">✓</span> PDF-, DXF- &amp; CNC-Export</li>
+    <li><span style="color:#16a34a;font-size:1rem;">✓</span> Vorlagen, Säge &amp; Schnittplan</li>
+    <li><span style="color:#16a34a;font-size:1rem;">✓</span> Kalkulation &amp; Angebot</li>
     <li><span style="color:#16a34a;font-size:1rem;">✓</span> Dekorationselemente</li>
     {% else %}
     <li><span style="color:#9ca3af;font-size:1rem;">✗</span> <span style="color:#9ca3af;">Max. 20 Balken (Free-Limit)</span></li>
     <li><span style="color:#f59e0b;font-size:.85rem;">⚠</span> <span style="color:#9ca3af;">Mit Werbebannern</span></li>
-    <li><span style="color:#9ca3af;font-size:1rem;">✗</span> <span style="color:#9ca3af;">PDF Export gesperrt</span></li>
-    <li><span style="color:#9ca3af;font-size:1rem;">✗</span> <span style="color:#9ca3af;">Säge-Tool gesperrt</span></li>
+    <li><span style="color:#9ca3af;font-size:1rem;">✗</span> <span style="color:#9ca3af;">PDF-, DXF- &amp; CNC-Export gesperrt</span></li>
+    <li><span style="color:#9ca3af;font-size:1rem;">✗</span> <span style="color:#9ca3af;">Vorlagen, Säge &amp; Schnittplan gesperrt</span></li>
+    <li><span style="color:#9ca3af;font-size:1rem;">✗</span> <span style="color:#9ca3af;">Kalkulation &amp; Angebot gesperrt</span></li>
     {% endif %}
   </ul>
 </div>
