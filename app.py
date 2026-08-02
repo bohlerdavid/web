@@ -1539,6 +1539,7 @@ def index_fr():
 # ---------------------------------------------------------------------------
 import blog_content as _blog
 import blog_figures as _figures
+import blog_fotos as _fotos
 
 
 def _blog_index(lang):
@@ -1567,9 +1568,18 @@ def _blog_article(slug, lang):
     # Content-Strings anzufassen.
     a = dict(a)
     a['body_html'] = _figures.inject(a['body_html'], slug, lang)
-    # Artikel-eigenes Bild fuers JSON-LD/OG statt fuer alle dasselbe og-image.
+    # Echtes Projektfoto (falls hinterlegt) ganz oben einblenden — staerkstes
+    # E-E-A-T-Signal. Fehlt die Datei, bleibt alles unveraendert.
+    a['body_html'] = _fotos.inject(a['body_html'], slug, lang, app.static_folder, SITE)
+    # Artikel-eigenes Bild fuers JSON-LD/OG. Reihenfolge: echtes Foto > Diagramm-
+    # SVG > allgemeines og-image.
     hero = _figures.hero_key(slug)
-    bild_url = (SITE + '/figures/' + slug + '.svg') if hero else (SITE + '/static/og-image.png')
+    if _fotos.vorhanden(app.static_folder, slug):
+        bild_url = _fotos.bild_url(SITE, slug)
+    elif hero:
+        bild_url = SITE + '/figures/' + slug + '.svg'
+    else:
+        bild_url = SITE + '/static/og-image.png'
     alts = [(l, SITE + _blog.article_url(slug, l)) for l in ('de', 'en', 'fr')]
     alts.append(('x-default', SITE + _blog.article_url(slug, 'de')))
     url = SITE + _blog.article_url(slug, lang)
