@@ -1664,6 +1664,20 @@ def login():
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
         user = query_db("SELECT * FROM app_users WHERE username = ?", (username,), one=True)
+        if not user and '@' in username:
+            # Sehr haeufige Falle: Das Zuruecksetzen des Passworts laeuft ueber die
+            # E-Mail — danach tippt fast jeder auch beim Anmelden seine E-Mail ein
+            # und scheitert, weil hier nur der Benutzername gesucht wurde. Nach
+            # fuenf Versuchen sperrt ihn dann auch noch die Fehlversuchszaehlung.
+            # Darum: sieht die Eingabe nach einer E-Mail aus, hilfsweise danach suchen.
+            treffer = query_db("SELECT * FROM app_users WHERE LOWER(email) = LOWER(?) "
+                               "ORDER BY id LIMIT 2", (username,))
+            # Nur bei EINDEUTIGEM Treffer anmelden. Die E-Mail hat keine
+            # UNIQUE-Bedingung in der Tabelle (nur eine Pruefung bei der
+            # Registrierung) — bei zwei Konten mit derselben Adresse duerfen wir
+            # nicht raten, welches gemeint ist.
+            if len(treffer) == 1:
+                user = treffer[0]
 
         if user and check_password_hash(user['password_hash'], password):
             # Block login if email is set but not verified
@@ -1930,8 +1944,14 @@ def reset_password(token):
             flash('Passwörter stimmen nicht überein.', 'danger')
             return render_template('reset_password.html', token=token, csrf_token=generate_csrf())
 
+        # email_verified=1: Der Link ging an genau diese Adresse — wer ihn
+        # anklickt und ein neues Passwort setzt, hat den Zugriff darauf bewiesen.
+        # Ohne das bleibt ein unbestaetigtes Konto nach dem Zuruecksetzen weiter
+        # ausgesperrt ("Bitte bestaetige zuerst deine E-Mail-Adresse") — mit
+        # einem Passwort, das nachweislich stimmt. Das versteht niemand.
         execute_db(
-            "UPDATE app_users SET password_hash=?, pw_reset_token=NULL, pw_reset_expires=NULL WHERE id=?",
+            "UPDATE app_users SET password_hash=?, pw_reset_token=NULL, pw_reset_expires=NULL, "
+            "email_verified=1 WHERE id=?",
             (generate_password_hash(new_pw), user['id'])
         )
         flash('Passwort erfolgreich geändert. Du kannst dich jetzt anmelden.', 'success')
