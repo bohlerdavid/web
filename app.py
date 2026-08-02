@@ -2985,17 +2985,17 @@ def _sync_user_from_stripe(user_id):
         return sub
 
 
+_STRIPE_RANG = {'active': 0, 'trialing': 1, 'past_due': 2}
+
+
 def _stripe_abos_holen(max_seiten=10):
     """Holt ALLE Abos aus Stripe in einem Durchlauf, Kunde mit ausgeklappt.
 
     Bewusst nicht je Nutzer anfragen: bei ~90 Konten waeren das hunderte
     Einzelaufrufe und damit ein sicherer Timeout. So sind es ein bis zwei.
-    Rueckgabe: ({email_klein: (kunden_id, abo)}, anzahl_kunden_ohne_email)
-    Je E-Mail bleibt das beste Abo: aktiv schlaegt gekuendigt, sonst das neuere.
+    Rueckgabe: Liste der Abo-Objekte (jeweils mit ausgeklapptem 'customer').
     """
-    RANG = {'active': 0, 'trialing': 1, 'past_due': 2}
-    beste = {}
-    ohne_mail = 0
+    alle = []
     nach = None
     for _ in range(max_seiten):
         p = {'status': 'all', 'limit': 100, 'expand[]': 'data.customer'}
@@ -3003,20 +3003,30 @@ def _stripe_abos_holen(max_seiten=10):
             p['starting_after'] = nach
         antwort = _stripe_api_get('subscriptions', p) or {}
         daten = antwort.get('data') or []
-        for s in daten:
-            kunde = s.get('customer')
-            if not isinstance(kunde, dict):
-                continue          # nicht ausgeklappt oder geloeschter Kunde
-            mail = (kunde.get('email') or '').strip().lower()
-            if not mail:
-                ohne_mail += 1
-                continue
-            schluessel = (RANG.get(s.get('status'), 9), -(s.get('created') or 0))
-            if mail not in beste or schluessel < beste[mail][0]:
-                beste[mail] = (schluessel, kunde.get('id'), s)
+        alle.extend(daten)
         if not daten or not antwort.get('has_more'):
             break
         nach = daten[-1].get('id')
+    return alle
+
+
+def _stripe_bestes_je_mail(abos):
+    """Je E-Mail-Adresse das beste Abo: aktiv schlaegt gekuendigt, sonst das neuere.
+    Rueckgabe: ({email_klein: (kunden_id, abo)}, anzahl_ohne_zuordenbare_email)
+    """
+    beste = {}
+    ohne_mail = 0
+    for s in abos:
+        kunde = s.get('customer')
+        if not isinstance(kunde, dict):
+            continue          # nicht ausgeklappt oder geloeschter Kunde
+        mail = (kunde.get('email') or '').strip().lower()
+        if not mail:
+            ohne_mail += 1
+            continue
+        schluessel = (_STRIPE_RANG.get(s.get('status'), 9), -(s.get('created') or 0))
+        if mail not in beste or schluessel < beste[mail][0]:
+            beste[mail] = (schluessel, kunde.get('id'), s)
     return {m: (v[1], v[2]) for m, v in beste.items()}, ohne_mail
 
 
@@ -3036,7 +3046,7 @@ def _stripe_abgleich_alle():
     if not os.environ.get('STRIPE_SECRET_KEY'):
         return False, 'STRIPE_SECRET_KEY ist auf dem Server nicht gesetzt.'
     try:
-        karte, ohne_mail = _stripe_abos_holen()
+        karte, ohne_mail = _stripe_bestes_je_mail(_stripe_abos_holen())
     except Exception as e:
         logger.error('stripe_abgleich_alle fehlgeschlagen: %s', type(e).__name__)
         return False, 'Stripe war nicht erreichbar (%s).' % type(e).__name__
@@ -3075,6 +3085,18 @@ def _stripe_abgleich_alle():
         _sync_user_from_stripe(u['id'])
         neu.append(u['email'])
 
+    # Was uebrig blieb, ist NICHT automatisch herrenlos: steht in Stripe eine
+    # andere Adresse als in der App (Firmen- statt persoenliche Adresse), wurde
+    # das Abo evtl. von Hand zugeordnet. Solche mit bestehender Verknuepfung
+    # hier herausnehmen, sonst meldet der Abgleich sie fuer immer als
+    # "ohne Konto" — eine Falschmeldung.
+    herrenlos = {}
+    for m, (cid, s) in karte.items():
+        if not _stripe_verknuepft(s.get('id'), cid):
+            herrenlos[m] = (cid, s)
+    von_hand = len(karte) - len(herrenlos)
+    karte = herrenlos
+
     def _liste(werte, grenze=5):
         rest = len(werte) - grenze
         return ', '.join(werte[:grenze]) + (' … +%d' % rest if rest > 0 else '')
@@ -3082,10 +3104,12 @@ def _stripe_abgleich_alle():
     teile = ['%d Abo(s) in Stripe' % gefunden]
     teile.append('%d neu verknüpft%s' % (len(neu), (': ' + _liste(neu)) if neu else ''))
     teile.append('%d bereits aktuell' % aktuell)
+    if von_hand:
+        teile.append('%d bereits von Hand zugeordnet (abweichende E-Mail in Stripe)' % von_hand)
     if fremd:
         teile.append('%d übersprungen (%s)' % (len(fremd), _liste(fremd, 3)))
     if karte:
-        teile.append('%d Stripe-Abo(s) ohne Konto in der App: %s'
+        teile.append('%d Stripe-Abo(s) noch ohne Konto: %s — unter „Stripe-Zuordnung“ von Hand zuweisen'
                      % (len(karte), _liste(sorted(karte.keys()))))
     if ohne_mail:
         teile.append('%d Stripe-Kunde(n) ohne E-Mail' % ohne_mail)
@@ -3101,6 +3125,136 @@ def admin_stripe_abgleich():
     ok, meldung = _stripe_abgleich_alle()
     flash(meldung, 'success' if ok else 'warning')
     return redirect(url_for('admin_users'))
+
+
+def _stripe_verknuepft(sub_id, customer_id):
+    """Haengt dieses Abo (oder sein Kunde) bereits an einem Konto? -> user_id"""
+    r = query_db('SELECT user_id FROM subscriptions WHERE stripe_sub_id=?', [sub_id], one=True)
+    if r:
+        return r['user_id']
+    if customer_id:
+        r = query_db('SELECT user_id FROM subscriptions WHERE stripe_customer_id=?',
+                     [customer_id], one=True)
+        if r:
+            return r['user_id']
+    return None
+
+
+def _aehnlichkeit(a, b):
+    """0..1 — grobe Namensaehnlichkeit, nur fuer die Vorschlags-Reihenfolge."""
+    from difflib import SequenceMatcher
+    a, b = (a or '').strip().lower(), (b or '').strip().lower()
+    if not a or not b:
+        return 0.0
+    return SequenceMatcher(None, a, b).ratio()
+
+
+@app.route('/admin/stripe-zuordnung', methods=['GET', 'POST'])
+@admin_required
+def admin_stripe_zuordnung():
+    """Stripe-Abos von Hand einem Konto zuordnen.
+
+    Noetig, weil die automatische Zuordnung ueber die E-Mail laeuft und in Stripe
+    oft eine ANDERE Adresse steht als in der App (z.B. die Sammeladresse der
+    Firma statt der persoenlichen). Der Abgleich meldet solche Abos dann als
+    "ohne Konto in der App", was schlicht falsch ist.
+
+    Bewusst KEIN automatisches Raten ueber Domain oder Namen: hier haengen Geld
+    und Zugang dran. Die Seite schlaegt den wahrscheinlichsten Nutzer nur vor —
+    zuordnen muss der Mensch.
+    """
+    if request.method == 'POST':
+        if not validate_csrf(request.form.get('csrf_token', '')):
+            abort(403)
+        sub_id = (request.form.get('sub_id') or '').strip()
+        customer_id = (request.form.get('customer_id') or '').strip()
+        try:
+            uid = int(request.form.get('user_id') or 0)
+        except ValueError:
+            uid = 0
+        if not sub_id or not uid:
+            flash('Bitte ein Abo und einen Nutzer auswählen.', 'warning')
+            return redirect(url_for('admin_stripe_zuordnung'))
+        if not query_db('SELECT id FROM app_users WHERE id=?', [uid], one=True):
+            flash('Nutzer nicht gefunden.', 'danger')
+            return redirect(url_for('admin_stripe_zuordnung'))
+        besitzer = query_db('SELECT user_id FROM subscriptions WHERE stripe_sub_id=? AND user_id<>?',
+                            [sub_id, uid], one=True)
+        if besitzer:
+            flash('Dieses Abo hängt bereits an Nutzer #%s — nicht übernommen.' % besitzer['user_id'],
+                  'warning')
+            return redirect(url_for('admin_stripe_zuordnung'))
+        if query_db('SELECT user_id FROM subscriptions WHERE user_id=?', [uid], one=True):
+            execute_db('UPDATE subscriptions SET stripe_customer_id=?, stripe_sub_id=? WHERE user_id=?',
+                       [customer_id or None, sub_id, uid])
+        else:
+            execute_db('INSERT INTO subscriptions (user_id, stripe_customer_id, stripe_sub_id, plan, status) '
+                       'VALUES (?, ?, ?, ?, ?)', [uid, customer_id or None, sub_id, 'free', 'active'])
+        neu = row_to_dict(_sync_user_from_stripe(uid) or {})
+        flash('Abo %s wurde Nutzer #%s zugeordnet — Plan jetzt "%s", Status "%s".'
+              % (sub_id, uid, neu.get('plan', '?'), neu.get('status', '?')), 'success')
+        return redirect(url_for('admin_stripe_zuordnung'))
+
+    if not os.environ.get('STRIPE_SECRET_KEY'):
+        flash('STRIPE_SECRET_KEY ist auf dem Server nicht gesetzt.', 'warning')
+        return render_template('admin_stripe_zuordnung.html', offen=[], zugeordnet=0, nutzer=[])
+
+    try:
+        abos = _stripe_abos_holen()
+    except Exception as e:
+        logger.error('stripe_zuordnung: %s', type(e).__name__)
+        flash('Stripe war nicht erreichbar (%s).' % type(e).__name__, 'danger')
+        return render_template('admin_stripe_zuordnung.html', offen=[], zugeordnet=0, nutzer=[])
+
+    nutzer = query_db("""
+        SELECT u.id, u.username, u.full_name, u.email,
+               COALESCE(s.plan, 'free') AS plan, s.stripe_sub_id
+        FROM app_users u LEFT JOIN subscriptions s ON s.user_id = u.id
+        WHERE u.username <> 'admin'
+        ORDER BY u.username
+    """) or []
+
+    offen, zugeordnet = [], 0
+    for s in abos:
+        kunde = s.get('customer') if isinstance(s.get('customer'), dict) else {}
+        cid = kunde.get('id')
+        if _stripe_verknuepft(s.get('id'), cid):
+            zugeordnet += 1
+            continue
+        mail = (kunde.get('email') or '').strip().lower()
+        domain = mail.split('@')[-1] if '@' in mail else ''
+        name = kunde.get('name') or ''
+        # Vorschlaege bewerten: gleiche Domain wiegt schwer (Firmenadresse vs.
+        # persoenliche Adresse ist genau der Fall, der hier auftritt),
+        # Namensaehnlichkeit kommt als zweites Signal dazu.
+        kand = []
+        for u in nutzer:
+            u_mail = (u['email'] or '').lower()
+            punkte = 0.0
+            gruende = []
+            if domain and u_mail.endswith('@' + domain):
+                punkte += 1.0
+                gruende.append('gleiche Domain')
+            ae = max(_aehnlichkeit(name, u['full_name']), _aehnlichkeit(name, u['username']))
+            if ae >= 0.55:
+                punkte += ae
+                gruende.append('ähnlicher Name')
+            if punkte > 0:
+                kand.append({'u': u, 'punkte': punkte, 'grund': ' + '.join(gruende)})
+        kand.sort(key=lambda k: -k['punkte'])
+        preis = ((s.get('items') or {}).get('data') or [{}])[0].get('price') or {}
+        betrag = preis.get('unit_amount')
+        offen.append({
+            'sub_id': s.get('id'), 'customer_id': cid,
+            'email': kunde.get('email') or '—', 'name': name or '—',
+            'status': s.get('status'),
+            'betrag': ('%.2f %s' % (betrag / 100.0, (preis.get('currency') or '').upper())) if betrag else '—',
+            'intervall': (preis.get('recurring') or {}).get('interval') or '—',
+            'vorschlaege': kand[:3],
+        })
+
+    return render_template('admin_stripe_zuordnung.html',
+                           offen=offen, zugeordnet=zugeordnet, nutzer=nutzer)
 
 
 @app.route('/subscribe')
