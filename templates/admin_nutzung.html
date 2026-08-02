@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin — Wo prallen sie ab?</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <style>
+    body { background: #faf6f0; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .78rem; }
+    .hinweis { font-size: .82rem; color: #6b7280; line-height: 1.6; }
+    .kpi { border-radius: 12px; padding: 18px 20px; height: 100%; }
+    .kpi-zahl { font-size: 1.9rem; font-weight: 800; line-height: 1; }
+    .kpi-lab { font-size: .78rem; text-transform: uppercase; letter-spacing: .5px; color: #6b7280; margin-bottom: 6px; }
+    .k-rot  { background: #fef2f2; border: 1px solid #fca5a5; }
+    .k-grau { background: #f3f4f6; border: 1px solid #e5e7eb; }
+    .balken { height: 22px; background: #dc2626; border-radius: 4px; display: flex;
+              align-items: center; padding: 0 7px; color: #fff; font-size: .78rem;
+              font-weight: 700; min-width: 24px; }
+    td, th { font-size: .87rem; }
+  </style>
+</head>
+<body>
+  {% include '_admin_nav.html' %}
+
+  <div class="container-fluid px-4 py-4" style="max-width:1000px">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-1">
+      <h4 class="mb-0">Wo prallen sie ab?</h4>
+      <div>
+        {% for t in [7, 30, 90] %}
+          <a href="{{ url_for('admin_nutzung', tage=t) }}"
+             class="btn btn-sm {% if tage == t %}btn-secondary{% else %}btn-outline-secondary{% endif %}">{{ t }} Tage</a>
+        {% endfor %}
+      </div>
+    </div>
+    <p class="hinweis mb-3" style="max-width:780px">
+      Jedes Mal, wenn jemand eine Premium-Funktion anklickt und das Upgrade-Fenster bekommt,
+      wird das hier gezählt. <strong>Das ist die Rangliste der Schlösser, an denen deine
+      Nicht-Zahler hängenbleiben</strong> — und damit die Grundlage für die Frage, ob die Grenze
+      zwischen kostenlos und bezahlt richtig liegt.
+      Die Gegenseite — wer eine Funktion tatsächlich <em>benutzt</em> hat — steht unter
+      <a href="{{ url_for('admin_feature_use') }}">Feature-Nutzung</a>.
+    </p>
+
+    {% if not messbeginn %}
+    <div class="card shadow-sm mb-4" style="border-color:#fcd34d;background:#fffbeb">
+      <div class="card-body">
+        <h6 class="fw-bold mb-1"><i class="bi bi-hourglass-split me-1"></i>Noch keine Daten</h6>
+        <p class="hinweis mb-0">
+          Die Messung wurde gerade erst eingebaut. Sobald ein Gratis-Nutzer das erste Mal an eine
+          Bezahlschranke läuft, erscheint hier eine Zeile. Bei ungefähr sechs Besuchern pro Tag
+          solltest du <strong>ein bis zwei Wochen</strong> abwarten, bevor die Rangliste etwas aussagt.
+        </p>
+      </div>
+    </div>
+    {% else %}
+    <p class="hinweis mb-4">
+      <i class="bi bi-info-circle"></i> Gemessen wird seit <strong>{{ messbeginn|lokal }}</strong>.
+      Alles davor ist nicht erfasst — eine „0“ heißt hier also nicht zwingend „stört niemanden“,
+      sondern kann auch „so weit kam noch niemand“ bedeuten.
+    </p>
+    {% endif %}
+
+    <div class="row g-3 mb-4">
+      <div class="col-6">
+        <div class="kpi k-rot">
+          <div class="kpi-lab">Betroffene Nutzer</div>
+          <div class="kpi-zahl">{{ betroffene }}</div>
+          <div class="hinweis mt-1">verschiedene Konten, die an mindestens eine Schranke liefen</div>
+        </div>
+      </div>
+      <div class="col-6">
+        <div class="kpi k-grau">
+          <div class="kpi-lab">Treffer gesamt</div>
+          <div class="kpi-zahl">{{ treffer }}</div>
+          <div class="hinweis mt-1">je Sitzung und Funktion einmal gezählt, nicht je Klick</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+      <div class="card-body">
+        <h6 class="fw-bold mb-3">Rangliste der Schranken</h6>
+        {% if schranken %}
+        {% set maxn = schranken|map(attribute='nutzer')|max %}
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Funktion</th>
+              <th class="text-end" style="width:90px">Nutzer</th>
+              <th style="width:210px"></th>
+              <th class="text-end" style="width:80px">Treffer</th>
+              <th class="text-end" style="width:110px">benutzt von</th>
+              <th class="text-end" style="width:130px">zuletzt</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in schranken %}
+            <tr>
+              <td>{{ s.feature }}</td>
+              <td class="text-end fw-bold">{{ s.nutzer }}</td>
+              <td><div class="balken" style="width:{{ (s.nutzer / maxn * 100) if maxn else 0 }}%">
+                {% if maxn and (s.nutzer / maxn * 100) > 22 %}{{ s.nutzer }}{% endif %}</div></td>
+              <td class="text-end text-muted">{{ s.treffer }}</td>
+              {# Gegenprobe: wie viele haben dieselbe Funktion tatsaechlich benutzt?
+                 Viele Abpraller bei wenigen Nutzern = die Schranke sitzt im Weg. #}
+              <td class="text-end text-muted">{{ genutzt.get(s.feature, 0) }}</td>
+              <td class="text-end text-muted mono">{{ s.zuletzt|lokal }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <p class="hinweis mt-3 mb-0">
+          <strong>So liest du das:</strong> Viele verschiedene Nutzer bei einer Funktion heißt,
+          dieses Schloss steht im Weg — dort entscheidet sich, ob jemand bleibt oder geht.
+          Die Spalte „benutzt von“ zeigt zum Vergleich, wie viele die Funktion tatsächlich
+          verwendet haben (also Zahler). Steht dort 0 und links eine hohe Zahl, verkaufst du
+          etwas, das viele wollen und niemand kauft.
+        </p>
+        {% else %}
+        <p class="hinweis mb-0">Noch keine Schranken-Treffer im gewählten Zeitraum.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+      <div class="card-body">
+        <h6 class="fw-bold mb-1">Ernsthafte Interessenten</h6>
+        <p class="hinweis mb-3">
+          Gratis-Nutzer, die an <strong>mindestens zwei verschiedenen Tagen</strong> gegen eine
+          Schranke gelaufen sind. Ein einzelner Treffer ist mehrdeutig — Neugier, Fehlklick.
+          Erst die Wiederholung an einem anderen Tag zeigt beides zugleich: echtes Interesse
+          <em>und</em> Wiederkehr. Diese Menschen kannst du persönlich anschreiben.
+        </p>
+        {% if heisse %}
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light">
+            <tr><th>Nutzer</th><th>E-Mail</th><th class="text-end">Tage</th>
+                <th class="text-end">Schranken</th><th class="text-end">zuletzt</th></tr>
+          </thead>
+          <tbody>
+            {% for h in heisse %}
+            <tr>
+              <td><strong>{{ h.username }}</strong></td>
+              <td class="mono">{{ h.email or '—' }}</td>
+              <td class="text-end fw-bold">{{ h.tage }}</td>
+              <td class="text-end text-muted">{{ h.schranken }}</td>
+              <td class="text-end text-muted mono">{{ h.zuletzt|lokal }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="hinweis mb-0">Noch niemand, der an zwei verschiedenen Tagen angestoßen ist.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card shadow-sm mb-5" style="border-color:#fcd34d;background:#fffbeb">
+      <div class="card-body">
+        <h6 class="fw-bold mb-2"><i class="bi bi-exclamation-triangle me-1"></i>Was diese Zahlen NICHT können</h6>
+        <ul class="hinweis mb-0" style="padding-left:1.1rem">
+          <li><strong>Treffer ≠ Klicks.</strong> Je Seitenaufruf und Funktion wird höchstens einmal
+            gezählt. Wer zehnmal auf „Schnittplan“ klickt, erzeugt einen Treffer.</li>
+          <li><strong>Keine Prozentwerte.</strong> Bei dieser Nutzerzahl bewegt eine einzelne Person
+            jede Quote um viele Punkte — absolute Zahlen lügen weniger.</li>
+          <li><strong>Wer widersprochen hat, fehlt.</strong> Nutzer, die die Statistik im Profil
+            abgeschaltet haben, erscheinen hier nicht.</li>
+          <li><strong>Eine „0“ ist zweideutig:</strong> entweder stört die Schranke niemanden —
+            oder es kam noch niemand so weit. Erst mit ein paar Wochen Daten unterscheidbar.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

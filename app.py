@@ -2552,6 +2552,63 @@ def admin_nutzer_analyse():
                            doppelte=doppelte, unique_aktiv=unique_aktiv)
 
 
+@app.route('/admin/nutzung')
+@admin_required
+def admin_nutzung():
+    """Wo prallen Gratis-Nutzer an der Bezahlschranke ab?
+
+    Die Gegenseite zu /admin/feature-use: dort steht event='used' (wer hat eine
+    Funktion benutzt — und wer hat dabei die Client-Sperre umgangen), hier
+    event='blocked' (wer wollte eine Funktion und kam nicht ran). Letzteres ist
+    die Zahl, an der haengt, ob die Grenze zwischen frei und bezahlt richtig
+    liegt.
+
+    Bewusst nur ABSOLUTE Zahlen und Namen: bei wenigen aktiven Nutzern taeuscht
+    jede Prozentangabe eine Genauigkeit vor, die nicht existiert — ein einzelner
+    Nutzer bewegt eine Quote um viele Punkte.
+    """
+    try:
+        tage = max(1, min(365, int(request.args.get('tage', 30))))
+    except (TypeError, ValueError):
+        tage = 30
+    seit = 'used_at >= DATE_SUB(NOW(), INTERVAL %d DAY)' % tage
+
+    # Seit wann wird ueberhaupt gemessen? Ohne diese Zeile liest man eine "0"
+    # als "stoert niemanden", obwohl sie "wir messen erst seit gestern" heisst.
+    start = query_db("SELECT MIN(used_at) AS a FROM feature_use WHERE event='blocked'", [], one=True)
+    messbeginn = (start or {}).get('a')
+
+    schranken = query_db(
+        "SELECT feature, COUNT(*) AS treffer, COUNT(DISTINCT user_id) AS nutzer, "
+        "MAX(used_at) AS zuletzt "
+        "FROM feature_use WHERE event='blocked' AND " + seit +
+        " GROUP BY feature ORDER BY nutzer DESC, treffer DESC", []) or []
+
+    kz = query_db("SELECT COUNT(DISTINCT user_id) AS u, COUNT(*) AS n "
+                  "FROM feature_use WHERE event='blocked' AND " + seit, [], one=True) or {}
+
+    # Wer mehrfach UND an verschiedenen Tagen anstoesst, meint es ernst. Das ist
+    # das brauchbarste Kaufnaehe-Signal, das sich aus diesen Daten bilden laesst.
+    heisse = query_db(
+        "SELECT u.id, u.username, u.email, "
+        "       COUNT(DISTINCT DATE(fu.used_at)) AS tage, "
+        "       COUNT(DISTINCT fu.feature) AS schranken, MAX(fu.used_at) AS zuletzt "
+        "FROM feature_use fu JOIN app_users u ON u.id = fu.user_id "
+        "WHERE fu.event='blocked' AND fu.plan='free' AND " + seit.replace('used_at', 'fu.used_at') +
+        " GROUP BY u.id, u.username, u.email "
+        "HAVING tage >= 2 ORDER BY tage DESC, schranken DESC LIMIT 20", []) or []
+
+    genutzt = query_db(
+        "SELECT feature, COUNT(DISTINCT user_id) AS nutzer FROM feature_use "
+        "WHERE event='used' AND " + seit + " GROUP BY feature", []) or []
+    genutzt_map = {g['feature']: g['nutzer'] for g in genutzt}
+
+    return render_template('admin_nutzung.html', schranken=schranken, heisse=heisse,
+                           genutzt=genutzt_map, tage=tage,
+                           betroffene=kz.get('u') or 0, treffer=kz.get('n') or 0,
+                           messbeginn=messbeginn)
+
+
 @app.route('/admin/feature-use')
 @admin_required
 def admin_feature_use():
