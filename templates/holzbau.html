@@ -3257,10 +3257,8 @@ function runBeplanken() {
     const r = _bretterErzeugen(f, gruppe);
     closeBeplanken();
     updateUI();
-    alert(`${r.anzahl} Bretter erzeugt (davon ${r.rand} angeschnitten).`
-      + '
-
-Gruppe: ' + gruppe + '  — mit Strg+Z rückgängig.');
+    alert(`${r.anzahl} Bretter erzeugt (davon ${r.rand} angeschnitten).\n\n`
+      + `Gruppe: ${gruppe}  — mit Strg+Z rückgängig.`);
     return;
   }
 
