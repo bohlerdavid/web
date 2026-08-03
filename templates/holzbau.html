@@ -1932,12 +1932,20 @@ body {
             style="width:100%;padding:7px 9px;margin-bottom:12px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font);font-size:.86rem">
       <option value="kerve">Ausklinken / Kerve</option>
       <option value="blatt">Überblattung</option>
+      <option value="zapfen">Schlitz und Zapfen</option>
     </select>
 
     <div id="vb-wer-zeile" style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-      <label style="font-size:.78rem;color:var(--text-2);white-space:nowrap">Ausgeklinkt wird</label>
+      <label id="vb-wer-label" style="font-size:.78rem;color:var(--text-2);white-space:nowrap">Ausgeklinkt wird</label>
       <select id="vb-wer"
               style="flex:1;padding:7px 9px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font);font-size:.86rem"></select>
+    </div>
+
+    <div id="vb-dicke-zeile" style="display:none;align-items:center;gap:8px;margin-bottom:12px">
+      <label style="font-size:.78rem;color:var(--text-2);white-space:nowrap">Zapfendicke (mm)</label>
+      <input type="number" id="vb-dicke" min="10" step="5" value="0"
+             style="flex:1;padding:7px 9px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font);font-size:.86rem">
+      <span style="font-size:.72rem;color:var(--text-3);white-space:nowrap">0 = ein Drittel</span>
     </div>
 
     <div id="vb-erklaerung" style="font-size:.76rem;color:var(--text-3);line-height:1.5;margin-bottom:14px"></div>
@@ -3382,6 +3390,99 @@ function _blattProfil(a, b) {
            tiefe: H / 2, laenge: u1 - u0 };
 }
 
+/* ZAPFEN UND ZAPFENLOCH.
+
+   Der Zapfen selbst ist dieselbe Profilrechnung wie Kerve und Blatt: an einem
+   Ende bleibt ein mittiger Steg stehen, oben und unten wird weggenommen. Weil
+   der Schnitt durch die volle Breite geht, laeuft der Zapfen ueber die ganze
+   Balkenbreite — im Zimmerhandwerk ist das Schlitz und Zapfen.
+
+   Das ZAPFENLOCH war der Punkt, an dem ich beim letzten Mal abgebrochen habe:
+   seine Lage haengt von der gegenseitigen Ausrichtung beider Balken ab. Die
+   Loesung ist, den Zapfen als HILFSKLOTZ zu bauen und ihn durch dieselbe
+   Rechnung zu schicken, die schon die Kerve macht — "nimm dem Staender weg,
+   was der Zapfen belegt". Damit braucht es keine Fallunterscheidung nach
+   Ausrichtung: die Geometrie liefert sie selbst.
+
+   Die Zapfenlaenge wird NICHT abgefragt, sondern gemessen: sie ist genau das
+   Stueck, mit dem der Balken schon im Gegenstueck steckt. Die Schulter sitzt
+   damit automatisch auf dessen Flanke. */
+
+/* L/B/H aus den lokalen Ausdehnungen zurueckgewinnen — Umkehrung von
+   _ausdehnungVon. */
+function _lbhAus(axis, e) {
+  if (axis === 'y') return { B: e[0], L: e[1], H: e[2] };
+  if (axis === 'z') return { B: e[0], H: e[1], L: e[2] };
+  return { L: e[0], H: e[1], B: e[2] };
+}
+
+/* Der Zapfen als eigenstaendiger Klotz in der Welt — Gegenstueck fuer die
+   Lochrechnung. Er erbt Achse und Drehung des Balkens. */
+function _zapfenKlotz(a, amEnde, zl, dicke) {
+  const ra = _lokalRahmen(a);
+  const L = ra.e[ra.iL], H = ra.e[ra.iH], BB = ra.e[ra.iB];
+  const lok = [];
+  lok[ra.iL] = amEnde ? L - zl / 2 : zl / 2;
+  lok[ra.iH] = H / 2;
+  lok[ra.iB] = BB / 2;
+  const wc = new THREE.Vector3(ra.c.x, ra.c.y, ra.c.z);
+  for (let i = 0; i < 3; i++) {
+    const d = lok[i] - ra.e[i] / 2;
+    wc.x += ra.achsen[i].x * d;
+    wc.y += ra.achsen[i].y * d;
+    wc.z += ra.achsen[i].z * d;
+  }
+  const e = [];
+  e[ra.iL] = zl; e[ra.iH] = dicke; e[ra.iB] = BB;
+  const m = _lbhAus(a.axis, e);
+  // _obbVon bildet den Mittelpunkt als Ecke + Ausdehnung/2 OHNE Drehung —
+  // die Ecke muss also entsprechend zurueckgerechnet werden.
+  return { axis: a.axis, L: m.L, B: m.B, H: m.H,
+           x: wc.x - e[0] / 2, y: wc.y - e[1] / 2, z: wc.z - e[2] / 2,
+           rx: a.rx || 0, ry: a.ry || 0, rz: a.rz || 0, shape: 'rect' };
+}
+
+/* Die beiden Abnahmen am Balken a, damit ein mittiger Zapfen stehen bleibt. */
+function _zapfenProfile(a, b, wunschDicke) {
+  const { profil, ra } = _profilVon(a, b);
+  const L = ra.e[ra.iL], H = ra.e[ra.iH];
+  const rest = _polyRechteck(profil, 0, L, 0, H);
+  if (rest.length < 3 || _polyFlaeche(rest) < 100) {
+    return { fehler: 'Der Balken steckt nicht im Gegenstück.\n\nSchiebe sein Ende so weit hinein, wie der Zapfen lang werden soll — die Zapfenlänge wird daraus gemessen.' };
+  }
+  const us = rest.map(p => p[0]);
+  const u0 = Math.max(0, Math.min(...us)), u1 = Math.min(L, Math.max(...us));
+  // An welchem Ende steckt er? Danach richtet sich, wo der Zapfen sitzt.
+  const amEnde = (u0 + u1) / 2 > L / 2;
+  const zl = amEnde ? (L - u0) : u1;
+  if (zl < 10) return { fehler: 'Die Überdeckung ist zu klein für einen Zapfen.' };
+  if (zl > L / 2) {
+    return { fehler: 'Der Balken steckt mehr als zur Hälfte im Gegenstück. Dafür ist ein Zapfen nicht gedacht — prüfe die Lage.' };
+  }
+  // Faustregel im Holzbau: Zapfendicke rund ein Drittel der Bauteilhoehe.
+  const dicke = Math.max(10, Math.min(H - 10, Math.round(wunschDicke || H / 3)));
+  const v0 = (H - dicke) / 2, v1 = (H + dicke) / 2;
+  const a0 = amEnde ? L - zl : 0, a1 = amEnde ? L : zl;
+  return {
+    profile: [
+      _rundeEcken([[a0, 0], [a1, 0], [a1, v0], [a0, v0]]),
+      _rundeEcken([[a0, v1], [a1, v1], [a1, H], [a0, H]]),
+    ],
+    amEnde, zl, dicke, hoehe: H,
+  };
+}
+
+/* Das Loch im Gegenstueck: genau der Umriss des Zapfenklotzes. */
+function _zapfenlochProfil(b, klotz) {
+  const { profil, ra } = _profilVon(b, klotz);
+  const L = ra.e[ra.iL], H = ra.e[ra.iH];
+  const rest = _polyRechteck(profil, 0, L, 0, H);
+  if (rest.length < 3 || _polyFlaeche(rest) < 100) {
+    return { fehler: 'Der Zapfen trifft das Gegenstück nicht — bitte die Lage prüfen.' };
+  }
+  return { ecken: _rundeEcken(rest), flaeche: _polyFlaeche(rest) };
+}
+
 function findeKollisionen() {
   // Ausgeblendetes zaehlt nicht mit: was man nicht sieht, kann man nicht
   // pruefen — und eine Meldung dazu waere nicht nachvollziehbar.
@@ -3753,13 +3854,23 @@ function openVerbindung() {
 }
 function closeVerbindung() { document.getElementById('vb-modal').style.display = 'none'; }
 function vbArtWechsel() {
-  const kerve = document.getElementById('vb-art').value === 'kerve';
-  document.getElementById('vb-wer-zeile').style.display = kerve ? 'flex' : 'none';
-  document.getElementById('vb-erklaerung').textContent = kerve
+  const art = document.getElementById('vb-art').value;
+  const wer = art === 'kerve' || art === 'zapfen';
+  document.getElementById('vb-wer-zeile').style.display = wer ? 'flex' : 'none';
+  document.getElementById('vb-dicke-zeile').style.display = art === 'zapfen' ? 'flex' : 'none';
+  document.getElementById('vb-wer-label').textContent =
+    art === 'zapfen' ? 'Zapfen bekommt' : 'Ausgeklinkt wird';
+  document.getElementById('vb-erklaerung').textContent =
+      art === 'kerve'
     ? 'Ausklinken: dem gewählten Bauteil wird genau das weggenommen, was das '
       + 'andere belegt. Bei Sparren auf Pfette entsteht so die Kerve.'
-    : 'Überblattung: beide Balken verlieren im Kreuzungsbereich ihre halbe '
-      + 'Höhe — jeder auf der Seite, auf der der andere liegt.';
+    : art === 'blatt'
+    ? 'Überblattung: beide Balken verlieren im Kreuzungsbereich ihre halbe '
+      + 'Höhe — jeder auf der Seite, auf der der andere liegt.'
+    : 'Schlitz und Zapfen: am Balkenende bleibt ein mittiger Zapfen stehen, '
+      + 'das Gegenstück bekommt das passende Loch. Die Zapfenlänge wird nicht '
+      + 'abgefragt, sondern gemessen — sie ist das Stück, mit dem der Balken '
+      + 'schon im Gegenstück steckt. Schiebe ihn vorher so weit hinein.';
 }
 
 function runVerbindung() {
@@ -3771,11 +3882,25 @@ function runVerbindung() {
   /* Erst rechnen, dann pushHistory. Andersherum bliebe nach einer abgelehnten
      Verbindung ein leerer Schritt im Rückgängig-Verlauf stehen. */
   const auftrag = [];
+  let hinweis = '';
   if (art === 'kerve') {
     const A = sel[wer], B = sel[1 - wer];
     const p = _kerveProfil(A, B);
     if (p.fehler) { alert(p.fehler); return; }
     auftrag.push({ beam: A, ecken: p.ecken, durch: p.durch });
+  } else if (art === 'zapfen') {
+    const A = sel[wer], B = sel[1 - wer];
+    const z = _zapfenProfile(A, B, parseFloat(document.getElementById('vb-dicke').value) || 0);
+    if (z.fehler) { alert(z.fehler); return; }
+    // Erst das Loch rechnen: schlaegt es fehl, bleibt auch der Zapfen aus —
+    // ein Zapfen ohne Gegenloch waere schlimmer als gar keine Verbindung.
+    const loch = _zapfenlochProfil(B, _zapfenKlotz(A, z.amEnde, z.zl, z.dicke));
+    if (loch.fehler) { alert(loch.fehler); return; }
+    z.profile.forEach(ecken => auftrag.push({ beam: A, ecken }));
+    auftrag.push({ beam: B, ecken: loch.ecken });
+    hinweis = `\n\nZapfen ${Math.round(z.zl)} mm lang, ${z.dicke} mm dick `
+      + `(von ${Math.round(z.hoehe)} mm Bauteilhöhe), über die volle Breite. `
+      + 'Das Loch geht durch — ein Durchzapfen.';
   } else {
     for (const [A, B] of [[sel[0], sel[1]], [sel[1], sel[0]]]) {
       const p = _blattProfil(A, B);
@@ -3785,18 +3910,27 @@ function runVerbindung() {
   }
 
   pushHistory();
-  auftrag.forEach(({ beam, ecken }) => {
+  /* Erst bei JEDEM beteiligten Bauteil die alte Verbindung entfernen, dann
+     alle neuen setzen. Beides in einer Schleife wuerde beim Zapfen den ersten
+     der beiden Ausschnitte gleich wieder wegfiltern, wenn der zweite kommt. */
+  const betroffen = [...new Set(auftrag.map(a => a.beam))];
+  betroffen.forEach(beam => {
     // Eine frühere Verbindung wird ERSETZT, nicht gestapelt: sonst bliebe beim
     // zweiten Lauf der alte Ausschnitt zusätzlich stehen.
     beam.cutouts = (beam.cutouts || []).filter(c => !c.verbindung);
-    beam.cutouts.push({ shape: 'poly', ebene: 'seite', ecken, verbindung: art });
-    rebuildMesh(beam);
   });
+  auftrag.forEach(({ beam, ecken }) => {
+    beam.cutouts.push({ shape: 'poly', ebene: 'seite', ecken, verbindung: art });
+  });
+  betroffen.forEach(rebuildMesh);
   closeVerbindung();
   updateUI();
 
   const nichtDurch = auftrag.filter(a => a.durch === false).length;
-  alert((art === 'kerve' ? 'Ausklinkung erzeugt.' : 'Überblattung an beiden Balken erzeugt.')
+  alert((art === 'kerve' ? 'Ausklinkung erzeugt.'
+       : art === 'zapfen' ? 'Zapfen und Zapfenloch erzeugt.'
+       : 'Überblattung an beiden Balken erzeugt.')
+    + hinweis
     + (nichtDurch ? '\n\nAchtung: das Gegenstück deckt nicht die volle Breite des '
         + 'Balkens ab. Der Schnitt geht trotzdem durch — es wird also mehr '
         + 'weggenommen, als nötig wäre.' : '')
@@ -4873,7 +5007,9 @@ function renderCutoutPanel(b) {
     // EIN Schluessel mit Platzhaltern statt zusammengestueckelt: "Punkte" allein
     // waere ein kurzer Allerweltsschluessel, der dann auch anderswo zuschlaegt.
     const titel = c.verbindung
-      ? (c.verbindung === 'kerve' ? T('⚒ Kerve / Ausklinkung') : T('⚒ Überblattung')) + ' ' + (i + 1)
+      ? (c.verbindung === 'kerve' ? T('⚒ Kerve / Ausklinkung')
+       : c.verbindung === 'zapfen' ? T('⚒ Zapfen / Zapfenloch')
+       : T('⚒ Überblattung')) + ' ' + (i + 1)
       : istSchraege
       ? T('◣ Schrägschnitt') + ' ' + (i + 1)
       : istBahn
