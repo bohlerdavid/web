@@ -42,6 +42,14 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=1)
 # (so gepinnt) hat dafuer keinen eigenen Default; 3.1 haette einen.
 # 8 MB reichen fuer Feedback samt Screenshot mit Luft nach oben.
 app.config['MAX_CONTENT_LENGTH'] = 8 * 1024 * 1024
+# Einzelne FORMULARFELDER haben eine eigene, viel kleinere Grenze (Default
+# 500 KB). Das gilt unabhaengig von MAX_CONTENT_LENGTH und hat beim
+# Serverspeicher zugeschlagen: ein Projekt-JSON ueber 500 KB wurde von Werkzeug
+# abgewiesen, bevor die Route ueberhaupt lief — der Nutzer sah eine rohe
+# HTML-Fehlerseite statt einer verstaendlichen Meldung, und die eigene
+# 3-MB-Grenze (PROJEKT_MAX_BYTES) waere nie erreicht worden.
+# Etwas mehr als PROJEKT_MAX_BYTES, damit die eigene Pruefung zuerst greift.
+app.config['MAX_FORM_MEMORY_SIZE'] = 4 * 1024 * 1024
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') != 'development'
@@ -195,6 +203,7 @@ def row_to_dict(row):
 PERSONENBEZOGENE_TABELLEN = (
     ('feedback', 'user_id'),        # Betreff, Nachricht, Screenshot, Projekt-JSON
     ('feature_use', 'user_id'),     # welche Funktion wann benutzt wurde
+    ('projects', 'user_id'),        # gespeicherte Modelle inkl. Bauvorhaben (Ort!)
     ('subscriptions', 'user_id'),
 )
 
@@ -285,6 +294,23 @@ SCHEMA_STATEMENTS = [
         plan     VARCHAR(12)  NOT NULL,
         used_at  DATETIME     NOT NULL,
         INDEX (feature), INDEX (used_at), INDEX (plan)
+    )""",
+    # Gespeicherte Projekte. Das JSON enthaelt auch die Bauvorhaben-Angaben und
+    # damit einen ORT — personenbezogene Daten. Deshalb steht projects in
+    # PERSONENBEZOGENE_TABELLEN, wird also mit dem Konto geloescht, und in der
+    # Datenschutzerklaerung genannt.
+    # LONGTEXT statt TEXT: TEXT fasst 65 KB, ein Modell mit ein paar tausend
+    # Balken und Ausschnitten ist groesser. Die eigentliche Grenze setzt
+    # PROJEKT_MAX_BYTES in der Route.
+    """CREATE TABLE IF NOT EXISTS projects (
+        id          INT PRIMARY KEY AUTO_INCREMENT,
+        user_id     INT          NOT NULL,
+        name        VARCHAR(120) NOT NULL,
+        daten       LONGTEXT     NOT NULL,
+        groesse     INT          NOT NULL DEFAULT 0,
+        created_at  DATETIME     NOT NULL,
+        updated_at  DATETIME     NOT NULL,
+        INDEX (user_id), INDEX (updated_at)
     )""",
 ]
 
@@ -978,7 +1004,7 @@ LANDING_TXT = {
         'pr_lead': 'Kostenlos planen — ohne Limit bei der Größe. Premium macht es vielfältiger, einfacher und schneller. Monatlich kündbar, keine Bindung.',
         'pr_free_desc': 'Voll nutzbar · mit Werbung',
         'pr_free_f1': '✓ 3D-Planer mit Gruppen & Ebenen',
-        'pr_free_f2': '✓ Projekte speichern & laden',
+        'pr_free_f2': '✓ Als Datei speichern (unbegrenzt) · 1 Projekt online',
         'pr_free_f3': '✓ Stückliste als CSV',
         'pr_free_f4': '⚠ Mit Werbung',
         'pr_free_f5': '✗ PDF-, DXF- & CNC-Export',
@@ -993,7 +1019,7 @@ LANDING_TXT = {
         'pr_year_name': 'Premium Jährlich',
         'pr_year_desc': '= 8,33 €/Monat · 2 Monate gratis',
         'pr_year_cta': 'Jährlich starten',
-        'pr_f1': '✓ Unbegrenzte Projekte & Vorlagen nach Maß',
+        'pr_f1': '✓ 50 Projekte online · unbegrenzt als Datei · Vorlagen nach Maß',
         'pr_f2': '✓ Materialkosten & Angebots-PDF',
         'pr_f3': '✓ Schnittplan, 2D-Plattenzuschnitt & Ausfräsungen',
         'pr_f4': '✓ Stückliste als CSV, DXF & Druck-PDF',
@@ -1080,7 +1106,7 @@ LANDING_TXT = {
         'pr_lead': 'Plan for free — no limit on size. Premium makes it richer, easier and faster. Cancel any month, no lock-in.',
         'pr_free_desc': 'Fully usable · with ads',
         'pr_free_f1': '✓ 3D planner with groups & layers',
-        'pr_free_f2': '✓ Save & load projects',
+        'pr_free_f2': '✓ Save as a file (unlimited) · 1 project online',
         'pr_free_f3': '✓ Parts list as CSV',
         'pr_free_f4': '⚠ With ads',
         'pr_free_f5': '✗ PDF, DXF & CNC export',
@@ -1095,7 +1121,7 @@ LANDING_TXT = {
         'pr_year_name': 'Premium Yearly',
         'pr_year_desc': '= €8.33/month · 2 months free',
         'pr_year_cta': 'Start yearly',
-        'pr_f1': '✓ Unlimited projects & templates made to measure',
+        'pr_f1': '✓ 50 projects online · unlimited as files · templates made to measure',
         'pr_f2': '✓ Material costs & quote PDF',
         'pr_f3': '✓ Cutting plan, 2D panel cutting & cut-outs',
         'pr_f4': '✓ Parts list as CSV, DXF & print PDF',
@@ -1182,7 +1208,7 @@ LANDING_TXT = {
         'pr_lead': 'Concevez gratuitement — sans limite de taille. Premium rend la planification plus riche, plus simple et plus rapide. Résiliable chaque mois, sans engagement.',
         'pr_free_desc': 'Pleinement utilisable · avec publicité',
         'pr_free_f1': '✓ Planificateur 3D avec groupes & calques',
-        'pr_free_f2': '✓ Enregistrer & charger des projets',
+        'pr_free_f2': '✓ Enregistrer en fichier (illimité) · 1 projet en ligne',
         'pr_free_f3': '✓ Liste de pièces en CSV',
         'pr_free_f4': '⚠ Avec publicité',
         'pr_free_f5': '✗ Export PDF, DXF & CNC',
@@ -1202,7 +1228,7 @@ LANDING_TXT = {
         'pr_year_name': 'Premium annuel',
         'pr_year_desc': '= 8,33 €/mois · 2 mois offerts',
         'pr_year_cta': "Choisir l'annuel",
-        'pr_f1': '✓ Projets illimités & modèles sur mesure',
+        'pr_f1': '✓ 50 projets en ligne · illimité en fichier · modèles sur mesure',
         'pr_f2': '✓ Coût des matériaux & devis PDF',
         'pr_f3': '✓ Plan de coupe, débit de panneaux 2D & évidements',
         'pr_f4': "✓ Liste de pièces en CSV, DXF & PDF d'impression",
@@ -2216,6 +2242,160 @@ def profile_set_stats():
     else:
         flash('Danke — die anonyme Auswertung hilft uns, die App zu verbessern.', 'success')
     return redirect(url_for('profile'))
+
+
+# ══════════════════════════════════════════════
+# PROJEKTE AUF DEM SERVER
+# ══════════════════════════════════════════════
+# Bis hierher lebte ein Projekt nur als Datei auf dem eigenen Rechner. Das
+# bleibt so — unbegrenzt und kostenlos, auch fuer den freien Plan. Der
+# Serverspeicher kommt dazu, damit man zwischen Geraeten weiterarbeiten kann.
+#
+# Warum die Zahlen so sind:
+#   - Ein Projekt-JSON mit ein paar tausend Balken liegt im Bereich einiger
+#     hundert Kilobyte. 3 MB je Projekt ist grosszuegig und deckelt trotzdem.
+#   - 50 statt "unbegrenzt" fuer Premium: fuehlt sich unbegrenzt an, schuetzt
+#     aber gegen ein Skript, das die Datenbank vollschreibt.
+PROJEKTE_FREI = 1
+PROJEKTE_PREMIUM = 50
+PROJEKT_MAX_BYTES = 3 * 1024 * 1024
+
+
+def _projekt_limit(user_id):
+    return PROJEKTE_PREMIUM if get_user_plan(user_id) == 'premium' else PROJEKTE_FREI
+
+
+def _projekt_anzahl(user_id):
+    r = query_db('SELECT COUNT(*) AS c FROM projects WHERE user_id=?', [user_id], one=True)
+    return (r or {}).get('c', 0) or 0
+
+
+@app.errorhandler(413)
+def _zu_gross(e):
+    """Werkzeug wirft 413, BEVOR eine Route laeuft. Fuer die Projekt-Routen muss
+    daraus JSON werden — der Editor erwartet JSON und wuerde an einer HTML-Seite
+    nur "Serverfehler 413" anzeigen koennen."""
+    if request.path.startswith('/projekte/'):
+        return jsonify({'fehler': 'Das Projekt ist zu groß für den Server. '
+                                  'Als Datei lässt es sich weiterhin speichern.'}), 413
+    return e
+
+
+@app.route('/projekte/liste')
+@login_required
+def projekte_liste():
+    """Liste fuer den Editor. Ohne `daten` — die koennen viele Megabyte sein und
+    werden erst beim Oeffnen geholt."""
+    user_id = session['user_id']
+    rows = query_db('SELECT id, name, groesse, updated_at FROM projects '
+                    'WHERE user_id=? ORDER BY updated_at DESC', [user_id]) or []
+    limit = _projekt_limit(user_id)
+    return jsonify({
+        'projekte': [{'id': r['id'], 'name': r['name'], 'groesse': r['groesse'],
+                      'geaendert': r['updated_at'].strftime('%d.%m.%Y %H:%M')
+                                   if r['updated_at'] else ''} for r in rows],
+        'limit': limit,
+        'plan': get_user_plan(user_id),
+        # Ueber dem Limit (nach einer Kuendigung) bleibt alles LESBAR, nur
+        # Speichern ist gesperrt. Die Arbeit von Kunden wird nicht geloescht.
+        'gesperrt': len(rows) > limit,
+    })
+
+
+@app.route('/projekte/<int:pid>')
+@login_required
+def projekt_holen(pid):
+    r = query_db('SELECT name, daten FROM projects WHERE id=? AND user_id=?',
+                 [pid, session['user_id']], one=True)
+    if not r:
+        return jsonify({'fehler': 'Projekt nicht gefunden.'}), 404
+    return jsonify({'name': r['name'], 'daten': r['daten']})
+
+
+@app.route('/projekte/speichern', methods=['POST'])
+@login_required
+def projekt_speichern():
+    if not validate_csrf(request.form.get('csrf_token', '')):
+        return jsonify({'fehler': 'Sitzung abgelaufen. Bitte die Seite neu laden.'}), 403
+    user_id = session['user_id']
+    name = (request.form.get('name', '') or '').strip()[:120] or 'Unbenanntes Projekt'
+    daten = request.form.get('daten', '') or ''
+    if len(daten.encode('utf-8')) > PROJEKT_MAX_BYTES:
+        return jsonify({'fehler': 'Das Projekt ist größer als %d MB und lässt sich nicht '
+                                  'auf dem Server speichern. Als Datei geht es weiterhin.'
+                                  % (PROJEKT_MAX_BYTES // (1024 * 1024))}), 413
+    # Nur echtes Projekt-JSON annehmen. Sonst landet Muell in der Spalte, der
+    # beim Oeffnen erst im Browser auffaellt.
+    try:
+        geparst = json.loads(daten)
+        if not isinstance(geparst, dict):
+            raise ValueError('kein Objekt')
+    except Exception:
+        return jsonify({'fehler': 'Die Projektdaten sind unlesbar.'}), 400
+
+    pid = request.form.get('id', '')
+    anzahl = _projekt_anzahl(user_id)
+    limit = _projekt_limit(user_id)
+    jetzt = datetime.now()
+
+    if pid:
+        # Ueberschreiben. Erlaubt, solange man nicht UEBER dem Limit liegt —
+        # sonst koennte ein freies Konto sein einziges Projekt nie mehr sichern.
+        vorhanden = query_db('SELECT id FROM projects WHERE id=? AND user_id=?',
+                             [pid, user_id], one=True)
+        if not vorhanden:
+            return jsonify({'fehler': 'Projekt nicht gefunden.'}), 404
+        if anzahl > limit:
+            return jsonify({'fehler': _projekt_sperrtext(anzahl, limit)}), 403
+        execute_db('UPDATE projects SET name=?, daten=?, groesse=?, updated_at=? '
+                   'WHERE id=? AND user_id=?',
+                   [name, daten, len(daten.encode('utf-8')), jetzt, pid, user_id])
+        return jsonify({'id': int(pid), 'name': name})
+
+    if anzahl >= limit:
+        return jsonify({'fehler': _projekt_sperrtext(anzahl, limit)}), 403
+    execute_db('INSERT INTO projects (user_id, name, daten, groesse, created_at, updated_at) '
+               'VALUES (?,?,?,?,?,?)',
+               [user_id, name, daten, len(daten.encode('utf-8')), jetzt, jetzt])
+    neu = query_db('SELECT id FROM projects WHERE user_id=? ORDER BY id DESC LIMIT 1',
+                   [user_id], one=True)
+    return jsonify({'id': (neu or {}).get('id'), 'name': name})
+
+
+def _projekt_sperrtext(anzahl, limit):
+    """Eine Meldung fuer beide Faelle — und sie sagt ausdruecklich, dass nichts
+    verloren geht. Wer nach einer Kuendigung ueber dem Limit liegt, soll nicht
+    fuerchten muessen, dass seine Arbeit weg ist."""
+    if anzahl > limit:
+        return ('Du hast %d Projekte auf dem Server, dein Plan erlaubt %d. '
+                'Alle bleiben lesbar und lassen sich öffnen und als Datei '
+                'herunterladen — nur das Speichern ist gesperrt. Lösche ein '
+                'Projekt oder wechsle zu Premium.' % (anzahl, limit))
+    return ('Dein Plan erlaubt %d Projekt%s auf dem Server. Speichere als Datei, '
+            'lösche ein vorhandenes Projekt oder wechsle zu Premium.'
+            % (limit, '' if limit == 1 else 'e'))
+
+
+@app.route('/projekte/<int:pid>/umbenennen', methods=['POST'])
+@login_required
+def projekt_umbenennen(pid):
+    if not validate_csrf(request.form.get('csrf_token', '')):
+        return jsonify({'fehler': 'Sitzung abgelaufen.'}), 403
+    name = (request.form.get('name', '') or '').strip()[:120]
+    if not name:
+        return jsonify({'fehler': 'Bitte einen Namen angeben.'}), 400
+    execute_db('UPDATE projects SET name=? WHERE id=? AND user_id=?',
+               [name, pid, session['user_id']])
+    return jsonify({'name': name})
+
+
+@app.route('/projekte/<int:pid>/loeschen', methods=['POST'])
+@login_required
+def projekt_loeschen(pid):
+    if not validate_csrf(request.form.get('csrf_token', '')):
+        return jsonify({'fehler': 'Sitzung abgelaufen.'}), 403
+    execute_db('DELETE FROM projects WHERE id=? AND user_id=?', [pid, session['user_id']])
+    return jsonify({'ok': True})
 
 
 @app.route('/profile/set-lang', methods=['POST'])

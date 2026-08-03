@@ -1088,6 +1088,12 @@ body {
     <button class="tb-btn" onclick="newProject()" title="Neues Projekt">Neu</button>
     <button class="tb-btn" onclick="saveProject()" title="Projekt speichern">💾 Speichern</button>
     <label class="tb-btn" style="cursor:pointer" title="Projekt laden">📂 Laden<input type="file" id="load-file-input" accept=".json,application/json" style="display:none" onchange="handleLoadFile(event)"></label>
+    {# Serverspeicher nur fuer angemeldete Nutzer: ohne Konto gibt es keinen
+       Platz, an dem etwas liegen koennte. Datei-Speichern bleibt fuer alle. #}
+    {% if not demo %}
+    <button class="tb-btn" onclick="openProjekte()" title="Projekte auf dem Server">☁ Meine Projekte</button>
+    <span id="pr-aktuell" style="font-size:11px;color:var(--text-3);align-self:center;margin-left:2px"></span>
+    {% endif %}
     <button class="tb-btn" onclick="exportStückliste()" title="Stückliste exportieren">📋 Export</button>
   </div>
 
@@ -1922,6 +1928,25 @@ body {
      Nur Werkstoff, Stärke, Format und Fuge — die Fläche selbst kommt aus der
      Markierung. Bewusst KEIN Premium-Schloss: das Erzeugen von Konstruktion
      bleibt frei, bezahlt wird der Zuschnitt. -->
+<div id="pr-modal" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.75);align-items:center;justify-content:center;" onclick="if(event.target===this)closeProjekte()">
+  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-lg);padding:26px 28px;max-width:640px;width:94%;max-height:84vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.6);">
+    <h3 style="color:var(--text);font-size:1.1rem;margin-bottom:6px">☁ Meine Projekte</h3>
+    <div id="pr-info" style="font-size:.8rem;color:var(--accent);margin-bottom:12px"></div>
+    <div id="pr-liste" style="overflow-y:auto;flex:1;margin-bottom:14px"></div>
+    <div style="font-size:.74rem;color:var(--text-3);line-height:1.5;margin-bottom:12px">
+      Der Serverspeicher ist dafür da, an einem anderen Gerät weiterzuarbeiten.
+      <b>Speichern als Datei bleibt unbegrenzt und kostenlos</b> — auch im
+      freien Plan. Die Bild-Vorlage wird auf dem Server nicht mitgespeichert,
+      in der heruntergeladenen Datei schon.
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+      <button class="add-btn" onclick="closeProjekte()" style="background:var(--bg-input);color:var(--text-2)">Schließen</button>
+      <button class="add-btn" onclick="projektSpeichern(false)" style="background:var(--bg-card);color:var(--accent);border:1px solid rgba(78,140,221,.35)">Speichern</button>
+      <button class="add-btn" onclick="projektSpeichern(true)">Als neues speichern</button>
+    </div>
+  </div>
+</div>
+
 <div id="vb-modal" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.75);align-items:center;justify-content:center;" onclick="if(event.target===this)closeVerbindung()">
   <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-lg);padding:26px 28px;max-width:470px;width:92%;box-shadow:0 24px 64px rgba(0,0,0,.6);">
     <h3 style="color:var(--text);font-size:1.1rem;margin-bottom:6px">⚒ Holzverbindung</h3>
@@ -2671,6 +2696,7 @@ Object.assign(window, {
   openKollisionen, closeKollisionen,
   openVerbindung, closeVerbindung, runVerbindung, vbArtWechsel,
   saveProject, handleLoadFile,
+  openProjekte, closeProjekte, projektSpeichern, projektOeffnen,
   exportStückliste, applyEdit, deleteBeam,
   calcFloorPlan, updateFloorOutline, updateRoofOutline, drawFloorPreview,
   newProject, clearAllBeams, undo, redo,
@@ -7531,6 +7557,130 @@ function saveProject() {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+/* ---- Projekte auf dem Server -------------------------------------------
+   Das Speichern als DATEI oben bleibt unbegrenzt und kostenlos. Der
+   Serverspeicher kommt dazu, damit man an einem anderen Gerät weiterarbeiten
+   kann — er ersetzt die Datei nicht.
+
+   Wer über seinem Limit liegt (weil ein Abo endete), kann alles weiterhin
+   öffnen und als Datei sichern; nur das Speichern auf dem Server ist gesperrt.
+   Deshalb wird `gesperrt` getrennt vom Limit geführt. */
+let _projektId = null, _projektName = '';
+
+function _projektKopf() { return CSRF_TOKEN; }
+async function _projektRuf(pfad, daten) {
+  const opt = daten
+    ? { method: 'POST', body: new URLSearchParams({ ...daten, csrf_token: _projektKopf() }) }
+    : {};
+  const r = await fetch(pfad, opt);
+  let j = {};
+  try { j = await r.json(); } catch (e) {}
+  if (!r.ok) throw new Error(j.fehler || ('Serverfehler ' + r.status));
+  return j;
+}
+
+async function openProjekte() {
+  const kasten = document.getElementById('pr-liste');
+  const info = document.getElementById('pr-info');
+  document.getElementById('pr-modal').style.display = 'flex';
+  kasten.innerHTML = '<div style="font-size:.85rem;color:var(--text-3);padding:10px 0">Lade …</div>';
+  info.textContent = '';
+  try {
+    const d = await _projektRuf('/projekte/liste');
+    const n = d.projekte.length;
+    info.textContent = `${n} von ${d.limit} Projekt${d.limit === 1 ? '' : 'en'}`
+      + (d.plan === 'premium' ? ' (Premium)' : ' (kostenloser Plan)')
+      + (d.gesperrt ? ' — über dem Limit: lesbar, aber Speichern gesperrt' : '');
+    info.style.color = d.gesperrt ? 'var(--red)' : 'var(--accent)';
+    kasten.innerHTML = n === 0
+      ? '<div style="font-size:.85rem;color:var(--text-3);padding:10px 0">'
+        + 'Noch kein Projekt auf dem Server. Mit „Als neues speichern" legst du das erste an.</div>'
+      : d.projekte.map(p => `<div style="border:1px solid var(--border);border-radius:var(--r-sm);padding:8px 10px;margin-bottom:6px;background:var(--bg-input);display:flex;gap:8px;align-items:center">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:.85rem;color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(p.name)}</div>
+            <div style="font-size:.72rem;color:var(--text-3)">${p.geaendert} · ${Math.round(p.groesse/1024)} KB</div>
+          </div>
+          <button class="tb-btn" style="font-size:11px;height:26px;padding:0 9px" data-pr-oeffnen="${p.id}">Öffnen</button>
+          <button class="tb-btn" style="font-size:11px;height:26px;padding:0 9px" data-pr-namen="${p.id}" data-pr-alt="${escHtml(p.name)}">Umbenennen</button>
+          <button class="tb-btn" style="font-size:11px;height:26px;padding:0 9px;color:var(--red)" data-pr-weg="${p.id}">Löschen</button>
+        </div>`).join('');
+  } catch (e) {
+    kasten.innerHTML = '';
+    info.style.color = 'var(--red)';
+    info.textContent = e.message;
+  }
+}
+function closeProjekte() { document.getElementById('pr-modal').style.display = 'none'; }
+
+async function projektSpeichern(alsNeues) {
+  /* Das Bild wird NICHT mitgeschickt: eine eingebettete Vorlage kann für sich
+     allein mehrere Megabyte haben und würde die Grenze sprengen. In der
+     heruntergeladenen Datei ist es weiterhin dabei. */
+  const daten = JSON.stringify(serializeProject(false));
+  const vorschlag = alsNeues || !_projektName ? (_projektName || 'Mein Projekt') : _projektName;
+  const name = prompt('Name des Projekts:', vorschlag);
+  if (name === null) return;
+  try {
+    const felder = { name: name.trim() || 'Unbenanntes Projekt', daten };
+    if (!alsNeues && _projektId) felder.id = String(_projektId);
+    const d = await _projektRuf('/projekte/speichern', felder);
+    _projektId = d.id; _projektName = d.name;
+    _projektTitelZeigen();
+    alert('Gespeichert: ' + d.name);
+    if (document.getElementById('pr-modal').style.display === 'flex') openProjekte();
+  } catch (e) { alert(e.message); }
+}
+
+async function projektOeffnen(id) {
+  try {
+    const d = await _projektRuf('/projekte/' + id);
+    const data = JSON.parse(d.daten);
+    pushHistory();
+    applyProjectData(data);
+    resetCamera();
+    _projektId = id; _projektName = d.name;
+    _projektTitelZeigen();
+    closeProjekte();
+  } catch (e) { alert('Öffnen fehlgeschlagen: ' + e.message); }
+}
+
+function _projektTitelZeigen() {
+  const el = document.getElementById('pr-aktuell');
+  if (el) el.textContent = _projektName ? ('Server: ' + _projektName) : '';
+}
+
+/* Ein Horcher für die ganze Liste statt onclick je Zeile: Projektnamen kommen
+   vom Nutzer und dürfen nie als JavaScript gelesen werden. */
+document.addEventListener('DOMContentLoaded', () => {
+  const liste = document.getElementById('pr-liste');
+  if (!liste) return;
+  liste.addEventListener('click', async (e) => {
+    const auf = e.target.closest('[data-pr-oeffnen]');
+    if (auf) return projektOeffnen(parseInt(auf.dataset.prOeffnen, 10));
+    const um = e.target.closest('[data-pr-namen]');
+    if (um) {
+      const neu = prompt('Neuer Name:', um.dataset.prAlt);
+      if (neu === null) return;
+      try {
+        await _projektRuf('/projekte/' + um.dataset.prNamen + '/umbenennen', { name: neu });
+        if (String(_projektId) === um.dataset.prNamen) { _projektName = neu.trim(); _projektTitelZeigen(); }
+        openProjekte();
+      } catch (err) { alert(err.message); }
+      return;
+    }
+    const weg = e.target.closest('[data-pr-weg]');
+    if (weg) {
+      if (!confirm('Dieses Projekt endgültig vom Server löschen?\n\n'
+                 + 'Eine heruntergeladene Datei bleibt davon unberührt.')) return;
+      try {
+        await _projektRuf('/projekte/' + weg.dataset.prWeg + '/loeschen', {});
+        if (String(_projektId) === weg.dataset.prWeg) { _projektId = null; _projektName = ''; _projektTitelZeigen(); }
+        openProjekte();
+      } catch (err) { alert(err.message); }
+    }
+  });
+});
 
 function handleLoadFile(e) {
   const input = e.target || e;
