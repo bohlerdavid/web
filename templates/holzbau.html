@@ -5174,18 +5174,22 @@ function smartSnap(rawX, rawZ, dragged) {
   // beam-face snap tolerance = 5x grid or 150mm minimum
   const tol = Math.max(150, gridSz * 5);
 
-  const dW = dragged.axis === 'x' ? dragged.L : dragged.B; // width in X
-  const dD = dragged.axis === 'z' ? dragged.L : dragged.B; // depth in Z
+  // Ausdehnung ueber die gemeinsame Hilfsfunktion — hier stand dieselbe
+  // Achsenverwechslung wie frueher in getBeamHalfD und in den Planansichten:
+  // die Tiefe in Z war bei axis 'y' die BREITE statt der HOEHE. Beim Ziehen an
+  // einen stehenden Pfosten 60x120 fing der Balken dadurch 60 mm daneben.
+  const dE = _ausdehnungVon(dragged);
+  const dW = dE[0];   // Ausdehnung in X
+  const dD = dE[2];   // Ausdehnung in Z
 
   let bestX = null, bestXD = tol + 1;
   let bestZ = null, bestZD = tol + 1;
 
   beams.forEach(b => {
     if (selectedIds.has(b.id)) return; // skip beams being dragged
-    const bx0 = b.x;
-    const bx1 = b.x + (b.axis === 'x' ? b.L : b.B);
-    const bz0 = b.z;
-    const bz1 = b.z + (b.axis === 'z' ? b.L : b.B);
+    const be = _ausdehnungVon(b);
+    const bx0 = b.x, bx1 = b.x + be[0];
+    const bz0 = b.z, bz1 = b.z + be[2];
 
     // Candidate X snap positions for dragged beam's left face
     [bx0, bx1, bx0 - dW, bx1 - dW].forEach(cx => {
