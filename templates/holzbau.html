@@ -9289,7 +9289,13 @@ function printProject() {
   const _posVonId = new Map();
   groupBeamsForList().forEach((g, i) => g.ids.forEach(id => _posVonId.set(id, i + 1)));
 
-  function makePlanSVG(projectFn, W, H, label, forceScale, extraPoly = null) {
+  /* schnitt = { achse: 0|1|2, pos: mm } macht aus der Ansicht einen SCHNITT.
+     Draufsicht plus zwei Ansichten reichen fuer ein Geruest, nicht fuer einen
+     Aufbau — der Vertikalschnitt ist das, was ein Fachmann zuerst aufschlaegt.
+     Bauteile, die die Ebene durchstossen, sind GESCHNITTEN und werden kraeftig
+     mit Schraffur gezeichnet. Was dahinter liegt, ist Ansicht und wird blass
+     gezeichnet. Was davor liegt, entfaellt — sonst waere es kein Schnitt. */
+  function makePlanSVG(projectFn, W, H, label, forceScale, extraPoly = null, schnitt = null, schnittMarke = null) {
     const PAD = 55, DIM = 28;
     const svgW = W + PAD*2 + DIM*2;
     const svgH = H + PAD*2 + DIM*2;
@@ -9319,20 +9325,37 @@ function printProject() {
       return unten.concat(oben);
     };
     const _grad = Math.PI / 180;
-    const rects = beams.map(b => {
+    let rects = beams.map(b => {
       const e = _ausd(b);
       const cx = b.x + e[0]/2, cy = b.y + e[1]/2, cz = b.z + e[2]/2;
       const q = new THREE.Quaternion().setFromEuler(
         new THREE.Euler((b.rx||0)*_grad, (b.ry||0)*_grad, (b.rz||0)*_grad));
-      const ecken = [];
+      const ecken = [], welt = [];
       for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
         const v = new THREE.Vector3(sx*e[0]/2, sy*e[1]/2, sz*e[2]/2).applyQuaternion(q);
-        ecken.push(projectFn(cx + v.x, cy + v.y, cz + v.z));
+        const p = [cx + v.x, cy + v.y, cz + v.z];
+        welt.push(p);
+        ecken.push(projectFn(p[0], p[1], p[2]));
       }
       const us = ecken.map(c=>c[0]), vs = ecken.map(c=>c[1]);
+      // Lage zur Schnittebene aus den GEDREHTEN Ecken, nicht aus L/B/H —
+      // sonst laege ein geneigter Sparren in der falschen Schicht.
+      const sw = schnitt ? welt.map(p => p[schnitt.achse]) : null;
       return { b, poly: _huelle(ecken),
-               u0:Math.min(...us), u1:Math.max(...us), v0:Math.min(...vs), v1:Math.max(...vs) };
+               u0:Math.min(...us), u1:Math.max(...us), v0:Math.min(...vs), v1:Math.max(...vs),
+               sMin: sw ? Math.min(...sw) : 0, sMax: sw ? Math.max(...sw) : 0 };
     });
+    if (schnitt) {
+      rects.forEach(r => {
+        r.geschnitten = r.sMin <= schnitt.pos && r.sMax >= schnitt.pos;
+        r.dahinter    = r.sMin > schnitt.pos;
+      });
+      const uebrig = rects.filter(r => r.geschnitten || r.dahinter);   // davor entfaellt
+      // Bliebe nichts uebrig, waere das Blatt weiss und Math.min() ueber eine
+      // leere Liste ergaebe Infinity. Dann lieber alles zeigen als nichts.
+      if (uebrig.length) rects = uebrig; else schnitt = null;
+    }
+    if (!rects.length) return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}"><rect width="${svgW}" height="${svgH}" fill="white"/></svg>`;
 
     // World bounds in projected space
     const allU = rects.flatMap(r=>[r.u0,r.u1]), allV = rects.flatMap(r=>[r.v0,r.v1]);
@@ -9366,7 +9389,13 @@ function printProject() {
       const punkte = r.poly.map(([u,v]) => toSVG(u,v));
       const d = punkte.map(p2 => p2[0].toFixed(1) + ',' + p2[1].toFixed(1)).join(' ');
       const fill = WOOD_COLORS_HEX[r.b.woodType]||'#c8a06e';
-      parts.push(`<polygon points="${d}" fill="${fill}" fill-opacity="0.7" stroke="#7a5020" stroke-width="0.8" stroke-linejoin="round"/>`);
+      /* Im Schnitt traegt die Strichstaerke die Information: was die Ebene
+         durchstoesst, steht kraeftig da; was dahinter liegt, ist blasse
+         Ansicht. Ohne diesen Unterschied waere es nur eine weitere Ansicht. */
+      const imSchnitt = schnitt && r.geschnitten;
+      const deck = schnitt ? (imSchnitt ? 0.85 : 0.18) : 0.7;
+      const kante = schnitt && !imSchnitt ? 0.4 : (imSchnitt ? 1.4 : 0.8);
+      parts.push(`<polygon points="${d}" fill="${fill}" fill-opacity="${deck}" stroke="#7a5020" stroke-width="${kante}" stroke-linejoin="round"${schnitt && !imSchnitt ? ' stroke-opacity="0.45"' : ''}/>`);
       // Schraffur und Positionsnummer richten sich nach dem Umriss-Schwerpunkt,
       // nicht nach der Bounding-Box — bei einem schraegen Sparren laege die
       // Box-Mitte sonst neben dem Bauteil.
@@ -9375,17 +9404,21 @@ function printProject() {
       let sx=0, sy=0;
       punkte.forEach(p2 => { sx+=p2[0]; sy+=p2[1]; });
       const mx = sx/punkte.length, my = sy/punkte.length;
-      if(rw>8&&rh>8) {
+      // Im Schnitt bekommt nur das GESCHNITTENE Holz die Schraffur — das ist
+      // ihre Bedeutung. Blasse Ansicht dahinter bleibt glatt.
+      if(rw>8&&rh>8 && !(schnitt && !imSchnitt)) {
         // Schraffur auf den Umriss begrenzen: eine kurze Kreuzschraffur um den
         // Schwerpunkt statt zweier Diagonalen ueber die ganze Box.
         const k = Math.min(rw, rh) * 0.30;
-        parts.push(`<line x1="${(mx-k).toFixed(1)}" y1="${(my-k).toFixed(1)}" x2="${(mx+k).toFixed(1)}" y2="${(my+k).toFixed(1)}" stroke="#7a5020" stroke-width="0.4" opacity="0.4"/>`);
-        parts.push(`<line x1="${(mx+k).toFixed(1)}" y1="${(my-k).toFixed(1)}" x2="${(mx-k).toFixed(1)}" y2="${(my+k).toFixed(1)}" stroke="#7a5020" stroke-width="0.4" opacity="0.4"/>`);
+        const st = imSchnitt ? 0.7 : 0.4, op = imSchnitt ? 0.75 : 0.4;
+        parts.push(`<line x1="${(mx-k).toFixed(1)}" y1="${(my-k).toFixed(1)}" x2="${(mx+k).toFixed(1)}" y2="${(my+k).toFixed(1)}" stroke="#7a5020" stroke-width="${st}" opacity="${op}"/>`);
+        parts.push(`<line x1="${(mx+k).toFixed(1)}" y1="${(my-k).toFixed(1)}" x2="${(mx-k).toFixed(1)}" y2="${(my+k).toFixed(1)}" stroke="#7a5020" stroke-width="${st}" opacity="${op}"/>`);
       }
       // Positionsnummer nur, wenn sie lesbar hineinpasst — sonst verdeckt sie
-      // das Bauteil mehr als sie hilft.
+      // das Bauteil mehr als sie hilft. Im Schnitt nur am geschnittenen Holz:
+      // Nummern auf blassen Hintergrundteilen laesen sich nicht zuordnen.
       const pos = _posVonId.get(r.b.id);
-      if (pos && rw > 15 && rh > 11) {
+      if (pos && rw > 15 && rh > 11 && !(schnitt && !imSchnitt)) {
         parts.push(`<circle cx="${mx.toFixed(1)}" cy="${my.toFixed(1)}" r="6.2" fill="#fff" fill-opacity="0.88" stroke="#333" stroke-width="0.5"/>`);
         parts.push(`<text x="${mx.toFixed(1)}" y="${(my+2.6).toFixed(1)}" text-anchor="middle" font-size="7.5" font-weight="bold" fill="#111" font-family="Arial">${pos}</text>`);
       }
@@ -9506,6 +9539,24 @@ function printProject() {
     kette(_achsen(true), true);
     kette(_achsen(false), false);
 
+    /* Schnittlinie in der Draufsicht. Ohne sie ist der Schnitt nicht
+       verwertbar — man sieht ihn, weiss aber nicht, WO er liegt. */
+    if (schnittMarke) {
+      let p1, p2;
+      if (schnittMarke.achse === 0) {           // Ebene quer zu X: senkrechte Linie
+        p1 = toSVG(schnittMarke.pos, wV0); p2 = toSVG(schnittMarke.pos, wV1);
+      } else {                                   // Ebene quer zu Z: waagerechte Linie
+        p1 = toSVG(wU0, -schnittMarke.pos); p2 = toSVG(wU1, -schnittMarke.pos);
+      }
+      const dx = p2[0]-p1[0], dy = p2[1]-p1[1], len = Math.hypot(dx,dy) || 1;
+      const ex = dx/len*16, ey = dy/len*16;      // Ueberstand ueber das Bauteil
+      parts.push(`<line x1="${(p1[0]-ex).toFixed(1)}" y1="${(p1[1]-ey).toFixed(1)}" x2="${(p2[0]+ex).toFixed(1)}" y2="${(p2[1]+ey).toFixed(1)}" stroke="#0f3460" stroke-width="1.1" stroke-dasharray="10,3,2,3"/>`);
+      [[p1[0]-ex, p1[1]-ey], [p2[0]+ex, p2[1]+ey]].forEach(([tx,ty]) => {
+        parts.push(`<circle cx="${tx.toFixed(1)}" cy="${ty.toFixed(1)}" r="6" fill="#fff" stroke="#0f3460" stroke-width="1"/>`);
+        parts.push(`<text x="${tx.toFixed(1)}" y="${(ty+2.7).toFixed(1)}" text-anchor="middle" font-size="7.5" font-weight="bold" fill="#0f3460" font-family="Arial">A</text>`);
+      });
+    }
+
     // Optional overlay polygon (e.g. Grundriss outline for top view)
     if (extraPoly && extraPoly.length >= 2) {
       const svgPts = extraPoly.map(([u,v]) => { const [sx,sy]=toSVG(u,v); return `${sx},${sy}`; }).join(' ');
@@ -9533,12 +9584,29 @@ function printProject() {
     ? [[0,0],[fpS1,0],[fpS1,-fpS3],[0,-fpS2]]
     : null;
 
+  /* SCHNITT A–A. Die Ebene liegt quer zur LAENGEREN Gebaeudeachse und in
+     deren Mitte: so zeigt der Schnitt den Querschnitt mit Dachneigung und
+     Wandaufbau — bei einem Schnitt laengs saehe man nur eine zweite
+     Seitenansicht. Geblickt wird in Richtung der wachsenden Achse. */
+  const _spanX = maxX - minX, _spanZ = maxZ - minZ;
+  const schnittAchse = _spanX >= _spanZ ? 0 : 2;
+  const schnittPos = schnittAchse === 0 ? (minX + maxX) / 2 : (minZ + maxZ) / 2;
+  const schnittDef = { achse: schnittAchse, pos: schnittPos };
+
   // Top view: X=horizontal, Z=vertical (flip Z so north is up)
-  const svgTop   = makePlanSVG((x,y,z) => [x, -z], PLAN_W, PLAN_H, 'Draufsicht (von oben)',   sharedScale, grundrissPolyTop);
+  const svgTop   = makePlanSVG((x,y,z) => [x, -z], PLAN_W, PLAN_H, 'Draufsicht (von oben)',   sharedScale, grundrissPolyTop, null, schnittDef);
   // Front view: X=horizontal, Y=vertical (flip Y so top is up)
   const svgFront = makePlanSVG((x,y,z) => [x, -y], PLAN_W, PLAN_H, 'Ansicht Vorne',            sharedScale);
   // Side view: Z=horizontal, Y=vertical (flip Y)
   const svgSide  = makePlanSVG((x,y,z) => [z, -y], PLAN_W, PLAN_H, 'Ansicht Seite (Rechts)',   sharedScale);
+  // Schnitt: quer zu X -> Blick entlang X, also Projektion (z,-y). Quer zu Z
+  // -> Blick entlang Z, Projektion (x,-y).
+  const svgSchnitt = makePlanSVG(
+    schnittAchse === 0 ? ((x,y,z) => [z, -y]) : ((x,y,z) => [x, -y]),
+    620, 400, 'Schnitt A–A', null, null, schnittDef);
+  const schnittLage = schnittAchse === 0
+    ? `Ebene senkrecht zur X-Achse bei x = ${Math.round(schnittPos)} mm`
+    : `Ebene senkrecht zur Z-Achse bei z = ${Math.round(schnittPos)} mm`;
 
   // ── Maßstabsgetreue Ansicht (echte mm auf Papier) ──
   // factor = Zeichnung/Realität: 1:100 → 0.01, 1:1 → 1, 10:1 → 10.
@@ -9625,7 +9693,7 @@ function printProject() {
   const _scaleLbl = _scaleOn ? (_scaleFactor >= 1 ? _scaleFactor + ':1' : '1:' + Math.round(1/_scaleFactor)) : '';
   const scaledPlansHTML = _scaleOn ? `
     <div class="blatt">
-    ${_kopf('Maßstäbliche Pläne', 'Maßstab ' + _scaleLbl, 3)}
+    ${_kopf('Maßstäbliche Pläne', 'Maßstab ' + _scaleLbl, 4)}
     <div class="blatt-inhalt">
     <p class="hinweis" style="margin:0 0 8px">Beim Drucken <strong>„Tatsächliche Größe“ / 100&nbsp;%</strong> wählen —
       nicht „An Seite anpassen“, sonst stimmt der Maßstab nicht.${_scaleFactor===1 ? ' Bei 1:1 lässt sich der Ausdruck direkt als Schablone aufs Holz legen.' : ''}</p>
@@ -9635,7 +9703,7 @@ function printProject() {
       <div class="plan-box">${makeScaledPlanSVG((x,y,z)=>[z,-y],'Seite',_scaleFactor,_scaleLbl)}<h3>Ansicht seite<span>${_scaleLbl}</span></h3></div>
     </div>
     </div>
-    ${_schriftfeld(3)}
+    ${_schriftfeld(4)}
     </div>` : '';
 
   // --- Stückliste (grouped by measurements) ---
@@ -9666,7 +9734,7 @@ function printProject() {
   // beide auf "Blatt 1" und liefen ueber zwei Druckseiten — dabei rutschte das
   // Schriftfeld allein auf die naechste Seite. Eine Zeichnung hat je Blatt ein
   // Schriftfeld, also machen wir auch echte Blaetter daraus.
-  const _blaetter = 2 + (_scaleOn ? 1 : 0) + (_hatDatenblatt ? 1 : 0);
+  const _blaetter = 3 + (_scaleOn ? 1 : 0) + (_hatDatenblatt ? 1 : 0);
   const bvSeiten = ' von ' + _blaetter;
 
   // Kopf und Schriftfeld einmal definiert statt viermal abgeschrieben — sonst
@@ -9864,9 +9932,27 @@ ${_kopf(bvTitel, 'Konstruktionsplan &middot; Ansichten', 1)}
 ${_schriftfeld(1, 'Ansichten eingepasst, nicht maßstäblich — Maße ausschließlich den Bemaßungen und der Stückliste entnehmen, nicht aus der Zeichnung abgreifen. ')}
 </div>
 
-<!-- ══ BLATT 2: Stückliste ═════════════════════════════════════════════════ -->
+<!-- ══ BLATT 2: Schnitt A–A ════════════════════════════════════════════════ -->
 <div class="blatt">
-${_kopf(bvTitel, 'Stückliste', 2)}
+${_kopf(bvTitel, 'Schnitt A–A', 2)}
+<div class="blatt-inhalt">
+<div class="plan-box" style="width:100%">
+  ${svgSchnitt}
+  <h3>Schnitt A–A<span>eingepasst &middot; ${schnittLage}</span></h3>
+</div>
+<div style="font-size:8.5pt;color:#555;line-height:1.5;margin-top:6px">
+  <b>Kräftig gezeichnet und schraffiert</b> ist das Holz, das die Schnittebene
+  durchstößt. <b>Blass</b> dahinter liegt die Ansicht — was man beim Blick durch
+  den Schnitt sieht. Bauteile vor der Ebene sind weggelassen. Die Lage der
+  Ebene ist in der Draufsicht auf Blatt 1 als Linie A–A eingetragen.
+</div>
+</div>
+${_schriftfeld(2, 'Schnitt eingepasst, nicht maßstäblich — Maße den Bemaßungen und der Stückliste entnehmen. ')}
+</div>
+
+<!-- ══ BLATT 3: Stückliste ═════════════════════════════════════════════════ -->
+<div class="blatt">
+${_kopf(bvTitel, 'Stückliste', 3)}
 <div class="blatt-inhalt">
 <div class="parts-section">
   <h2>Stückliste &mdash; die Positionsnummern stehen in den Ansichten</h2>
@@ -9893,7 +9979,7 @@ ${_kopf(bvTitel, 'Stückliste', 2)}
 </div>
 
 </div>
-${_schriftfeld(2)}
+${_schriftfeld(3)}
 </div>
 
 ${scaledPlansHTML}
