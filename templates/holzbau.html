@@ -8736,20 +8736,44 @@ function printProject() {
     const svgW = W + PAD*2 + DIM*2;
     const svgH = H + PAD*2 + DIM*2;
 
-    // Map all beam bounding boxes through projectFn → get 2D rects
+    /* Bauteil-Umriss in der Ansicht.
+       Hier lagen zwei Fehler, die man erst im Ausdruck sieht:
+       1) Die DREHUNG der Balken wurde gar nicht angewendet. Ein Dachsparren mit
+          rz=32 erschien als achsparalleler Kasten — ein Satteldach sah in der
+          Vorderansicht aus wie ein Rechteck statt wie ein Giebel.
+       2) Die Z-Ausdehnung war bei axis 'y' falsch (B statt H). createBeamMesh
+          setzt D je Achse: x -> B, y -> H, z -> L. Ein stehender Pfosten wurde
+          dadurch 60 statt 120 mm tief gezeichnet.
+       Ausserdem wird jetzt der echte Umriss (konvexe Huelle der acht
+       projizierten Ecken) gezeichnet statt einer umschliessenden Kiste —
+       sonst waere ein schraeger Sparren immer noch ein Rechteck. */
+    const _ausd = (b) => b.axis === 'x' ? [b.L, b.H, b.B]
+                       : b.axis === 'y' ? [b.B, b.L, b.H]
+                       :                  [b.B, b.H, b.L];
+    const _huelle = (pts) => {                       // Monotone Chain
+      const p = pts.slice().sort((a, b2) => a[0] - b2[0] || a[1] - b2[1]);
+      if (p.length < 3) return p;
+      const kreuz = (o, a, b2) => (a[0]-o[0])*(b2[1]-o[1]) - (a[1]-o[1])*(b2[0]-o[0]);
+      const unten = [], oben = [];
+      for (const q of p) { while (unten.length >= 2 && kreuz(unten[unten.length-2], unten[unten.length-1], q) <= 0) unten.pop(); unten.push(q); }
+      for (let i = p.length - 1; i >= 0; i--) { const q = p[i]; while (oben.length >= 2 && kreuz(oben[oben.length-2], oben[oben.length-1], q) <= 0) oben.pop(); oben.push(q); }
+      unten.pop(); oben.pop();
+      return unten.concat(oben);
+    };
+    const _grad = Math.PI / 180;
     const rects = beams.map(b => {
-      const corners = [
-        [b.x,                              b.y,                              b.z],
-        [b.x+(b.axis==='x'?b.L:b.B),       b.y,                              b.z],
-        [b.x,                              b.y+(b.axis==='y'?b.L:b.H),       b.z],
-        [b.x+(b.axis==='x'?b.L:b.B),       b.y+(b.axis==='y'?b.L:b.H),       b.z],
-        [b.x,                              b.y,                              b.z+(b.axis==='z'?b.L:b.B)],
-        [b.x+(b.axis==='x'?b.L:b.B),       b.y,                              b.z+(b.axis==='z'?b.L:b.B)],
-        [b.x,                              b.y+(b.axis==='y'?b.L:b.H),       b.z+(b.axis==='z'?b.L:b.B)],
-        [b.x+(b.axis==='x'?b.L:b.B),       b.y+(b.axis==='y'?b.L:b.H),       b.z+(b.axis==='z'?b.L:b.B)],
-      ].map(([x,y,z]) => projectFn(x,y,z));
-      const us = corners.map(c=>c[0]), vs = corners.map(c=>c[1]);
-      return { b, u0:Math.min(...us), u1:Math.max(...us), v0:Math.min(...vs), v1:Math.max(...vs) };
+      const e = _ausd(b);
+      const cx = b.x + e[0]/2, cy = b.y + e[1]/2, cz = b.z + e[2]/2;
+      const q = new THREE.Quaternion().setFromEuler(
+        new THREE.Euler((b.rx||0)*_grad, (b.ry||0)*_grad, (b.rz||0)*_grad));
+      const ecken = [];
+      for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+        const v = new THREE.Vector3(sx*e[0]/2, sy*e[1]/2, sz*e[2]/2).applyQuaternion(q);
+        ecken.push(projectFn(cx + v.x, cy + v.y, cz + v.z));
+      }
+      const us = ecken.map(c=>c[0]), vs = ecken.map(c=>c[1]);
+      return { b, poly: _huelle(ecken),
+               u0:Math.min(...us), u1:Math.max(...us), v0:Math.min(...vs), v1:Math.max(...vs) };
     });
 
     // World bounds in projected space
@@ -8778,24 +8802,34 @@ function printProject() {
     }
     parts.push(`</g>`);
 
-    // Beams
+    // Bauteile als echten Umriss zeichnen (nicht als umschliessendes Rechteck),
+    // damit Neigungen sichtbar bleiben.
     rects.forEach(r => {
-      const [x0,y0]=toSVG(r.u0,r.v0), [x1,y1]=toSVG(r.u1,r.v1);
+      const punkte = r.poly.map(([u,v]) => toSVG(u,v));
+      const d = punkte.map(p2 => p2[0].toFixed(1) + ',' + p2[1].toFixed(1)).join(' ');
       const fill = WOOD_COLORS_HEX[r.b.woodType]||'#c8a06e';
-      parts.push(`<rect x="${Math.min(x0,x1)}" y="${Math.min(y0,y1)}" width="${Math.abs(x1-x0)}" height="${Math.abs(y1-y0)}" fill="${fill}" fill-opacity="0.7" stroke="#7a5020" stroke-width="0.8"/>`);
-      // Cross-hatch for timber
-      const rx=Math.min(x0,x1),ry=Math.min(y0,y1),rw=Math.abs(x1-x0),rh=Math.abs(y1-y0);
+      parts.push(`<polygon points="${d}" fill="${fill}" fill-opacity="0.7" stroke="#7a5020" stroke-width="0.8" stroke-linejoin="round"/>`);
+      // Schraffur und Positionsnummer richten sich nach dem Umriss-Schwerpunkt,
+      // nicht nach der Bounding-Box — bei einem schraegen Sparren laege die
+      // Box-Mitte sonst neben dem Bauteil.
+      const [ax0,ay0]=toSVG(r.u0,r.v0), [ax1,ay1]=toSVG(r.u1,r.v1);
+      const rw=Math.abs(ax1-ax0), rh=Math.abs(ay1-ay0);
+      let sx=0, sy=0;
+      punkte.forEach(p2 => { sx+=p2[0]; sy+=p2[1]; });
+      const mx = sx/punkte.length, my = sy/punkte.length;
       if(rw>8&&rh>8) {
-        parts.push(`<line x1="${rx}" y1="${ry}" x2="${rx+rw}" y2="${ry+rh}" stroke="#7a5020" stroke-width="0.4" opacity="0.4"/>`);
-        parts.push(`<line x1="${rx+rw}" y1="${ry}" x2="${rx}" y2="${ry+rh}" stroke="#7a5020" stroke-width="0.4" opacity="0.4"/>`);
+        // Schraffur auf den Umriss begrenzen: eine kurze Kreuzschraffur um den
+        // Schwerpunkt statt zweier Diagonalen ueber die ganze Box.
+        const k = Math.min(rw, rh) * 0.30;
+        parts.push(`<line x1="${(mx-k).toFixed(1)}" y1="${(my-k).toFixed(1)}" x2="${(mx+k).toFixed(1)}" y2="${(my+k).toFixed(1)}" stroke="#7a5020" stroke-width="0.4" opacity="0.4"/>`);
+        parts.push(`<line x1="${(mx+k).toFixed(1)}" y1="${(my-k).toFixed(1)}" x2="${(mx-k).toFixed(1)}" y2="${(my+k).toFixed(1)}" stroke="#7a5020" stroke-width="0.4" opacity="0.4"/>`);
       }
       // Positionsnummer nur, wenn sie lesbar hineinpasst — sonst verdeckt sie
       // das Bauteil mehr als sie hilft.
       const pos = _posVonId.get(r.b.id);
       if (pos && rw > 15 && rh > 11) {
-        const mx = rx + rw/2, my = ry + rh/2;
-        parts.push(`<circle cx="${mx}" cy="${my}" r="6.2" fill="#fff" fill-opacity="0.88" stroke="#333" stroke-width="0.5"/>`);
-        parts.push(`<text x="${mx}" y="${my+2.6}" text-anchor="middle" font-size="7.5" font-weight="bold" fill="#111" font-family="Arial">${pos}</text>`);
+        parts.push(`<circle cx="${mx.toFixed(1)}" cy="${my.toFixed(1)}" r="6.2" fill="#fff" fill-opacity="0.88" stroke="#333" stroke-width="0.5"/>`);
+        parts.push(`<text x="${mx.toFixed(1)}" y="${(my+2.6).toFixed(1)}" text-anchor="middle" font-size="7.5" font-weight="bold" fill="#111" font-family="Arial">${pos}</text>`);
       }
     });
 
@@ -8875,15 +8909,35 @@ function printProject() {
   // Bemaßungen/Beschriftungen bleiben papier-relativ (mm), damit sie bei jedem
   // Maßstab lesbar bleiben.
   function makeScaledPlanSVG(projectFn, label, factor, scaleLbl, extraPoly) {
+    // Gleiche Korrektur wie in makePlanSVG: Drehung anwenden, richtige
+    // Z-Ausdehnung (axis 'y' -> H, nicht B), echten Umriss statt Kiste.
+    const _ausdM = (b) => b.axis === 'x' ? [b.L, b.H, b.B]
+                        : b.axis === 'y' ? [b.B, b.L, b.H]
+                        :                  [b.B, b.H, b.L];
+    const _huelleM = (pts) => {
+      const q2 = pts.slice().sort((a, b2) => a[0] - b2[0] || a[1] - b2[1]);
+      if (q2.length < 3) return q2;
+      const kr = (o, a, b2) => (a[0]-o[0])*(b2[1]-o[1]) - (a[1]-o[1])*(b2[0]-o[0]);
+      const u2 = [], o2 = [];
+      for (const z of q2) { while (u2.length >= 2 && kr(u2[u2.length-2], u2[u2.length-1], z) <= 0) u2.pop(); u2.push(z); }
+      for (let i = q2.length - 1; i >= 0; i--) { const z = q2[i]; while (o2.length >= 2 && kr(o2[o2.length-2], o2[o2.length-1], z) <= 0) o2.pop(); o2.push(z); }
+      u2.pop(); o2.pop();
+      return u2.concat(o2);
+    };
+    const _gradM = Math.PI / 180;
     const rects = beams.map(b => {
-      const corners = [
-        [b.x, b.y, b.z], [b.x+(b.axis==='x'?b.L:b.B), b.y, b.z],
-        [b.x, b.y+(b.axis==='y'?b.L:b.H), b.z], [b.x+(b.axis==='x'?b.L:b.B), b.y+(b.axis==='y'?b.L:b.H), b.z],
-        [b.x, b.y, b.z+(b.axis==='z'?b.L:b.B)], [b.x+(b.axis==='x'?b.L:b.B), b.y, b.z+(b.axis==='z'?b.L:b.B)],
-        [b.x, b.y+(b.axis==='y'?b.L:b.H), b.z+(b.axis==='z'?b.L:b.B)], [b.x+(b.axis==='x'?b.L:b.B), b.y+(b.axis==='y'?b.L:b.H), b.z+(b.axis==='z'?b.L:b.B)],
-      ].map(([x,y,z]) => projectFn(x,y,z));
+      const e = _ausdM(b);
+      const cx = b.x + e[0]/2, cy = b.y + e[1]/2, cz = b.z + e[2]/2;
+      const qq = new THREE.Quaternion().setFromEuler(
+        new THREE.Euler((b.rx||0)*_gradM, (b.ry||0)*_gradM, (b.rz||0)*_gradM));
+      const corners = [];
+      for (const sx of [-1,1]) for (const sy of [-1,1]) for (const sz of [-1,1]) {
+        const v = new THREE.Vector3(sx*e[0]/2, sy*e[1]/2, sz*e[2]/2).applyQuaternion(qq);
+        corners.push(projectFn(cx+v.x, cy+v.y, cz+v.z));
+      }
+      const poly = _huelleM(corners);
       const us = corners.map(c=>c[0]), vs = corners.map(c=>c[1]);
-      return { b, u0:Math.min(...us), u1:Math.max(...us), v0:Math.min(...vs), v1:Math.max(...vs) };
+      return { b, poly, u0:Math.min(...us), u1:Math.max(...us), v0:Math.min(...vs), v1:Math.max(...vs) };
     });
     const allU = rects.flatMap(r=>[r.u0,r.u1]), allV = rects.flatMap(r=>[r.v0,r.v1]);
     const wU0=Math.min(...allU), wU1=Math.max(...allU), wV0=Math.min(...allV), wV1=Math.max(...allV);
@@ -8908,9 +8962,9 @@ function printProject() {
       p.push(`<polygon points="${pts}" fill="none" stroke="#888" stroke-width="0.3" stroke-dasharray="1.5 1.5"/>`);
     }
     rects.forEach(r => {
-      const [x0,y0]=P(r.u0,r.v0), [x1,y1]=P(r.u1,r.v1);
+      const d = r.poly.map(([u,v]) => { const [px,py] = P(u,v); return px.toFixed(2)+','+py.toFixed(2); }).join(' ');
       const fill = WOOD_COLORS_HEX[r.b.woodType]||'#c8a06e';
-      p.push(`<rect x="${Math.min(x0,x1).toFixed(2)}" y="${Math.min(y0,y1).toFixed(2)}" width="${Math.abs(x1-x0).toFixed(2)}" height="${Math.abs(y1-y0).toFixed(2)}" fill="${fill}" fill-opacity="0.7" stroke="#7a5020" stroke-width="0.2"/>`);
+      p.push(`<polygon points="${d}" fill="${fill}" fill-opacity="0.7" stroke="#7a5020" stroke-width="0.2" stroke-linejoin="round"/>`);
     });
     // Gesamtbemaßung (echte Weltmaße), papier-relativ gezeichnet
     const [dx0,dyB]=P(wU0,wV1), [dx1]=P(wU1,wV1);
@@ -8935,10 +8989,8 @@ function printProject() {
   const _scaleLbl = _scaleOn ? (_scaleFactor >= 1 ? _scaleFactor + ':1' : '1:' + Math.round(1/_scaleFactor)) : '';
   const scaledPlansHTML = _scaleOn ? `
     <div class="blatt">
-    <div class="kopf">
-      <div class="titel">Maßstäbliche Pläne<span class="unter">Maßstab ${_scaleLbl}</span></div>
-      <div class="rechts">HolzBau 3D &middot; ${today}</div>
-    </div>
+    ${_kopf('Maßstäbliche Pläne', 'Maßstab ' + _scaleLbl, 3)}
+    <div class="blatt-inhalt">
     <p class="hinweis" style="margin:0 0 8px">Beim Drucken <strong>„Tatsächliche Größe“ / 100&nbsp;%</strong> wählen —
       nicht „An Seite anpassen“, sonst stimmt der Maßstab nicht.${_scaleFactor===1 ? ' Bei 1:1 lässt sich der Ausdruck direkt als Schablone aufs Holz legen.' : ''}</p>
     <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start">
@@ -8946,6 +8998,8 @@ function printProject() {
       <div class="plan-box">${makeScaledPlanSVG((x,y,z)=>[x,-y],'Vorne',_scaleFactor,_scaleLbl)}<h3>Ansicht vorne<span>${_scaleLbl}</span></h3></div>
       <div class="plan-box">${makeScaledPlanSVG((x,y,z)=>[z,-y],'Seite',_scaleFactor,_scaleLbl)}<h3>Ansicht seite<span>${_scaleLbl}</span></h3></div>
     </div>
+    </div>
+    ${_schriftfeld(3)}
     </div>` : '';
 
   // --- Stückliste (grouped by measurements) ---
@@ -8972,8 +9026,30 @@ function printProject() {
   // bvLeer wird weiter unten nochmals gebraucht — hier bewusst eigenstaendig
   // gerechnet, weil const erst ab seiner Zeile sichtbar ist.
   const _hatDatenblatt = Object.values(bauvorhaben || {}).some(v => (v || '').trim());
-  const _blaetter = 1 + (_hatDatenblatt ? 1 : 0) + (_scaleOn ? 1 : 0);
-  const bvSeiten = _blaetter > 1 ? ' von ' + _blaetter : '';
+  // Ansichten und Stueckliste bekommen je ein EIGENES Blatt. Vorher standen
+  // beide auf "Blatt 1" und liefen ueber zwei Druckseiten — dabei rutschte das
+  // Schriftfeld allein auf die naechste Seite. Eine Zeichnung hat je Blatt ein
+  // Schriftfeld, also machen wir auch echte Blaetter daraus.
+  const _blaetter = 2 + (_scaleOn ? 1 : 0) + (_hatDatenblatt ? 1 : 0);
+  const bvSeiten = ' von ' + _blaetter;
+
+  // Kopf und Schriftfeld einmal definiert statt viermal abgeschrieben — sonst
+  // laufen die vier Blaetter mit der Zeit auseinander.
+  const _kopf = (titel, unter, nr) => `
+<div class="kopf">
+  <div class="titel">${titel}<span class="unter">${unter}</span></div>
+  <div class="rechts">HolzBau 3D &middot; ${today}<br>Blatt ${nr}${bvSeiten}</div>
+</div>`;
+  const _schriftfeld = (nr, zusatz) => `
+<div class="schriftfeld">
+  <div><span class="lab">Bauvorhaben</span><span class="wert">${bvTitel}</span></div>
+  <div><span class="lab">Ort</span><span class="wert">${bvOrt}</span></div>
+  <div><span class="lab">Datum</span><span class="wert">${today}</span></div>
+  <div><span class="lab">Blatt</span><span class="wert">${nr}${bvSeiten}</span></div>
+</div>
+<p class="hinweis">${zusatz || ''}Erstellt mit HolzBau&nbsp;3D.
+  <strong>Kein Standsicherheitsnachweis:</strong> die Querschnitte stammen aus der
+  Vorplanung; ihre Zulässigkeit entscheidet die Berechnung eines Tragwerksplaners.</p>`;
   const bvOrt = escHtml((bauvorhaben && bauvorhaben.ort) || '—');
   const _m = (v) => (v / 1000).toFixed(2).replace('.', ',');
   // Statt eines erfundenen Massstabs die tatsaechlich dargestellte Ausdehnung:
@@ -8995,10 +9071,8 @@ function printProject() {
     `<td><strong>${wert ? escHtml(wert) : '<span style="color:#999;font-weight:normal">— nicht angegeben —</span>'}</strong></td></tr>`;
   const bauvorhabenSeite = bvLeer ? '' : `
 <div class="blatt">
-<div class="kopf">
-  <div class="titel">Angaben für den Tragwerksplaner<span class="unter">Beschreibung des Vorhabens &middot; keine statische Berechnung</span></div>
-  <div class="rechts">HolzBau 3D &middot; ${today}</div>
-</div>
+${_kopf('Angaben für den Tragwerksplaner', 'Beschreibung des Vorhabens &middot; keine statische Berechnung', _blaetter)}
+<div class="blatt-inhalt">
 <div class="parts-section">
   <h2>Vorhaben</h2>
   <table>
@@ -9028,6 +9102,8 @@ function printProject() {
   Die im Planer verwendeten Querschnitte sind Richtwerte aus der Vorplanung — welche Querschnitte
   zulässig sind, entscheidet die Berechnung eines Tragwerksplaners. Erstellt mit HolzBau 3D.
 </div>
+</div>
+${_schriftfeld(_blaetter)}
 </div>`;
 
   const html = `<!DOCTYPE html>
@@ -9043,8 +9119,33 @@ function printProject() {
   * { box-sizing: border-box; margin:0; padding:0; }
   body { font-family: "Helvetica Neue", Arial, Helvetica, sans-serif; font-size: 9.5pt;
          color: #111; background:#fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  @page { size: A4 landscape; margin: 10mm; }
-  @media print { body { margin:0; } .no-print { display:none; } .blatt { page-break-after: always; } .blatt:last-child { page-break-after: auto; } }
+  /* margin:0 am @page ist Absicht: Chrome blendet Kopf- und Fusszeile (Datum,
+     Titel und vor allem "about:blank") nur dann aus, wenn der Seitenrand null
+     ist. Den Rand macht stattdessen das Blatt selbst ueber sein padding.
+     Die Seite hat keine echte URL — sie entsteht per document.write —, deshalb
+     stuende dort sonst dauerhaft "about:blank" auf jedem Ausdruck. */
+  @page { size: A4 landscape; margin: 0; }
+
+  /* Jedes Blatt ist ein echtes A4-Querformat mit fester Hoehe. Nur so landet
+     das Schriftfeld zuverlaessig am Fuss DERSELBEN Seite und wird nicht
+     abgetrennt — genau der Fehler, bei dem es allein auf der letzten Seite
+     stand. */
+  .blatt { width: 297mm; min-height: 209mm; padding: 9mm 11mm 7mm;
+           display: flex; flex-direction: column; background:#fff; }
+  .blatt-inhalt { flex: 1 1 auto; min-height: 0; }
+  @media print {
+    body { margin:0; }
+    .no-print { display:none; }
+    .blatt { page-break-after: always; break-after: page; min-height: 209mm; height: 209mm; overflow: hidden; }
+    .blatt:last-child { page-break-after: auto; break-after: auto; }
+  }
+  @media screen {
+    body { background:#e9e9e9; padding:14px 0; }
+    .blatt { margin: 0 auto 14px; box-shadow: 0 1px 6px rgba(0,0,0,.25); }
+  }
+  /* Nichts davon darf mitten durchgeschnitten werden. */
+  .plan-box, .schriftfeld, .grid-2, .grid-3, tr, thead { break-inside: avoid; page-break-inside: avoid; }
+  thead { display: table-header-group; }   /* Kopfzeile auf Folgeseiten wiederholen */
 
   /* ── Kopf: schmale Zeile statt Werbebanner ─────────────────────────────── */
   .kopf { display:flex; justify-content:space-between; align-items:baseline;
@@ -9094,11 +9195,10 @@ function printProject() {
 <body>
 <button class="print-btn no-print" onclick="window.print()">Drucken / PDF</button>
 
+<!-- ══ BLATT 1: Ansichten ══════════════════════════════════════════════════ -->
 <div class="blatt">
-<div class="kopf">
-  <div class="titel">${bvTitel}<span class="unter">Konstruktionsplan &middot; Ansichten und Stückliste</span></div>
-  <div class="rechts">HolzBau 3D &middot; ${today}<br>Blatt 1${bvSeiten}</div>
-</div>
+${_kopf(bvTitel, 'Konstruktionsplan &middot; Ansichten', 1)}
+<div class="blatt-inhalt">
 
 <!-- Ansichten. Der Titel steht UNTER der Zeichnung, wie in einer Bauzeichnung,
      und traegt rechts den Massstabshinweis. -->
@@ -9124,7 +9224,14 @@ function printProject() {
   </div>
 </div>
 
-<!-- Stückliste -->
+</div>
+${_schriftfeld(1, 'Ansichten eingepasst, nicht maßstäblich — Maße ausschließlich den Bemaßungen und der Stückliste entnehmen, nicht aus der Zeichnung abgreifen. ')}
+</div>
+
+<!-- ══ BLATT 2: Stückliste ═════════════════════════════════════════════════ -->
+<div class="blatt">
+${_kopf(bvTitel, 'Stückliste', 2)}
+<div class="blatt-inhalt">
 <div class="parts-section">
   <h2>Stückliste &mdash; die Positionsnummern stehen in den Ansichten</h2>
   <table>
@@ -9149,22 +9256,8 @@ function printProject() {
   </table>
 </div>
 
-<!-- Schriftfeld: Bauvorhaben, Ort, Datum, Blatt. Ohne das ist ein Ausdruck
-     kein Plan, sondern ein Bild — auf der Baustelle muss man wissen, WELCHES
-     Vorhaben, in welchem Stand. -->
-<div class="schriftfeld">
-  <div><span class="lab">Bauvorhaben</span><span class="wert">${bvTitel}</span></div>
-  <div><span class="lab">Ort</span><span class="wert">${bvOrt}</span></div>
-  <div><span class="lab">Datum</span><span class="wert">${today}</span></div>
-  <div><span class="lab">Blatt</span><span class="wert">1${bvSeiten}</span></div>
 </div>
-<p class="hinweis">
-  Erstellt mit HolzBau&nbsp;3D. Ansichten eingepasst, nicht maßstäblich — Maße
-  ausschließlich den Bemaßungen und der Stückliste entnehmen, nicht aus der
-  Zeichnung abgreifen. <strong>Kein Standsicherheitsnachweis:</strong> die
-  Querschnitte stammen aus der Vorplanung; ihre Zulässigkeit entscheidet die
-  Berechnung eines Tragwerksplaners.
-</p>
+${_schriftfeld(2)}
 </div>
 
 ${scaledPlansHTML}
