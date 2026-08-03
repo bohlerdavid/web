@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import html
 import base64
@@ -222,6 +223,15 @@ def _nutzerdaten_loeschen(user_id):
     nicht auf: ein Nutzer, der sein Konto loescht, darf nicht an einer
     Nebentabelle scheitern.
     """
+    # Zuerst die Zugangslisten: sie haengen am Projekt, nicht am Konto. Waeren
+    # die Projekte schon weg, liessen sich ihre Adressen nicht mehr zuordnen und
+    # blieben als Waisen liegen — obwohl es Daten Dritter sind.
+    try:
+        execute_db('DELETE FROM share_access WHERE project_id IN '
+                   '(SELECT id FROM projects WHERE user_id=?)', [user_id])
+    except Exception as e:
+        logger.error('Loeschen der Zugangslisten fuer Nutzer %s fehlgeschlagen: %s',
+                     user_id, type(e).__name__)
     for tabelle, spalte in PERSONENBEZOGENE_TABELLEN:
         try:
             execute_db('DELETE FROM %s WHERE %s=?' % (tabelle, spalte), [user_id])
@@ -302,6 +312,19 @@ SCHEMA_STATEMENTS = [
     # LONGTEXT statt TEXT: TEXT fasst 65 KB, ein Modell mit ein paar tausend
     # Balken und Ausschnitten ist groesser. Die eigentliche Grenze setzt
     # PROJEKT_MAX_BYTES in der Route.
+    # Fuer einen Ansehen-Link freigeschaltete E-Mail-Adressen. Das sind Daten
+    # DRITTER — der Zimmerer, der Statiker, der Bauherr. Sie haengen am Projekt,
+    # nicht am Konto, und werden deshalb an drei Stellen ausdruecklich mit
+    # geloescht: beim Widerruf, beim Loeschen des Projekts und beim Loeschen des
+    # Kontos. PERSONENBEZOGENE_TABELLEN greift hier nicht, weil dort ueber
+    # user_id geloescht wird und diese Tabelle keine hat.
+    """CREATE TABLE IF NOT EXISTS share_access (
+        id         INT PRIMARY KEY AUTO_INCREMENT,
+        project_id INT          NOT NULL,
+        email      VARCHAR(255) NOT NULL,
+        created_at DATETIME     NOT NULL,
+        INDEX (project_id)
+    )""",
     """CREATE TABLE IF NOT EXISTS projects (
         id          INT PRIMARY KEY AUTO_INCREMENT,
         user_id     INT          NOT NULL,
@@ -378,6 +401,12 @@ SCHEMA_MIGRATIONS = [
     # Frage exakt.
     "ALTER TABLE app_users ADD COLUMN login_count INT NOT NULL DEFAULT 0",
     "ALTER TABLE app_users ADD COLUMN prev_login DATETIME NULL",
+    # Ansehen-Link fuer ein Projekt. NULL = nicht freigegeben. MySQL erlaubt
+    # beliebig viele NULL in einem UNIQUE-Index, der Normalfall bleibt also
+    # unberuehrt und nur echte Token muessen eindeutig sein.
+    "ALTER TABLE projects ADD COLUMN share_token VARCHAR(64) NULL",
+    "ALTER TABLE projects ADD COLUMN share_at DATETIME NULL",
+    "CREATE UNIQUE INDEX uniq_share_token ON projects (share_token)",
 ]
 
 
@@ -2389,11 +2418,254 @@ def projekt_umbenennen(pid):
     return jsonify({'name': name})
 
 
+# ── Ansehen-Link ──────────────────────────────────────────────────────────
+# Ein Link ohne Anmeldung ist praktisch oeffentlich: er landet in Verlaeufen,
+# Messenger-Vorschauen und irgendwann in einem Index. Deshalb drei Regeln:
+#   1. Nur auf ausdrueckliche Freigabe je Projekt, jederzeit widerrufbar.
+#   2. Das Token ist lang genug, um nicht erraten zu werden.
+#   3. WEISSLISTE statt Schwarzliste beim Ausliefern. Eine Schwarzliste
+#      ("alles ausser bauvorhaben") wuerde jedes kuenftige Feld automatisch
+#      mit veroeffentlichen — genau so entstehen Datenlecks.
+SHARE_ERLAUBTE_FELDER = ('version', 'groups', 'beams', 'decos')
+
+
+def _share_saeubern(roh):
+    """Aus dem gespeicherten Projekt wird das, was oeffentlich gezeigt werden
+    darf: Geometrie und Gruppen. NICHT dabei sind die Bauvorhaben-Angaben (dort
+    steht der ORT) und die Bild-Vorlage."""
+    try:
+        d = json.loads(roh)
+    except Exception:
+        return None
+    if not isinstance(d, dict):
+        return None
+    return {k: d[k] for k in SHARE_ERLAUBTE_FELDER if k in d}
+
+
+def _share_stueckliste(daten):
+    """Kurze Stueckliste, gruppiert wie im Editor: gleiche Holzart und gleiche
+    Masse zaehlen zusammen. Bewusst hier gerechnet und nicht im Browser — die
+    oeffentliche Seite soll ohne den ganzen Editor auskommen."""
+    gruppen = {}
+    for b in (daten.get('beams') or []):
+        if not isinstance(b, dict):
+            continue
+        try:
+            L, B, H = float(b.get('L', 0)), float(b.get('B', 0)), float(b.get('H', 0))
+        except (TypeError, ValueError):
+            continue
+        art = str(b.get('woodType', ''))[:60]
+        schluessel = (art, round(L), round(B), round(H))
+        g = gruppen.setdefault(schluessel, {'anzahl': 0, 'namen': set()})
+        g['anzahl'] += 1
+        if b.get('name'):
+            g['namen'].add(str(b['name'])[:60])
+    raus = []
+    for (art, L, B, H), g in gruppen.items():
+        raus.append({
+            'anzahl': g['anzahl'], 'holz': art, 'l': L, 'b': B, 'h': H,
+            'name': ', '.join(sorted(g['namen'])[:3]) or '—',
+            'volumen': round(g['anzahl'] * L * B * H / 1e9, 3),   # m3
+        })
+    raus.sort(key=lambda r: (-r['anzahl'], r['holz']))
+    return raus
+
+
+SHARE_TAGE = 7                  # Gueltigkeit eines Ansehen-Links
+SHARE_ZUGANG_TAGE = 7           # so lange bleibt ein bestaetigter Betrachter drin
+SHARE_CODE_MINUTEN = 15
+SHARE_VERSUCHE = 5
+
+
+def _share_projekt(token):
+    """Projekt zu einem Token — oder None, wenn es keins gibt oder der Link
+    abgelaufen ist. Die Ablaufpruefung steht ABSICHTLICH hier und nicht nur im
+    Cron: ein abgelaufener Link muss sofort tot sein, auch wenn das Aufraeumen
+    noch nicht gelaufen ist."""
+    r = query_db('SELECT id, name, daten, share_at FROM projects WHERE share_token=?',
+                 [token], one=True)
+    if not r or not r['share_at']:
+        return None
+    if datetime.now() - r['share_at'] > timedelta(days=SHARE_TAGE):
+        return None
+    return r
+
+
+def _share_frei(pid, email):
+    r = query_db('SELECT id FROM share_access WHERE project_id=? AND email=?',
+                 [pid, (email or '').strip().lower()], one=True)
+    return bool(r)
+
+
+@app.route('/projekte/<int:pid>/teilen', methods=['POST'])
+@login_required
+def projekt_teilen(pid):
+    if not validate_csrf(request.form.get('csrf_token', '')):
+        return jsonify({'fehler': 'Sitzung abgelaufen.'}), 403
+    user_id = session['user_id']
+    r = query_db('SELECT id FROM projects WHERE id=? AND user_id=?', [pid, user_id], one=True)
+    if not r:
+        return jsonify({'fehler': 'Projekt nicht gefunden.'}), 404
+
+    if request.form.get('an') != '1':
+        # Widerruf nimmt die freigeschalteten Adressen MIT. Sie sind Daten
+        # Dritter und haben ohne Link keinen Zweck mehr.
+        execute_db('UPDATE projects SET share_token=NULL, share_at=NULL WHERE id=? AND user_id=?',
+                   [pid, user_id])
+        execute_db('DELETE FROM share_access WHERE project_id=?', [pid])
+        return jsonify({'an': False})
+
+    mails = []
+    for teil in re.split(r'[,;\s]+', request.form.get('mails', '') or ''):
+        t = teil.strip().lower()
+        if t and re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', t) and t not in mails:
+            mails.append(t)
+    if not mails:
+        return jsonify({'fehler': 'Bitte mindestens eine gültige E-Mail-Adresse angeben. '
+                                  'Nur wer eine davon besitzt, kann den Link öffnen.'}), 400
+    if len(mails) > 20:
+        return jsonify({'fehler': 'Höchstens 20 Adressen je Link.'}), 400
+
+    token = secrets.token_urlsafe(24)
+    jetzt = datetime.now()
+    execute_db('UPDATE projects SET share_token=?, share_at=? WHERE id=? AND user_id=?',
+               [token, jetzt, pid, user_id])
+    execute_db('DELETE FROM share_access WHERE project_id=?', [pid])
+    for m in mails:
+        execute_db('INSERT INTO share_access (project_id, email, created_at) VALUES (?,?,?)',
+                   [pid, m, jetzt])
+    basis = os.environ.get('BASE_URL', 'https://holzbau3d.app').rstrip('/')
+    return jsonify({'an': True, 'link': basis + '/p/' + token,
+                    'mails': mails, 'tage': SHARE_TAGE,
+                    'bis': (jetzt + timedelta(days=SHARE_TAGE)).strftime('%d.%m.%Y')})
+
+
+def _share_darf_sehen(token):
+    z = session.get('share_ok', {}).get(token)
+    if not z:
+        return False
+    try:
+        return datetime.now() < datetime.fromisoformat(z)
+    except Exception:
+        return False
+
+
+@app.route('/p/<token>')
+def projekt_ansehen(token):
+    """Nur-Ansicht. Kein Login, keine Bearbeitung, kein Rueckweg ins Konto —
+    die Seite kennt weder Nutzernamen noch E-Mail des Besitzers."""
+    p = _share_projekt(token)
+    if not p:
+        return render_template('projekt_ansicht.html', weg=True), 404
+    if not _share_darf_sehen(token):
+        return render_template('projekt_ansicht.html', token=token, tor=True,
+                               schritt=request.args.get('schritt', 'mail'),
+                               meldung=request.args.get('m', ''))
+    daten = _share_saeubern(p['daten'])
+    if daten is None:
+        return render_template('projekt_ansicht.html', weg=True), 404
+    return render_template('projekt_ansicht.html',
+                           projekt_name=p['name'], token=token,
+                           teile=_share_stueckliste(daten),
+                           anzahl=len(daten.get('beams') or []),
+                           bis=(p['share_at'] + timedelta(days=SHARE_TAGE)).strftime('%d.%m.%Y'))
+
+
+@app.route('/p/<token>/code', methods=['POST'])
+def projekt_ansehen_code(token):
+    """Schritt 1: Adresse eintragen. Die Antwort ist IMMER dieselbe — sonst
+    liesse sich abklopfen, welche Adressen freigeschaltet sind, und das waere
+    eine Auskunft ueber Dritte."""
+    p = _share_projekt(token)
+    if not p:
+        return render_template('projekt_ansicht.html', weg=True), 404
+    email = (request.form.get('email', '') or '').strip().lower()[:255]
+    if _share_frei(p['id'], email):
+        code = '%06d' % secrets.randbelow(1000000)
+        session['share_code'] = {
+            'token': token, 'email': email,
+            'hash': generate_password_hash(code),
+            'bis': (datetime.now() + timedelta(minutes=SHARE_CODE_MINUTEN)).isoformat(),
+            'versuche': 0,
+        }
+        try:
+            send_email(email, 'Dein Zugangscode für ein HolzBau-3D-Projekt',
+                       '<p>Jemand hat dir ein Projekt aus HolzBau 3D zum Ansehen freigegeben.</p>'
+                       '<p style="font-size:26px;font-weight:bold;letter-spacing:3px">%s</p>'
+                       '<p>Der Code gilt %d Minuten. Wenn du das nicht angefordert hast, '
+                       'ignoriere diese Nachricht einfach.</p>' % (code, SHARE_CODE_MINUTEN))
+        except Exception as e:
+            logger.error('Zugangscode konnte nicht gesendet werden: %s', type(e).__name__)
+    return redirect(url_for('projekt_ansehen', token=token, schritt='code',
+                            m='Wenn diese Adresse freigegeben ist, haben wir dir gerade '
+                              'einen Code geschickt.'))
+
+
+@app.route('/p/<token>/pruefen', methods=['POST'])
+def projekt_ansehen_pruefen(token):
+    """Schritt 2: Code eintragen."""
+    if not _share_projekt(token):
+        return render_template('projekt_ansicht.html', weg=True), 404
+    s = session.get('share_code') or {}
+    fehler = 'Der Code stimmt nicht oder ist abgelaufen. Bitte neu anfordern.'
+    if s.get('token') != token:
+        return redirect(url_for('projekt_ansehen', token=token, schritt='mail', m=fehler))
+    try:
+        abgelaufen = datetime.now() > datetime.fromisoformat(s.get('bis', ''))
+    except Exception:
+        abgelaufen = True
+    if abgelaufen or s.get('versuche', 0) >= SHARE_VERSUCHE:
+        session.pop('share_code', None)
+        return redirect(url_for('projekt_ansehen', token=token, schritt='mail', m=fehler))
+    if not check_password_hash(s.get('hash', ''), (request.form.get('code', '') or '').strip()):
+        s['versuche'] = s.get('versuche', 0) + 1
+        session['share_code'] = s
+        return redirect(url_for('projekt_ansehen', token=token, schritt='code',
+                                m='Der Code stimmt nicht. Noch %d Versuch(e).'
+                                  % max(0, SHARE_VERSUCHE - s['versuche'])))
+    ok = dict(session.get('share_ok') or {})
+    ok[token] = (datetime.now() + timedelta(days=SHARE_ZUGANG_TAGE)).isoformat()
+    session['share_ok'] = ok
+    session.pop('share_code', None)
+    return redirect(url_for('projekt_ansehen', token=token))
+
+
+@app.route('/p/<token>/modell.json')
+def projekt_ansehen_json(token):
+    p = _share_projekt(token)
+    if not p or not _share_darf_sehen(token):
+        abort(404)
+    daten = _share_saeubern(p['daten'])
+    if daten is None:
+        abort(404)
+    antwort = jsonify(daten)
+    # Nicht in Suchmaschinen und nicht in fremden Zwischenspeichern.
+    antwort.headers['X-Robots-Tag'] = 'noindex, nofollow'
+    antwort.headers['Cache-Control'] = 'private, no-store'
+    return antwort
+
+
+def _share_aufraeumen():
+    """Abgelaufene Links wirklich loeschen, nicht nur sperren. Der Nutzer hat
+    7 Tage zugesagt bekommen — danach soll auch nichts mehr dastehen."""
+    grenze = datetime.now() - timedelta(days=SHARE_TAGE)
+    alt = query_db('SELECT id FROM projects WHERE share_token IS NOT NULL AND share_at < ?',
+                   [grenze]) or []
+    for r in alt:
+        execute_db('DELETE FROM share_access WHERE project_id=?', [r['id']])
+    execute_db('UPDATE projects SET share_token=NULL, share_at=NULL '
+               'WHERE share_token IS NOT NULL AND share_at < ?', [grenze])
+    return len(alt)
+
+
 @app.route('/projekte/<int:pid>/loeschen', methods=['POST'])
 @login_required
 def projekt_loeschen(pid):
     if not validate_csrf(request.form.get('csrf_token', '')):
         return jsonify({'fehler': 'Sitzung abgelaufen.'}), 403
+    # Die freigeschalteten Adressen gehoeren zum Projekt und sind Daten Dritter —
+    # sie duerfen es nicht ueberleben.
+    execute_db('DELETE FROM share_access WHERE project_id=?', [pid])
     execute_db('DELETE FROM projects WHERE id=? AND user_id=?', [pid, session['user_id']])
     return jsonify({'ok': True})
 
@@ -3904,6 +4176,11 @@ def cron_subscription_reminders():
     log = _run_subscription_reminders()
     # 3) Verlängerungs-Erinnerungen (aktive Abos, ~7 Tage vor Abbuchung)
     renewals = _run_renewal_notices()
+    # 4) Abgelaufene Ansehen-Links wirklich entfernen (7 Tage zugesagt)
+    try:
+        _share_aufraeumen()
+    except Exception as e:
+        logger.error('Aufraeumen der Ansehen-Links fehlgeschlagen: %s', type(e).__name__)
     _cron_protokoll('subscription-reminders', True,
                     '%d Abos mit Stripe abgeglichen · %d Ablaufwarnung(en) · %d Verlaengerungs-Erinnerung(en)%s'
                     % (synced, len(log), len(renewals),

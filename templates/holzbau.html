@@ -7602,6 +7602,7 @@ async function openProjekte() {
             <div style="font-size:.72rem;color:var(--text-3)">${p.geaendert} · ${Math.round(p.groesse/1024)} KB</div>
           </div>
           <button class="tb-btn" style="font-size:11px;height:26px;padding:0 9px" data-pr-oeffnen="${p.id}">Öffnen</button>
+          <button class="tb-btn" style="font-size:11px;height:26px;padding:0 9px" data-pr-teilen="${p.id}">Teilen</button>
           <button class="tb-btn" style="font-size:11px;height:26px;padding:0 9px" data-pr-namen="${p.id}" data-pr-alt="${escHtml(p.name)}">Umbenennen</button>
           <button class="tb-btn" style="font-size:11px;height:26px;padding:0 9px;color:var(--red)" data-pr-weg="${p.id}">Löschen</button>
         </div>`).join('');
@@ -7658,6 +7659,29 @@ document.addEventListener('DOMContentLoaded', () => {
   liste.addEventListener('click', async (e) => {
     const auf = e.target.closest('[data-pr-oeffnen]');
     if (auf) return projektOeffnen(parseInt(auf.dataset.prOeffnen, 10));
+    const teil = e.target.closest('[data-pr-teilen]');
+    if (teil) {
+      /* Der Link ist NICHT offen: nur wer eine der angegebenen Adressen besitzt,
+         kommt hinein — er bekommt einen Code per Mail. Deshalb wird hier nach
+         den Adressen gefragt und nicht einfach ein Link erzeugt. */
+      const mails = prompt(
+        'Für wen soll die Ansicht freigegeben werden?\n\n'
+        + 'E-Mail-Adressen mit Komma trennen. Nur wer eine davon besitzt, kann\n'
+        + 'den Link öffnen — er bekommt beim Aufruf einen Code zugeschickt.\n\n'
+        + 'Leer lassen und OK = Freigabe widerrufen.', '');
+      if (mails === null) return;
+      try {
+        const d = await _projektRuf('/projekte/' + teil.dataset.prTeilen + '/teilen',
+          mails.trim() ? { an: '1', mails } : { an: '0' });
+        if (!d.an) { alert('Freigabe widerrufen. Der Link funktioniert nicht mehr.'); return; }
+        // prompt statt alert: so lässt sich der Link mit Strg+C herauskopieren.
+        prompt('Link erstellt — gültig bis ' + d.bis + ' (' + d.tage + ' Tage), '
+             + 'danach wird er automatisch gelöscht.\n\n'
+             + 'Freigegeben für: ' + d.mails.join(', ') + '\n\n'
+             + 'Link kopieren:', d.link);
+      } catch (err) { alert(err.message); }
+      return;
+    }
     const um = e.target.closest('[data-pr-namen]');
     if (um) {
       const neu = prompt('Neuer Name:', um.dataset.prAlt);

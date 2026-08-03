@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  {# Ein geteilter Link soll NICHT in Suchmaschinen landen. Der Header
+     X-Robots-Tag steht zusaetzlich an der JSON-Antwort. #}
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <meta name="referrer" content="no-referrer">
+  <title>{% if projekt_name %}{{ projekt_name }} — {% endif %}Projektansicht · HolzBau 3D</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <script type="importmap">
+  {"imports":{
+    "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+  }}
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; background: #faf6f0; color: #1a1a1a;
+           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .wrap { max-width: 1040px; margin: 0 auto; padding: 22px 16px 60px; }
+    .marke { font-weight: 800; font-size: 1.05rem; margin-bottom: 18px; }
+    .marke .a { color: #1a1a1a; } .marke .b { color: #4e8cdd; }
+    h1 { font-size: 1.35rem; margin: 0 0 4px; }
+    .unter { color: #6b7280; font-size: .85rem; margin-bottom: 18px; }
+    .buehne { background: #fff; border: 1px solid #e8ddd0; border-radius: 12px;
+              height: 460px; position: relative; overflow: hidden; }
+    .karte { background: #fff; border: 1px solid #e8ddd0; border-radius: 12px;
+             padding: 18px 20px; margin-top: 18px; }
+    table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #f0e8dc; }
+    th { color: #6b7280; font-weight: 600; font-size: .78rem; }
+    td.n, th.n { text-align: right; white-space: nowrap; }
+    .hinweis { font-size: .78rem; color: #9ca3af; line-height: 1.55; margin-top: 16px; }
+    .tor { max-width: 430px; margin: 40px auto; }
+    .tor input { width: 100%; padding: 10px 12px; font-size: 1rem; margin-bottom: 10px;
+                 border: 1px solid #d1d5db; border-radius: 8px; font-family: inherit; }
+    .tor button { width: 100%; padding: 10px; font-size: .95rem; font-weight: 700;
+                  background: #d97706; color: #fff; border: none; border-radius: 8px; cursor: pointer; }
+    .tor button:hover { background: #b45309; }
+    .meldung { background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412;
+               border-radius: 8px; padding: 9px 12px; font-size: .84rem; margin-bottom: 12px; }
+    .fuss { margin-top: 26px; font-size: .82rem; color: #6b7280; }
+    .fuss a { color: #d97706; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="marke"><span class="a">HolzBau</span> <span class="b">3D</span></div>
+
+  {% if weg %}
+    <h1>Dieser Link ist nicht mehr gültig</h1>
+    <p class="unter">
+      Ansehen-Links gelten 7 Tage und werden danach automatisch gelöscht.
+      Bitte lass dir vom Ersteller einen neuen schicken.
+    </p>
+
+  {% elif tor %}
+    <div class="tor">
+      <h1>Projektansicht</h1>
+      <p class="unter">
+        Dieser Link ist nur für bestimmte E-Mail-Adressen freigegeben.
+        Trage deine Adresse ein — du bekommst einen Code zugeschickt.
+      </p>
+      {% if meldung %}<div class="meldung">{{ meldung }}</div>{% endif %}
+      {% if schritt == 'code' %}
+        <form method="post" action="/p/{{ token }}/pruefen">
+          <input type="text" name="code" inputmode="numeric" autocomplete="one-time-code"
+                 pattern="[0-9]*" maxlength="6" placeholder="6-stelliger Code" required autofocus>
+          <button type="submit">Ansehen</button>
+        </form>
+        <p class="hinweis">
+          Keinen Code bekommen? Prüfe den Spam-Ordner, oder
+          <a href="/p/{{ token }}?schritt=mail" style="color:#d97706">fordere ihn neu an</a>.
+        </p>
+      {% else %}
+        <form method="post" action="/p/{{ token }}/code">
+          <input type="email" name="email" placeholder="deine@email.de" required autofocus>
+          <button type="submit">Code anfordern</button>
+        </form>
+      {% endif %}
+      <p class="hinweis">
+        Aus Datenschutzgründen sagen wir nicht, ob eine Adresse freigegeben ist.
+        Deine Adresse wird ausschließlich für diesen Zugang verwendet.
+      </p>
+    </div>
+
+  {% else %}
+    <h1>{{ projekt_name }}</h1>
+    <p class="unter">
+      Nur-Ansicht · {{ anzahl }} Bauteile · Link gültig bis {{ bis }}
+    </p>
+
+    <div class="buehne" id="buehne"></div>
+
+    {% if teile %}
+    <div class="karte">
+      <h2 style="font-size:1rem;margin:0 0 10px">Stückliste</h2>
+      <table>
+        <thead><tr>
+          <th class="n" style="width:52px">Anz.</th><th>Bezeichnung</th>
+          <th style="width:150px">Holzart</th>
+          <th class="n" style="width:160px">L × B × H (mm)</th>
+          <th class="n" style="width:90px">Volumen</th>
+        </tr></thead>
+        <tbody>
+          {% for t in teile %}
+          <tr>
+            <td class="n">{{ t.anzahl }}×</td>
+            <td>{{ t.name }}</td>
+            <td>{{ t.holz }}</td>
+            <td class="n">{{ t.l }} × {{ t.b }} × {{ t.h }}</td>
+            <td class="n">{{ '%.3f'|format(t.volumen) }} m³</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+    <p class="hinweis">
+      Dies ist eine reine Ansicht — es lässt sich nichts ändern, und es gibt
+      keinen Zugriff auf das Konto des Erstellers. Angaben zum Bauvorhaben
+      (unter anderem der Ort) werden bewusst <b>nicht</b> mitgeschickt.
+      Maße stammen aus dem Modell und ersetzen keine statische Berechnung.
+    </p>
+
+    <script src="/static/viewer3d.js" defer></script>
+    <script>
+      window.HB3D_TEXTE = { laedt: 'Lädt …', fehler: 'Anzeige fehlgeschlagen' };
+      window.addEventListener('load', function () {
+        var box = document.getElementById('buehne');
+        if (!box || !window.HB3DViewer) return;
+        HB3DViewer.mount(box, '/p/{{ token }}/modell.json').catch(function () {
+          box.innerHTML = '<div style="padding:20px;color:#9ca3af;font-size:.86rem">'
+            + 'Die 3D-Ansicht konnte nicht geladen werden. Die Stückliste unten '
+            + 'zeigt trotzdem alle Bauteile.</div>';
+        });
+      });
+    </script>
+  {% endif %}
+
+  <div class="fuss">
+    Erstellt mit <a href="/">HolzBau 3D</a> — Holzkonstruktionen planen im Browser.
+  </div>
+</div>
+</body>
+</html>
