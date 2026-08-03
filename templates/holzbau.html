@@ -1368,8 +1368,8 @@ body {
            neun Platten sieht, hat einen Grund, den Zuschnitt zu wollen. #}
         <div class="panel-title" style="margin-bottom:4px">Fläche beplanken</div>
         <div style="font-size:11px;color:var(--text-3);line-height:1.45;margin-bottom:6px">
-          Ständer oder Sparren einer Wand markieren, dann beplanken. Die Stöße
-          werden auf die Träger gelegt.
+          Ständer einer Wand oder Sparren einer Dachfläche markieren, dann belegen —
+          mit Platten oder Brettern. Die Stöße werden auf die Träger gelegt.
         </div>
         <button class="add-btn" onclick="openBeplanken()"
                 style="background:var(--bg-card);color:var(--accent);border:1px solid rgba(78,140,221,.35)">▦ Markierte Fläche beplanken</button>
@@ -1866,9 +1866,16 @@ body {
 <div id="bp-modal" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.75);align-items:center;justify-content:center;" onclick="if(event.target===this)closeBeplanken()">
   <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-lg);padding:26px 28px;max-width:460px;width:92%;box-shadow:0 24px 64px rgba(0,0,0,.6);position:relative;">
     <h3 style="color:var(--text);font-size:1.1rem;margin-bottom:6px">▦ Fläche beplanken</h3>
-    <div id="bp-info" style="font-size:.8rem;color:var(--accent);margin-bottom:14px"></div>
+    <div id="bp-info" style="font-size:.8rem;color:var(--accent);margin-bottom:12px"></div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+    <label style="display:block;font-size:.78rem;color:var(--text-2);margin-bottom:3px">Womit belegen?</label>
+    <select id="bp-modus" onchange="bpModusWechsel()"
+            style="width:100%;padding:7px 9px;margin-bottom:12px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font);font-size:.86rem">
+      <option value="platten">Platten (OSB, Span, Sperrholz …)</option>
+      <option value="bretter">Bretter / Schalung (Rauspund, Schalbrett …)</option>
+    </select>
+
+    <div id="bp-felder-platten" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
       <div>
         <label style="display:block;font-size:.78rem;color:var(--text-2);margin-bottom:3px">Werkstoff</label>
         <select id="bp-material" style="width:100%;padding:7px 9px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font);font-size:.86rem">
@@ -1892,7 +1899,31 @@ body {
                style="width:100%;padding:7px 9px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font);font-size:.86rem">
       </div>
     </div>
-    <label style="display:block;font-size:.78rem;color:var(--text-2);margin-bottom:3px">Dehnungsfuge mm</label>
+    <div id="bp-felder-bretter" style="display:none;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+      <div>
+        <label style="display:block;font-size:.78rem;color:var(--text-2);margin-bottom:3px">Holzart</label>
+        <select id="bp-bholz" style="width:100%;padding:7px 9px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font);font-size:.86rem">
+          <option>Fichte</option><option>Lärche</option><option>Douglasie</option><option>Kiefer</option>
+        </select>
+      </div>
+      <div>
+        <label style="display:block;font-size:.78rem;color:var(--text-2);margin-bottom:3px">Brettdicke mm</label>
+        <input id="bp-bdicke" type="number" value="24" min="8" max="60" step="1"
+               style="width:100%;padding:7px 9px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font);font-size:.86rem">
+      </div>
+      <div>
+        <label style="display:block;font-size:.78rem;color:var(--text-2);margin-bottom:3px">Brettbreite mm</label>
+        <input id="bp-bbreite" type="number" value="146" min="40" max="400" step="1"
+               style="width:100%;padding:7px 9px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font);font-size:.86rem">
+      </div>
+      <div>
+        <label style="display:block;font-size:.78rem;color:var(--text-2);margin-bottom:3px">Abstand mm</label>
+        <input id="bp-babstand" type="number" value="0" min="0" max="300" step="1"
+               style="width:100%;padding:7px 9px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font);font-size:.86rem">
+      </div>
+    </div>
+
+    <label id="bp-fuge-label" style="display:block;font-size:.78rem;color:var(--text-2);margin-bottom:3px">Dehnungsfuge mm</label>
     <input id="bp-fuge" type="number" value="0" min="0" max="20" step="1"
            style="width:100%;padding:7px 9px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font);font-size:.86rem">
 
@@ -1900,8 +1931,16 @@ body {
       Die Stöße werden auf die erkannten Trägerachsen gelegt — eine Fuge ohne
       Träger dahinter wäre nicht befestigbar. Passt keine Achse, wird stur nach
       Format geteilt und es erscheint ein Hinweis.
+      <br><br>Geneigte Dachflächen funktionieren: Die Neigung wird erkannt und die
+      Platten übernehmen sie. Bei einem Satteldach jeweils EINE Hälfte markieren —
+      bei zwei Neigungen in der Auswahl wird die größere Gruppe genommen.
+      <strong>Dreieckige Giebelflächen</strong> gehen noch nicht: dafür fehlt der
+      schräge Randzuschnitt.
       Die Platten liegen bündig auf der Außenseite und sind ganz normale Bauteile:
       einzeln verschiebbar, sägbar, löschbar.
+      <br><br><strong>Bretter</strong> laufen längs der größeren Flächenseite und werden quer
+      dazu aneinandergereiht — so entstehen die wenigsten Stöße. Sie zählen als
+      normales Kantholz und laufen damit korrekt durch Einkaufsliste und Schnittplan.
     </div>
 
     <div style="display:flex;gap:10px">
@@ -2512,7 +2551,7 @@ Object.assign(window, {
   toggleSnap, setView, resetCamera, toggleHelp,
   openBauvorhaben, closeBauvorhaben, saveBauvorhaben,
   applyPreset,
-  openBeplanken, closeBeplanken, runBeplanken,
+  openBeplanken, closeBeplanken, runBeplanken, bpModusWechsel,
   saveProject, handleLoadFile,
   exportStückliste, applyEdit, deleteBeam,
   calcFloorPlan, updateFloorOutline, updateRoofOutline, drawFloorPreview,
@@ -3006,15 +3045,55 @@ const _ausdehnungVon = (b) =>
 function _flaecheAusAuswahl() {
   // Vorhandene Platten fliegen raus: sonst wandert die Ebene bei jedem Lauf
   // um eine Plattendicke nach außen.
-  const sel = beams.filter(b => selectedIds.has(b.id) && !SHEET_MATERIALS.has(b.woodType));
+  let sel = beams.filter(b => selectedIds.has(b.id) && !SHEET_MATERIALS.has(b.woodType));
   if (sel.length < 2) return { fehler: 'Bitte mindestens zwei Balken der Fläche markieren — z. B. die Ständer einer Wand.' };
-  if (sel.some(b => (b.rx || 0) || (b.ry || 0) || (b.rz || 0))) {
-    return { fehler: 'Geneigte Flächen sind noch nicht möglich.\n\nDie Markierung enthält gedrehte Balken (z. B. Dachsparren). Beplanken funktioniert derzeit nur für ungedrehte Wände und waagerechte Decken.' };
+
+  /* GEDREHTE FLÄCHEN (Dach): Balken nach ihrer Drehung gruppieren und die
+     größte Gruppe nehmen. Ein Satteldach hat zwei Neigungen (rz +32 und -32)
+     und in derselben Gruppe zusätzlich die Firstpfette mit rz 0 — würde man
+     Gleichheit über die ganze Auswahl verlangen, ließe sich nie eine Dachhälfte
+     beplanken.
+     Der Trick danach: createBeamMesh dreht JEDEN Balken um seinen EIGENEN
+     Mittelpunkt. Dreht man das ganze Punktfeld um einen gemeinsamen Bezugspunkt
+     zurück, wird aus jedem gedrehten Balken wieder eine achsparallele Kiste —
+     und die Ebenenbestimmung ist dieselbe wie bei einer Wand. */
+  const schluessel = (b) => `${b.rx || 0}|${b.ry || 0}|${b.rz || 0}`;
+  const gruppen = new Map();
+  sel.forEach(b => {
+    const k = schluessel(b);
+    if (!gruppen.has(k)) gruppen.set(k, []);
+    gruppen.get(k).push(b);
+  });
+  let groesste = null;
+  gruppen.forEach(g => { if (!groesste || g.length > groesste.length) groesste = g; });
+  const verworfen = sel.length - groesste.length;
+  sel = groesste;
+  if (sel.length < 2) {
+    return { fehler: 'Die markierten Balken haben zu unterschiedliche Neigungen.\n\nMarkiere die Bauteile EINER Fläche — bei einem Satteldach also nur eine Dachhälfte.' };
   }
+
+  const grad = Math.PI / 180;
+  const dreh = new THREE.Euler((sel[0].rx || 0) * grad, (sel[0].ry || 0) * grad, (sel[0].rz || 0) * grad);
+  const q = new THREE.Quaternion().setFromEuler(dreh);
+  const qInv = q.clone().invert();
+  const gedreht = !!((sel[0].rx || 0) || (sel[0].ry || 0) || (sel[0].rz || 0));
+
+  // Bezugspunkt: Mittelpunkt des ersten Balkens. Jeder Punkt ist beliebig,
+  // solange derselbe fürs Hin- und Zurückdrehen benutzt wird.
+  const e0 = _ausdehnungVon(sel[0]);
+  const bezug = new THREE.Vector3(sel[0].x + e0[0] / 2, sel[0].y + e0[1] / 2, sel[0].z + e0[2] / 2);
+  // Mittelpunkt eines Balkens im zurückgedrehten Rahmen.
+  const lokaleMitte = (b) => {
+    const e = _ausdehnungVon(b);
+    const c = new THREE.Vector3(b.x + e[0] / 2, b.y + e[1] / 2, b.z + e[2] / 2);
+    return c.sub(bezug).applyQuaternion(qInv).add(bezug);
+  };
+
   const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
   sel.forEach(b => {
     const e = _ausdehnungVon(b);
-    const p = [b.x, b.y, b.z];
+    const m = lokaleMitte(b);
+    const p = [m.x - e[0] / 2, m.y - e[1] / 2, m.z - e[2] / 2];
     for (let i = 0; i < 3; i++) {
       if (p[i] < min[i]) min[i] = p[i];
       if (p[i] + e[i] > max[i]) max[i] = p[i] + e[i];
@@ -3039,10 +3118,10 @@ function _flaecheAusAuswahl() {
   const achsen = (richtung, quer) => {
     const raus = [];
     sel.forEach(b => {
-      const e = _ausdehnungVon(b), p = [b.x, b.y, b.z];
+      const e = _ausdehnungVon(b), m = lokaleMitte(b);
       const laengsQuer = e[quer] / (max[quer] - min[quer]);
       if (laengsQuer < 0.8) return;                    // deckt die Reihe nicht
-      raus.push(p[richtung] + e[richtung] / 2 - min[richtung]);
+      raus.push([m.x, m.y, m.z][richtung] - min[richtung]);
     });
     return [...new Set(raus.map(v => Math.round(v)))].sort((a, b) => a - b);
   };
@@ -3050,7 +3129,18 @@ function _flaecheAusAuswahl() {
     min, max, normale: n, achseU: rest[0], achseV: rest[1],
     breite: ext[rest[0]], hoehe: ext[rest[1]], dicke: ext[n],
     traegerU: achsen(rest[0], rest[1]), traegerV: achsen(rest[1], rest[0]),
+    // Fuer das Zurueckdrehen beim Erzeugen:
+    q, bezug, gedreht, dreh: { rx: sel[0].rx || 0, ry: sel[0].ry || 0, rz: sel[0].rz || 0 },
+    verworfen, anzahl: sel.length,
   };
+}
+
+/* Weltpunkt aus einem Punkt im zurueckgedrehten Rahmen. Umkehrung von
+   lokaleMitte: erst um den Bezugspunkt vorwaerts drehen, dann zurueckschieben. */
+function _nachWelt(f, lx, ly, lz) {
+  const v = new THREE.Vector3(lx, ly, lz);
+  if (!f.gedreht) return v;
+  return v.sub(f.bezug).applyQuaternion(f.q).add(f.bezug);
 }
 
 function openBeplanken() {
@@ -3063,20 +3153,80 @@ function openBeplanken() {
 }
 function closeBeplanken() { document.getElementById('bp-modal').style.display = 'none'; }
 
+function bpModusWechsel() {
+  const bretter = document.getElementById('bp-modus').value === 'bretter';
+  document.getElementById('bp-felder-platten').style.display = bretter ? 'none' : 'grid';
+  document.getElementById('bp-felder-bretter').style.display = bretter ? 'grid' : 'none';
+  // Die Dehnungsfuge gilt nur fuer Platten — Bretter haben ihren eigenen Abstand.
+  document.getElementById('bp-fuge-label').style.display = bretter ? 'none' : 'block';
+  document.getElementById('bp-fuge').style.display = bretter ? 'none' : 'block';
+}
+
+/* Bretter statt Platten: gleiche Flaechenerkennung, aber statt einer
+   2D-Aufteilung eine Reihe paralleler Bretter. Im Holzbau ist eine Dachschalung
+   klassisch genau das — und ein Brett faellt nicht unter SHEET_MATERIALS, laeuft
+   also korrekt als Stange durch Einkaufsliste und Schnittplan. */
+function _bretterErzeugen(f, gruppe) {
+  const holz = document.getElementById('bp-bholz').value;
+  const dicke = Math.max(1, parseFloat(document.getElementById('bp-bdicke').value) || 24);
+  const breite = Math.max(10, parseFloat(document.getElementById('bp-bbreite').value) || 146);
+  const abstand = Math.max(0, parseFloat(document.getElementById('bp-babstand').value) || 0);
+  const aussen = f.max[f.normale];
+  // Bretter laufen laengs der GROESSEREN Flaechenachse und werden quer dazu
+  // aneinandergereiht — so entstehen die wenigsten Stoesse.
+  const laengs = f.achseU, quer = f.achseV;
+  const stuecke = [];
+  let v = 0, wache = 0;
+  while (v < f.hoehe - 0.5 && wache++ < 2000) {
+    const h = Math.min(breite, f.hoehe - v);
+    stuecke.push({ v, h });
+    v += breite + abstand;
+  }
+  stuecke.forEach((st, i) => {
+    const e = [0, 0, 0];
+    e[laengs] = f.breite; e[quer] = st.h; e[f.normale] = dicke;
+    const lm = [0, 0, 0];
+    lm[laengs] = f.min[laengs] + f.breite / 2;
+    lm[quer] = f.min[quer] + st.v + st.h / 2;
+    lm[f.normale] = aussen + dicke / 2;
+    const wm = _nachWelt(f, lm[0], lm[1], lm[2]);
+    let axis = 'x', L, B, H;
+    const gr = Math.max(e[0], e[1], e[2]);
+    if (gr === e[0])      { axis = 'x'; L = e[0]; H = e[1]; B = e[2]; }
+    else if (gr === e[1]) { axis = 'y'; B = e[0]; L = e[1]; H = e[2]; }
+    else                  { axis = 'z'; B = e[0]; H = e[1]; L = e[2]; }
+    const angeschnitten = st.h < breite - 0.5;
+    const nb = {
+      id: idCounter++, name: angeschnitten ? gruppe + ' Randbrett' : gruppe,
+      woodType: holz, shape: 'rect', axis,
+      L: Math.round(L), B: Math.round(B), H: Math.round(H),
+      x: Math.round(wm.x - e[0] / 2), y: Math.round(wm.y - e[1] / 2), z: Math.round(wm.z - e[2] / 2),
+      rx: f.dreh.rx, ry: f.dreh.ry, rz: f.dreh.rz,
+      group: gruppe, phase: null, mesh: null,
+    };
+    nb.mesh = createBeamMesh(nb);
+    scene.add(nb.mesh);
+    beams.push(nb);
+  });
+  return { anzahl: stuecke.length,
+           rand: stuecke.filter(x => x.h < breite - 0.5).length };
+}
+
 function runBeplanken() {
   const f = _flaecheAusAuswahl();
   if (f.fehler) { alert(f.fehler); closeBeplanken(); return; }
+  const modus = document.getElementById('bp-modus').value;
   const werkstoff = document.getElementById('bp-material').value;
   const dicke = parseFloat(document.getElementById('bp-dicke').value) || 15;
   const fw = parseFloat(document.getElementById('bp-fw').value) || 2500;
   const fh = parseFloat(document.getElementById('bp-fh').value) || 1250;
   const fuge = Math.max(0, parseFloat(document.getElementById('bp-fuge').value) || 0);
 
-  const plan = (window.planBeplankung || planBeplankung)({
+  const plan = modus === 'bretter' ? null : (window.planBeplankung || planBeplankung)({
     breite: f.breite, hoehe: f.hoehe, format: [fw, fh], fuge,
     traegerU: f.traegerU, traegerV: f.traegerV, minRest: 150,
   });
-  if (!plan.platten.length) { alert('Für diese Fläche ließ sich keine Aufteilung bilden.'); return; }
+  if (plan && !plan.platten.length) { alert('Für diese Fläche ließ sich keine Aufteilung bilden.'); return; }
 
   // Schutz gegen den zweiten Lauf: liegt auf dieser Ebene schon Plattenwerkstoff,
   // entstuenden deckungsgleiche Platten — im 3D unsichtbar, in der Stückliste
@@ -3095,21 +3245,38 @@ function runBeplanken() {
     pushHistory();
   }
 
-  let name = 'Beplankung ' + werkstoff + ' ' + dicke;
+  let name = modus === 'bretter'
+    ? 'Schalung ' + document.getElementById('bp-bholz').value
+    : 'Beplankung ' + werkstoff + ' ' + dicke;
   let n = 1;
   while (groups.includes(name + (n > 1 ? ' ' + n : ''))) n++;
   const gruppe = name + (n > 1 ? ' ' + n : '');
   groups.push(gruppe);
 
+  if (modus === 'bretter') {
+    const r = _bretterErzeugen(f, gruppe);
+    closeBeplanken();
+    updateUI();
+    alert(`${r.anzahl} Bretter erzeugt (davon ${r.rand} angeschnitten).`
+      + '
+
+Gruppe: ' + gruppe + '  — mit Strg+Z rückgängig.');
+    return;
+  }
+
   plan.platten.forEach(p => {
+    // Ausdehnung im zurueckgedrehten Rahmen …
     const e = [0, 0, 0];
     e[f.achseU] = p.w; e[f.achseV] = p.h; e[f.normale] = dicke;
-    const pos = [0, 0, 0];
-    pos[f.achseU] = f.min[f.achseU] + p.u;
-    pos[f.achseV] = f.min[f.achseV] + p.v;
-    pos[f.normale] = aussen;                      // bündig auf der Außenseite
-    // Achse so waehlen, dass L die laengste Ausdehnung ist — sonst stuende in
-    // der Stueckliste die Plattendicke als "Laenge".
+    // … Mittelpunkt dort …
+    const lm = [0, 0, 0];
+    lm[f.achseU] = f.min[f.achseU] + p.u + p.w / 2;
+    lm[f.achseV] = f.min[f.achseV] + p.v + p.h / 2;
+    lm[f.normale] = aussen + dicke / 2;              // buendig auf der Aussenseite
+    // … und wieder in die Welt gedreht. Die Platte bekommt DIESELBE Drehung wie
+    // die Balken, und createBeamMesh dreht sie um ihren eigenen Mittelpunkt —
+    // deshalb genuegt es, den Mittelpunkt richtig zu setzen.
+    const wm = _nachWelt(f, lm[0], lm[1], lm[2]);
     let axis = 'x', L, B, H;
     const gr = Math.max(e[0], e[1], e[2]);
     if (gr === e[0])      { axis = 'x'; L = e[0]; H = e[1]; B = e[2]; }
@@ -3121,8 +3288,9 @@ function runBeplanken() {
       id: idCounter++, name: p.rand ? gruppe + ' Randstück' : gruppe,
       woodType: werkstoff, shape: 'rect', axis,
       L: Math.round(L), B: Math.round(B), H: Math.round(H),
-      x: Math.round(pos[0]), y: Math.round(pos[1]), z: Math.round(pos[2]),
-      rx: 0, ry: 0, rz: 0, group: gruppe, phase: null, mesh: null,
+      x: Math.round(wm.x - e[0] / 2), y: Math.round(wm.y - e[1] / 2), z: Math.round(wm.z - e[2] / 2),
+      rx: f.dreh.rx, ry: f.dreh.ry, rz: f.dreh.rz,
+      group: gruppe, phase: null, mesh: null,
     };
     nb.mesh = createBeamMesh(nb);
     scene.add(nb.mesh);
