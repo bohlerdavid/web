@@ -1517,6 +1517,11 @@ body {
           </select>
         </label>
         <button class="tb-btn" style="justify-content:center;grid-column:span 2" onclick="printProject()">🖨 Plan / PDF{% if user_plan != 'premium' %} 🔒{% endif %}</button>
+        {# Frei nutzbar: Angaben sammeln kostet nichts. Ins PDF kommen sie ueber
+           printProject, und das ist premium — die Bezahlgrenze bleibt bei der
+           Ausgabe, nicht beim Ausfuellen. #}
+        <button class="tb-btn" style="justify-content:center;grid-column:span 2" onclick="openBauvorhaben()"
+                title="Angaben, die ein Statiker braucht — kommen in den Planausdruck">📋 Angaben für den Statiker</button>
       </div>
       <div id="parts-scroll" style="flex:1;overflow-y:auto">
         <table id="parts-table">
@@ -1791,6 +1796,76 @@ body {
   <div style="border-top:1px solid var(--border);margin:2px 0"></div>
   <div class="ctx-item" id="ctx-del-beam" style="color:var(--red)" onclick="deleteSelected();closeCtxMenu()">✕ Löschen</div>
   <div class="ctx-item" id="ctx-del-deco" style="color:var(--red);display:none" onclick="deleteDecoSelected();closeCtxMenu()">✕ Löschen</div>
+</div>
+
+<!-- ANGABEN FÜR DEN STATIKER ────────────────────────────────────────────────
+     Sammelt genau die Eingangsdaten, die NICHT aus der Geometrie hervorgehen.
+     Es wird nichts berechnet und nichts bewertet — der Hinweis unten sagt das
+     ausdruecklich, damit niemand das Datenblatt fuer einen Nachweis haelt. -->
+<div id="bv-modal" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.75);align-items:center;justify-content:center;" onclick="if(event.target===this)closeBauvorhaben()">
+  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-lg);padding:26px 28px;max-width:520px;width:92%;max-height:88vh;overflow:auto;box-shadow:0 24px 64px rgba(0,0,0,.6);position:relative;">
+    <h3 style="color:var(--text);font-size:1.1rem;margin-bottom:6px">📋 Angaben für den Statiker</h3>
+    <p style="color:var(--text-2);font-size:.84rem;line-height:1.6;margin-bottom:18px">
+      Maße, Bauteile und Holzarten kennt die App aus deinem Modell. Diese vier Angaben kann sie
+      nicht wissen — sie kommen mit in den Planausdruck, damit du dem Tragwerksplaner ein
+      vollständiges Bild gibst.
+    </p>
+
+    <label style="display:block;font-size:.8rem;color:var(--text-2);margin-bottom:3px">Bauvorhaben / Bezeichnung</label>
+    <input id="bv-titel" type="text" placeholder="z. B. Carport Einfahrt Nordseite"
+           style="width:100%;padding:8px 10px;margin-bottom:12px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font);font-size:.88rem">
+
+    <label style="display:block;font-size:.8rem;color:var(--text-2);margin-bottom:3px">Standort (Adresse oder PLZ / Ort)</label>
+    <input id="bv-ort" type="text" placeholder="z. B. 8538 Hovelange"
+           style="width:100%;padding:8px 10px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font);font-size:.88rem">
+    <div style="font-size:.74rem;color:var(--text-3);margin:4px 0 12px">
+      Daraus ergeben sich Schnee- und Windlastzone. Diese Werte darfst du nicht schätzen —
+      deshalb genügt hier der Ort, den Rest schlägt der Planer nach.
+    </div>
+
+    <label style="display:block;font-size:.8rem;color:var(--text-2);margin-bottom:3px">Dacheindeckung / Dachaufbau</label>
+    <select id="bv-dach"
+            style="width:100%;padding:8px 10px;margin-bottom:12px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font);font-size:.88rem">
+      <option value="">— bitte wählen —</option>
+      <option>Offen / keine Eindeckung</option>
+      <option>Trapezblech</option>
+      <option>Doppelstegplatten / Polycarbonat</option>
+      <option>Glas</option>
+      <option>Bitumenbahnen / EPDM-Folie</option>
+      <option>Dachziegel oder Betonsteine</option>
+      <option>Gründach (extensiv)</option>
+      <option>Sonstiges — siehe Bemerkungen</option>
+    </select>
+
+    <label style="display:block;font-size:.8rem;color:var(--text-2);margin-bottom:3px">Gründung / Anschluss an den Boden</label>
+    <select id="bv-fundament"
+            style="width:100%;padding:8px 10px;margin-bottom:12px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font);font-size:.88rem">
+      <option value="">— bitte wählen —</option>
+      <option>Punktfundamente mit H-Anker</option>
+      <option>Punktfundamente mit aufgedübeltem Stützenfuß</option>
+      <option>Streifenfundament</option>
+      <option>Bestehende Betonplatte / Terrasse</option>
+      <option>Wandanschluss an bestehendes Gebäude</option>
+      <option>Noch offen</option>
+    </select>
+
+    <label style="display:block;font-size:.8rem;color:var(--text-2);margin-bottom:3px">Sonderlasten &amp; Bemerkungen</label>
+    <textarea id="bv-lasten" rows="3" placeholder="z. B. Photovoltaik geplant, schwerer Blauregen, spätere Verkleidung, Hängelast innen"
+              style="width:100%;padding:8px 10px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font);font-size:.88rem;resize:vertical"></textarea>
+
+    <div style="background:var(--bg-input);border-radius:var(--r);padding:11px 13px;margin:16px 0 18px;font-size:.78rem;color:var(--text-2);line-height:1.55">
+      <strong>Wichtig:</strong> Dieses Datenblatt ist eine Beschreibung deines Vorhabens —
+      <strong>keine statische Berechnung</strong>. Welche Querschnitte zulässig sind, entscheidet
+      der Nachweis eines Tragwerksplaners, nicht diese App.
+      <a href="/ratgeber/statik-grundlagen-holzbau" target="_blank" style="color:var(--accent)">Mehr dazu im Ratgeber</a>
+    </div>
+
+    <div style="display:flex;gap:10px">
+      <button onclick="closeBauvorhaben()" style="flex:1;padding:10px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r);color:var(--text-2);cursor:pointer;font-family:var(--font);font-size:.9rem">Abbrechen</button>
+      <button onclick="saveBauvorhaben()" style="flex:1;padding:10px;background:var(--accent);border:none;border-radius:var(--r);color:#fff;cursor:pointer;font-family:var(--font);font-size:.9rem;font-weight:700">Übernehmen</button>
+    </div>
+    <button onclick="closeBauvorhaben()" style="position:absolute;top:10px;right:14px;background:none;border:none;color:var(--text-3);font-size:18px;cursor:pointer">✕</button>
+  </div>
 </div>
 
 <!-- UPGRADE MODAL -->
@@ -2231,6 +2306,48 @@ function setCompany(obj) {
   try { localStorage.setItem('hb_company', JSON.stringify(obj || {})); } catch (e) {}
 }
 
+/* ── Angaben fuer das Statiker-Datenblatt ──────────────────────────────────
+   Die vier Dinge, die ein Tragwerksplaner braucht und die NICHT aus der
+   Geometrie hervorgehen: Standort (daraus folgen Schnee- und Windlastzone),
+   Dacheindeckung (Gewicht), Gruendung und Sonderlasten.
+   Bewusst nur SAMMELN, nicht rechnen — wir sind nicht der Statiker. Das
+   Datenblatt ist eine saubere Beschreibung des Vorhabens, kein Nachweis.
+   Liegt im localStorage (wie hb_company) UND im Projekt-JSON, damit es beim
+   Weitergeben der Datei mitkommt. */
+let bauvorhaben = {};
+function getBauvorhaben() {
+  try { return JSON.parse(localStorage.getItem('hb_bauvorhaben') || '{}'); } catch (e) { return {}; }
+}
+function setBauvorhaben(obj) {
+  bauvorhaben = obj || {};
+  try { localStorage.setItem('hb_bauvorhaben', JSON.stringify(bauvorhaben)); } catch (e) {}
+}
+bauvorhaben = getBauvorhaben();
+
+const BV_FELDER = { titel: 'bv-titel', ort: 'bv-ort', dach: 'bv-dach',
+                    fundament: 'bv-fundament', lasten: 'bv-lasten' };
+
+function openBauvorhaben() {
+  for (const [schluessel, id] of Object.entries(BV_FELDER)) {
+    const el = document.getElementById(id);
+    if (el) el.value = bauvorhaben[schluessel] || '';
+  }
+  document.getElementById('bv-modal').style.display = 'flex';
+}
+function closeBauvorhaben() {
+  document.getElementById('bv-modal').style.display = 'none';
+}
+function saveBauvorhaben() {
+  const neu = {};
+  for (const [schluessel, id] of Object.entries(BV_FELDER)) {
+    const el = document.getElementById(id);
+    neu[schluessel] = el ? el.value.trim() : '';
+  }
+  setBauvorhaben(neu);
+  closeBauvorhaben();
+  // Kein alert: die Angaben tauchen im Planausdruck auf, das ist Rueckmeldung genug.
+}
+
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -2266,6 +2383,7 @@ const mouse = new THREE.Vector2();
 Object.assign(window, {
   addBeam, deleteSelected, duplicateSelected,
   toggleSnap, setView, resetCamera, toggleHelp,
+  openBauvorhaben, closeBauvorhaben, saveBauvorhaben,
   saveProject, handleLoadFile,
   exportStückliste, applyEdit, deleteBeam,
   calcFloorPlan, updateFloorOutline, updateRoofOutline, drawFloorPreview,
@@ -5893,6 +6011,11 @@ function serializeProject(includeImage) {
     out.refImage = { realW: refImage.realW, realD: refImage.realD, opacity: refImage.opacity, visible: refImage.visible, x: refImage.x, z: refImage.z };
     if (includeImage) out.refImage.dataUrl = refImage.dataUrl;
   }
+  // Die Angaben fuers Statiker-Datenblatt gehoeren zum Vorhaben, nicht zum
+  // Browser — beim Weitergeben der Datei muessen sie mitkommen.
+  if (bauvorhaben && Object.keys(bauvorhaben).some(k => (bauvorhaben[k] || '').trim())) {
+    out.bauvorhaben = bauvorhaben;
+  }
   return out;
 }
 
@@ -5946,6 +6069,9 @@ function applyProjectData(data) {
   if (Array.isArray(data.hiddenGroups)) data.hiddenGroups.forEach(g => hiddenGroups.add(g));
   lockedGroups.clear();
   if (Array.isArray(data.lockedGroups)) data.lockedGroups.forEach(g => lockedGroups.add(g));
+  // Vorhandene Angaben nur ersetzen, wenn die Datei welche mitbringt — sonst
+  // verliert man beim Laden eines fremden Projekts die eigenen Eingaben nicht.
+  if (data.bauvorhaben && typeof data.bauvorhaben === 'object') setBauvorhaben(data.bauvorhaben);
   activePhaseFilter = null;
   (data.beams || []).forEach(s => {
     const beam = { rx:0, ry:0, rz:0, group:'Standard', phase: null, ...s, mesh: null };
@@ -8278,6 +8404,55 @@ function printProject() {
   const today = new Date().toLocaleDateString('de-CH');
 
   // --- Build print HTML ---
+  /* Datenblatt fuer den Tragwerksplaner: die Angaben, die NICHT aus der
+     Geometrie hervorgehen, plus eine Zusammenfassung dessen, was die App weiss.
+     Erscheint nur, wenn ueberhaupt etwas eingetragen wurde — ein leeres
+     Formular im Ausdruck waere nur Papier. Es wird nichts berechnet; der
+     Hinweis am Fuss sagt das ausdruecklich. */
+  const bvLeer = !Object.values(bauvorhaben || {}).some(v => (v || '').trim());
+  const bvHolz = [...new Set(beams.map(b => b.woodType))].sort();
+  const bvZeile = (bez, wert) =>
+    `<tr><td style="width:38%;color:#555">${escHtml(bez)}</td>` +
+    `<td><strong>${wert ? escHtml(wert) : '<span style="color:#999;font-weight:normal">— nicht angegeben —</span>'}</strong></td></tr>`;
+  const bauvorhabenSeite = bvLeer ? '' : `
+<div style="page-break-before:always"></div>
+<div class="page-header">
+  <div>
+    <h1>📋 ANGABEN FÜR DEN TRAGWERKSPLANER</h1>
+    <div style="color:#555;font-size:9pt;margin-top:3px">Beschreibung des Vorhabens — keine statische Berechnung</div>
+  </div>
+  <div class="meta">Datum: ${today}<br>Holzbau 3D</div>
+</div>
+<div class="parts-section">
+  <h2>Vorhaben</h2>
+  <table>
+    ${bvZeile('Bezeichnung', bauvorhaben.titel)}
+    ${bvZeile('Standort (für Schnee- und Windlastzone)', bauvorhaben.ort)}
+    ${bvZeile('Dacheindeckung / Dachaufbau', bauvorhaben.dach)}
+    ${bvZeile('Gründung / Anschluss an den Boden', bauvorhaben.fundament)}
+    ${bvZeile('Sonderlasten & Bemerkungen', bauvorhaben.lasten)}
+  </table>
+</div>
+<div class="parts-section">
+  <h2>Aus dem Modell</h2>
+  <table>
+    ${bvZeile('Bauteile gesamt', String(totalBeams))}
+    ${bvZeile('Verwendete Holzarten', bvHolz.join(', '))}
+    ${bvZeile('Außenmaße (B × T × H)',
+       `${Math.round(maxX-minX)} × ${Math.round(maxZ-minZ)} × ${Math.round(maxY-minY)} mm`)}
+  </table>
+  <p style="font-size:8.5pt;color:#555;margin-top:8px;line-height:1.5">
+    Maße, Querschnitte und Holzarten der einzelnen Bauteile stehen in der Stückliste
+    auf der vorhergehenden Seite.
+  </p>
+</div>
+<div style="border:1.5px solid #0f3460;border-radius:4px;padding:10px 13px;margin-top:14px;font-size:9pt;line-height:1.55;color:#222">
+  <strong>Hinweis:</strong> Dieses Blatt fasst zusammen, was für eine statische Beurteilung
+  benötigt wird. Es enthält <strong>keine Bemessung und keinen Standsicherheitsnachweis</strong>.
+  Die im Planer verwendeten Querschnitte sind Richtwerte aus der Vorplanung — welche Querschnitte
+  zulässig sind, entscheidet die Berechnung eines Tragwerksplaners. Erstellt mit HolzBau 3D.
+</div>`;
+
   const html = `<!DOCTYPE html>
 <html lang="de">
 <head>
@@ -8376,6 +8551,8 @@ function printProject() {
 </div>
 
 ${scaledPlansHTML}
+
+${bauvorhabenSeite}
 
 </body>
 </html>`;
