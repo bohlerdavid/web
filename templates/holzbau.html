@@ -1378,6 +1378,16 @@ body {
       </div>
 
       <div class="panel-section">
+        <div class="panel-title" style="margin-bottom:4px">Holzverbindung</div>
+        <div style="font-size:11px;color:var(--text-3);line-height:1.45;margin-bottom:6px">
+          Zwei Balken markieren — Sparren und Pfette für eine <b>Kerve</b>,
+          zwei sich kreuzende Balken für eine <b>Überblattung</b>.
+        </div>
+        <button class="add-btn" onclick="openVerbindung()"
+                style="background:var(--bg-card);color:var(--accent);border:1px solid rgba(78,140,221,.35)">⚒ Verbindung erzeugen</button>
+      </div>
+
+      <div class="panel-section">
         <div class="panel-title" style="margin-bottom:4px">Kollisionsprüfung</div>
         <div style="font-size:11px;color:var(--text-3);line-height:1.45;margin-bottom:6px">
           Findet Bauteile, die denselben Raum belegen. Im 3D sieht man eine
@@ -1912,6 +1922,40 @@ body {
      Nur Werkstoff, Stärke, Format und Fuge — die Fläche selbst kommt aus der
      Markierung. Bewusst KEIN Premium-Schloss: das Erzeugen von Konstruktion
      bleibt frei, bezahlt wird der Zuschnitt. -->
+<div id="vb-modal" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.75);align-items:center;justify-content:center;" onclick="if(event.target===this)closeVerbindung()">
+  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-lg);padding:26px 28px;max-width:470px;width:92%;box-shadow:0 24px 64px rgba(0,0,0,.6);">
+    <h3 style="color:var(--text);font-size:1.1rem;margin-bottom:6px">⚒ Holzverbindung</h3>
+    <div id="vb-info" style="font-size:.8rem;color:var(--accent);margin-bottom:12px"></div>
+
+    <label style="display:block;font-size:.78rem;color:var(--text-2);margin-bottom:3px">Art der Verbindung</label>
+    <select id="vb-art" onchange="vbArtWechsel()"
+            style="width:100%;padding:7px 9px;margin-bottom:12px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font);font-size:.86rem">
+      <option value="kerve">Ausklinken / Kerve</option>
+      <option value="blatt">Überblattung</option>
+    </select>
+
+    <div id="vb-wer-zeile" style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <label style="font-size:.78rem;color:var(--text-2);white-space:nowrap">Ausgeklinkt wird</label>
+      <select id="vb-wer"
+              style="flex:1;padding:7px 9px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font);font-size:.86rem"></select>
+    </div>
+
+    <div id="vb-erklaerung" style="font-size:.76rem;color:var(--text-3);line-height:1.5;margin-bottom:14px"></div>
+    <div style="font-size:.72rem;color:var(--text-3);line-height:1.5;margin-bottom:14px">
+      Der Schnitt geht durch die volle Breite des Balkens. Die Verbindung sitzt
+      danach als Ausschnitt am Bauteil und lässt sich dort einzeln wieder
+      entfernen. <b>Statisch geprüft wird nichts</b> — ein Zapfen oder eine
+      Kerve schwächt den Querschnitt, das gehört in die Hand eines
+      Tragwerksplaners.
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <button class="add-btn" onclick="closeVerbindung()" style="background:var(--bg-input);color:var(--text-2)">Abbrechen</button>
+      <button class="add-btn" onclick="runVerbindung()">Verbindung erzeugen</button>
+    </div>
+  </div>
+</div>
+
 <div id="koll-modal" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.75);align-items:center;justify-content:center;" onclick="if(event.target===this)closeKollisionen()">
   <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-lg);padding:26px 28px;max-width:560px;width:92%;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.6);">
     <h3 style="color:var(--text);font-size:1.1rem;margin-bottom:6px">⚠ Kollisionsprüfung</h3>
@@ -2617,6 +2661,7 @@ Object.assign(window, {
   applyPreset,
   openBeplanken, closeBeplanken, runBeplanken, bpModusWechsel,
   openKollisionen, closeKollisionen,
+  openVerbindung, closeVerbindung, runVerbindung, vbArtWechsel,
   saveProject, handleLoadFile,
   exportStückliste, applyEdit, deleteBeam,
   calcFloorPlan, updateFloorOutline, updateRoofOutline, drawFloorPreview,
@@ -2739,9 +2784,12 @@ function buildPanelGeometry(beam, W, H, D) {
     { v: H, e: new THREE.Vector3(0, 1, 0) },
     { v: D, e: new THREE.Vector3(0, 0, 1) },
   ];
-  let ti = 0; for (let i = 1; i < 3; i++) if (axes[i].v < axes[ti].v) ti = i;  // dünnste = Dicke
-  const face = axes.filter((_, i) => i !== ti);
-  if (face[1].v > face[0].v) face.reverse();   // faceA = längere Flächenseite (L), faceB = kürzere (B)
+  /* Dieselbe Wahl wie in _panelFaceBasis — und zwar ueber dieselbe Funktion.
+     Wuerden beide es getrennt bestimmen, laege der Schnitt irgendwann in einer
+     anderen Ebene als seine Koordinaten, und das faellt erst am Werkstueck auf. */
+  const _w = _flaechenWahl(beam, W, H, D);
+  const ti = _w.ti;
+  const face = [axes[_w.iA], axes[_w.iB]];
   const A = face[0].v, B = face[1].v, T = axes[ti].v;
 
   const plattenRing = [[-A / 2, -B / 2], [A / 2, -B / 2], [A / 2, B / 2], [-A / 2, B / 2], [-A / 2, -B / 2]];
@@ -3244,6 +3292,96 @@ function _obbTiefe(A, B) {
   return Math.max(0, min);
 }
 
+/* ══════════════════════════════════════════════
+   HOLZVERBINDUNGEN
+   ══════════════════════════════════════════════
+   Der Ratgeber erklaert Kerve, Blatt und Zapfen ausfuehrlich — das Werkzeug
+   konnte keine davon. Man konnte sie mit dem Fraeser andeuten, aber nicht als
+   Verbindung modellieren.
+
+   Der gemeinsame Nenner: JEDE dieser Verbindungen ist ein Profil in der
+   LAENGS-HOEHEN-Ebene des Balkens, durch seine Breite gestochen. Genau das
+   kann buildPanelGeometry seit der Ebenenwahl — es bleibt also bei EINEM
+   Geometrieweg statt eines zweiten neben dem bestehenden.
+
+   Und der zweite Nenner: eine Kerve ist nichts anderes als "nimm dem Sparren
+   weg, was die Pfette belegt". Damit ist sie dieselbe Rechnung wie die
+   Kollisionspruefung — nur dass hier das Ergebnis abgezogen statt gemeldet
+   wird. */
+
+/* Lokaler Rahmen eines Balkens: Weltmittelpunkt, gedrehte Achsen, Ausdehnungen
+   und welche Achse Laenge, Hoehe und Breite ist. */
+function _lokalRahmen(b) {
+  const e = _ausdehnungVon(b);
+  const o = _obbVon(b);
+  return { ...(_balkenAchsen(b)), e, c: o.c, achsen: o.achsen };
+}
+/* Weltpunkt -> lokale, an der Bauteilecke beginnende Koordinaten. */
+function _nachLokal(rahmen, p) {
+  const d = new THREE.Vector3(p.x - rahmen.c.x, p.y - rahmen.c.y, p.z - rahmen.c.z);
+  return [0, 1, 2].map(i => d.dot(rahmen.achsen[i]) + rahmen.e[i] / 2);
+}
+
+/* Umriss von b in der Laengs-Hoehen-Ebene von a.
+   Da b eine Kiste ist, ist die Projektion konvex — die Huelle der acht
+   projizierten Ecken ist also exakt und keine Naeherung. */
+function _profilVon(a, b) {
+  const ra = _lokalRahmen(a);
+  const ob = _obbVon(b);
+  const uv = [], breiten = [];
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+    const s = [sx, sy, sz];
+    const w = new THREE.Vector3(ob.c.x, ob.c.y, ob.c.z);
+    for (let i = 0; i < 3; i++) {
+      w.x += ob.achsen[i].x * s[i] * ob.h[i];
+      w.y += ob.achsen[i].y * s[i] * ob.h[i];
+      w.z += ob.achsen[i].z * s[i] * ob.h[i];
+    }
+    const l = _nachLokal(ra, w);
+    uv.push([l[ra.iL], l[ra.iH]]);
+    breiten.push(l[ra.iB]);
+  }
+  return { profil: _huelle2D(uv), b0: Math.min(...breiten), b1: Math.max(...breiten), ra };
+}
+
+const _rundeEcken = (poly) => poly.map(([u, v]) =>
+  ({ u: Math.round(u * 10) / 10, v: Math.round(v * 10) / 10 }));
+
+/* AUSKLINKEN / KERVE: nimm a weg, was b belegt. */
+function _kerveProfil(a, b) {
+  const { profil, b0, b1, ra } = _profilVon(a, b);
+  const L = ra.e[ra.iL], H = ra.e[ra.iH], BB = ra.e[ra.iB];
+  const rest = _polyRechteck(profil, 0, L, 0, H);
+  if (rest.length < 3 || _polyFlaeche(rest) < 400) {
+    return { fehler: 'Die beiden Bauteile überschneiden sich nicht — es gibt nichts auszuklinken.' };
+  }
+  if (_polyFlaeche(rest) > L * H * 0.9) {
+    return { fehler: 'Das Gegenstück verdeckt fast den ganzen Balken. So bliebe kaum Holz übrig — bitte die Lage prüfen.' };
+  }
+  // Der Stich geht IMMER durch die volle Breite. Deckt das Gegenstueck sie
+  // nicht ab, wird mehr weggenommen als noetig — das muss man wissen.
+  return { ecken: _rundeEcken(rest), durch: b0 <= 2 && b1 >= BB - 2,
+           flaeche: _polyFlaeche(rest) };
+}
+
+/* UEBERBLATTUNG: beide Balken verlieren im Kreuzungsbereich ihre halbe Hoehe,
+   und zwar jeder auf der Seite, auf der der andere liegt. */
+function _blattProfil(a, b) {
+  const { profil, ra } = _profilVon(a, b);
+  const L = ra.e[ra.iL], H = ra.e[ra.iH];
+  const rest = _polyRechteck(profil, 0, L, 0, H);
+  if (rest.length < 3) return { fehler: 'Die Balken kreuzen sich nicht.' };
+  const us = rest.map(p => p[0]), vs = rest.map(p => p[1]);
+  const u0 = Math.max(0, Math.min(...us)), u1 = Math.min(L, Math.max(...us));
+  if (u1 - u0 < 10) return { fehler: 'Die Überdeckung ist zu klein für ein Blatt.' };
+  // Auf welcher Seite liegt der andere? Dort wird weggenommen — sonst saehen
+  // sich die beiden Blaetter nie.
+  const oben = ((Math.min(...vs) + Math.max(...vs)) / 2) > H / 2;
+  const v0 = oben ? H / 2 : 0, v1 = oben ? H : H / 2;
+  return { ecken: _rundeEcken([[u0, v0], [u1, v0], [u1, v1], [u0, v1]]),
+           tiefe: H / 2, laenge: u1 - u0 };
+}
+
 function findeKollisionen() {
   // Ausgeblendetes zaehlt nicht mit: was man nicht sieht, kann man nicht
   // pruefen — und eine Meldung dazu waere nicht nachvollziehbar.
@@ -3585,6 +3723,85 @@ function _schraegAnTeil(nb, f, uMin, vMin, uLen, vLen) {
   if (!loecher.length) return false;
   nb.cutouts = (nb.cutouts || []).concat(loecher);
   return true;
+}
+
+/* ---- Verbindungen: Bedienung ------------------------------------------- */
+function _verbindungTeile() {
+  const sel = beams.filter(b => selectedIds.has(b.id));
+  return sel.length === 2 ? sel : null;
+}
+
+function openVerbindung() {
+  const sel = _verbindungTeile();
+  if (!sel) {
+    alert('Für eine Verbindung müssen GENAU ZWEI Bauteile markiert sein.\n\n'
+        + 'Zum Beispiel Sparren und Pfette für eine Kerve, oder zwei sich '
+        + 'kreuzende Balken für eine Überblattung.');
+    return;
+  }
+  if (sel.some(b => SHEET_MATERIALS.has(b.woodType))) {
+    alert('Holzverbindungen gibt es nur zwischen Balken, nicht an Plattenwerkstoff.');
+    return;
+  }
+  const wer = document.getElementById('vb-wer');
+  wer.innerHTML = sel.map((b, i) =>
+    `<option value="${i}">${escHtml(b.name)} (${b.L}×${b.B}×${b.H})</option>`).join('');
+  document.getElementById('vb-info').textContent =
+    `${sel[0].name} und ${sel[1].name}`;
+  vbArtWechsel();
+  document.getElementById('vb-modal').style.display = 'flex';
+}
+function closeVerbindung() { document.getElementById('vb-modal').style.display = 'none'; }
+function vbArtWechsel() {
+  const kerve = document.getElementById('vb-art').value === 'kerve';
+  document.getElementById('vb-wer-zeile').style.display = kerve ? 'flex' : 'none';
+  document.getElementById('vb-erklaerung').textContent = kerve
+    ? 'Ausklinken: dem gewählten Bauteil wird genau das weggenommen, was das '
+      + 'andere belegt. Bei Sparren auf Pfette entsteht so die Kerve.'
+    : 'Überblattung: beide Balken verlieren im Kreuzungsbereich ihre halbe '
+      + 'Höhe — jeder auf der Seite, auf der der andere liegt.';
+}
+
+function runVerbindung() {
+  const sel = _verbindungTeile();
+  if (!sel) { closeVerbindung(); return; }
+  const art = document.getElementById('vb-art').value;
+  const wer = parseInt(document.getElementById('vb-wer').value, 10) || 0;
+
+  /* Erst rechnen, dann pushHistory. Andersherum bliebe nach einer abgelehnten
+     Verbindung ein leerer Schritt im Rückgängig-Verlauf stehen. */
+  const auftrag = [];
+  if (art === 'kerve') {
+    const A = sel[wer], B = sel[1 - wer];
+    const p = _kerveProfil(A, B);
+    if (p.fehler) { alert(p.fehler); return; }
+    auftrag.push({ beam: A, ecken: p.ecken, durch: p.durch });
+  } else {
+    for (const [A, B] of [[sel[0], sel[1]], [sel[1], sel[0]]]) {
+      const p = _blattProfil(A, B);
+      if (p.fehler) { alert(p.fehler); return; }
+      auftrag.push({ beam: A, ecken: p.ecken });
+    }
+  }
+
+  pushHistory();
+  auftrag.forEach(({ beam, ecken }) => {
+    // Eine frühere Verbindung wird ERSETZT, nicht gestapelt: sonst bliebe beim
+    // zweiten Lauf der alte Ausschnitt zusätzlich stehen.
+    beam.cutouts = (beam.cutouts || []).filter(c => !c.verbindung);
+    beam.cutouts.push({ shape: 'poly', ebene: 'seite', ecken, verbindung: art });
+    rebuildMesh(beam);
+  });
+  closeVerbindung();
+  updateUI();
+
+  const nichtDurch = auftrag.filter(a => a.durch === false).length;
+  alert((art === 'kerve' ? 'Ausklinkung erzeugt.' : 'Überblattung an beiden Balken erzeugt.')
+    + (nichtDurch ? '\n\nAchtung: das Gegenstück deckt nicht die volle Breite des '
+        + 'Balkens ab. Der Schnitt geht trotzdem durch — es wird also mehr '
+        + 'weggenommen, als nötig wäre.' : '')
+    + '\n\nDie Verbindung sitzt als Ausschnitt am Bauteil und lässt sich dort '
+    + 'wieder entfernen. Mit Strg+Z rückgängig.');
 }
 
 function openKollisionen() {
@@ -4640,7 +4857,9 @@ function renderCutoutPanel(b) {
     // B/H-Feld waere hier eine Falle — es koennte den Schnitt nicht beschreiben.
     const istSchraege = c.shape === 'poly';
     const dims = istSchraege
-      ? `<span style="font-size:10px;color:var(--text-3)">${(c.ecken || []).length} Eckpunkte — Zuschnitt aus der Beplankung</span>`
+      ? `<span style="font-size:10px;color:var(--text-3)">${(c.ecken || []).length} Eckpunkte — ${
+          c.verbindung ? 'Holzverbindung, quer durch den Balken gestochen'
+                       : 'Zuschnitt aus der Beplankung'}</span>`
       : c.shape === 'circle'
       ? `<label style="font-size:10px;color:var(--text-3)">Ø<input type="number" value="${c.dia || 100}" min="1" step="5" style="width:56px" onchange="updateCutout(${i},'dia',this.value)"></label>`
       : `<label style="font-size:10px;color:var(--text-3)">B<input type="number" value="${c.w || 100}" min="1" step="5" style="width:52px" onchange="updateCutout(${i},'w',this.value)"></label>
@@ -4653,7 +4872,9 @@ function renderCutoutPanel(b) {
        <label style="font-size:10px;color:var(--text-3)">↕<input type="number" value="${Math.round(c.v || 0)}" step="10" style="width:56px" onchange="updateCutout(${i},'v',this.value)"></label>`;
     // EIN Schluessel mit Platzhaltern statt zusammengestueckelt: "Punkte" allein
     // waere ein kurzer Allerweltsschluessel, der dann auch anderswo zuschlaegt.
-    const titel = istSchraege
+    const titel = c.verbindung
+      ? (c.verbindung === 'kerve' ? T('⚒ Kerve / Ausklinkung') : T('⚒ Überblattung')) + ' ' + (i + 1)
+      : istSchraege
       ? T('◣ Schrägschnitt') + ' ' + (i + 1)
       : istBahn
       ? T('〰 Fräsbahn {i} ({p} Punkte)').replace('{i}', () => String(i + 1)).replace('{p}', () => String(c.punkte.length))
@@ -4728,16 +4949,51 @@ let _cutoutPreview = null;   // THREE.Line — Umriss der Vorschau
 let _cutoutFill = null;      // THREE.Mesh — gefuellte Flaeche darunter
 
 // Flächen-Basis der Platte (welche lokalen Achsen die Fläche aufspannen + Dicke).
+/* Welche der drei LOKALEN Achsen ist Laenge, Hoehe, Breite?
+   _ausdehnungVon liefert die Ausdehnungen in dieser Reihenfolge:
+     axis 'x' -> [L, H, B]      axis 'y' -> [B, L, H]      axis 'z' -> [B, H, L]
+   Daraus ergeben sich die Indizes eindeutig. */
+function _balkenAchsen(beam) {
+  if (beam.axis === 'y') return { iL: 1, iH: 2, iB: 0 };
+  if (beam.axis === 'z') return { iL: 2, iH: 1, iB: 0 };
+  return { iL: 0, iH: 1, iB: 2 };                       // 'x' und Standard
+}
+
+/* Durch welche Achse wird gestochen?
+
+   Bisher immer die DUENNSTE — richtig fuer eine Platte mit Fensterausschnitt.
+   Fuer eine HOLZVERBINDUNG ist es die falsche Ebene: das Profil einer Kerve
+   oder einer Ueberblattung liegt in der Laengs-Hoehen-Ebene und wird durch die
+   BREITE des Balkens gestochen. Ein Sparren 3541x200x80 haette als duennste
+   Achse die Hoehe — die Kerve laege dann flach im Sparren statt an seiner
+   Unterseite.
+
+   Traegt auch nur EIN Ausschnitt ebene:'seite', gilt das fuer den ganzen
+   Balken; zwei verschiedene Stichrichtungen liessen sich nicht in einer
+   Extrusion darstellen. In der Praxis kollidiert das nicht: eine Kerve sitzt
+   an einem Balken, ein Fensterausschnitt an einer Platte. */
+function _flaechenWahl(beam, W, H, D) {
+  const werte = [W, H, D];
+  if ((beam.cutouts || []).some(c => c.ebene === 'seite')) {
+    const a = _balkenAchsen(beam);
+    return { ti: a.iB, iA: a.iL, iB: a.iH };            // Laenge x Hoehe, quer gestochen
+  }
+  let ti = 0;
+  for (let i = 1; i < 3; i++) if (werte[i] < werte[ti]) ti = i;
+  const rest = [0, 1, 2].filter(i => i !== ti);
+  if (werte[rest[1]] > werte[rest[0]]) rest.reverse();  // A = laengere Flaechenseite
+  return { ti, iA: rest[0], iB: rest[1] };
+}
+
 function _panelFaceBasis(beam) {
   let W, H, D;
   if (beam.axis === 'x') { W = beam.L; H = beam.H; D = beam.B; }
   else if (beam.axis === 'y') { W = beam.B; H = beam.L; D = beam.H; }
   else { W = beam.B; H = beam.H; D = beam.L; }
   const axes = [{ v: W, e: new THREE.Vector3(1, 0, 0) }, { v: H, e: new THREE.Vector3(0, 1, 0) }, { v: D, e: new THREE.Vector3(0, 0, 1) }];
-  let ti = 0; for (let i = 1; i < 3; i++) if (axes[i].v < axes[ti].v) ti = i;
-  const face = axes.filter((_, i) => i !== ti);
-  if (face[1].v > face[0].v) face.reverse();
-  return { A: face[0].v, B: face[1].v, T: axes[ti].v, eA: face[0].e, eB: face[1].e, eT: axes[ti].e };
+  const w = _flaechenWahl(beam, W, H, D);
+  return { A: axes[w.iA].v, B: axes[w.iB].v, T: axes[w.ti].v,
+           eA: axes[w.iA].e, eB: axes[w.iB].e, eT: axes[w.ti].e };
 }
 
 function _cutoutDefaults(shape, A, B) {
