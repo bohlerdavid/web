@@ -1489,6 +1489,18 @@ body {
             <div class="dim-cell"><label>Rot Y</label><input type="number" id="edit-ry" step="1" onchange="applyEdit()"></div>
             <div class="dim-cell"><label>Rot Z</label><input type="number" id="edit-rz" step="1" onchange="applyEdit()"></div>
           </div>
+          {# Beim ANLEGEN gab es die Winkelvorgaben schon, beim Bearbeiten
+             nicht — dabei dreht man haeufiger nachtraeglich. Die Dachneigungen
+             stehen mit dabei: 30, 38 und 45 Grad decken den Grossteil ab, und
+             eine krumme Zahl von Hand einzugeben bleibt weiter moeglich. #}
+          <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px">
+            <button class="tb-btn" style="font-size:11px;height:26px;padding:0 8px" onclick="setEditAngle(0,0,0)">0°</button>
+            <button class="tb-btn" style="font-size:11px;height:26px;padding:0 8px" onclick="setEditAngle(0,90,0)">Y90°</button>
+            <button class="tb-btn" style="font-size:11px;height:26px;padding:0 8px" onclick="setEditAngle(0,0,30)">Z30°</button>
+            <button class="tb-btn" style="font-size:11px;height:26px;padding:0 8px" onclick="setEditAngle(0,0,38)">Z38°</button>
+            <button class="tb-btn" style="font-size:11px;height:26px;padding:0 8px" onclick="setEditAngle(0,0,45)">Z45°</button>
+            <button class="tb-btn" style="font-size:11px;height:26px;padding:0 8px" onclick="spiegleWinkel()" title="Neigung umkehren — für die zweite Dachhälfte">⇄ spiegeln</button>
+          </div>
         </div>
         <div class="panel-section">
           <div class="form-row"><label>Gruppe</label><select id="edit-group" onchange="moveBeamToGroup([...selectedIds][0], this.value)" style="flex:1"></select></div>
@@ -2612,7 +2624,7 @@ Object.assign(window, {
   rotateSelected, switchAxis, rotateHorizontal, standUpright, layFlat, closeCtxMenu, showContextMenu,
   rotateGroup, mirrorSelection, screenshotPNG,
   restoreAutosave, discardAutosave,
-  showTab, setDims, setAngle, loadTemplate,
+  showTab, setDims, setAngle, setEditAngle, spiegleWinkel, loadTemplate,
   addGroup, renderGroupList, selectGroup, moveBeamToGroup, deleteGroup, toggleGroupVisibility,
   toggleGroupLock, rotateDeco,
   openFeedback, closeFeedback, sendFeedback,
@@ -3154,6 +3166,26 @@ function _obbVon(b) {
 /* Grobfilter: Weltkugeln, die sich nicht schneiden, koennen sich auch als
    Boxen nicht schneiden. Spart bei grossen Modellen den Grossteil der Paare. */
 function _obbRadius(o) { return Math.hypot(o.h[0], o.h[1], o.h[2]); }
+
+/* Achsparallele Weltkiste EINSCHLIESSLICH Drehung.
+   Der Flaechenfang hat bisher b.x .. b.x + Ausdehnung benutzt, also die
+   UNGEDREHTE Kiste. An einem geneigten Sparren fing er damit an einer Kante,
+   die es gar nicht gibt. Ohne Drehung faellt das Ergebnis bitgenau auf die
+   alten Werte zurueck — und der haeufige Fall bleibt ohne Objekte. */
+function _weltKasten(b) {
+  const e = _ausdehnungVon(b);
+  if (!(b.rx || b.ry || b.rz)) {
+    return { x0: b.x, x1: b.x + e[0], y0: b.y, y1: b.y + e[1], z0: b.z, z1: b.z + e[2],
+             ex: e[0], ey: e[1], ez: e[2] };
+  }
+  const o = _obbVon(b);
+  const halb = (k) => Math.abs(o.achsen[0][k]) * o.h[0]
+                    + Math.abs(o.achsen[1][k]) * o.h[1]
+                    + Math.abs(o.achsen[2][k]) * o.h[2];
+  const hx = halb('x'), hy = halb('y'), hz = halb('z');
+  return { x0: o.c.x - hx, x1: o.c.x + hx, y0: o.c.y - hy, y1: o.c.y + hy,
+           z0: o.c.z - hz, z1: o.c.z + hz, ex: 2 * hx, ey: 2 * hy, ez: 2 * hz };
+}
 
 /* Trennachsensatz fuer zwei OBB. Findet sich EINE Achse, auf der sich die
    Schatten nicht ueberlappen, beruehren sich die Koerper nicht. */
@@ -4360,6 +4392,30 @@ function setAngle(x, y, z) {
   document.getElementById('rot-x').value = x;
   document.getElementById('rot-y').value = y;
   document.getElementById('rot-z').value = z;
+}
+
+/* Dieselben Vorgaben fuer ein BESTEHENDES Bauteil. applyEdit() muss danach
+   laufen — sonst stuende die Zahl im Feld, das Modell bliebe aber unveraendert. */
+function setEditAngle(x, y, z) {
+  const rx = document.getElementById('edit-rx');
+  if (!rx) return;
+  rx.value = x;
+  document.getElementById('edit-ry').value = y;
+  document.getElementById('edit-rz').value = z;
+  applyEdit();
+}
+/* Neigung umkehren — der Griff fuer die zweite Dachhaelfte. Gespiegelt werden
+   alle drei Winkel, nicht nur rz: bei einem Walmdach steht die Neigung in ry
+   und rz zugleich, und nur eine davon zu drehen ergaebe eine Flaeche, die
+   nirgends anschliesst. */
+function spiegleWinkel() {
+  const rx = document.getElementById('edit-rx');
+  if (!rx) return;
+  const ry = document.getElementById('edit-ry'), rz = document.getElementById('edit-rz');
+  rx.value = -(parseFloat(rx.value) || 0);
+  ry.value = -(parseFloat(ry.value) || 0);
+  rz.value = -(parseFloat(rz.value) || 0);
+  applyEdit();
 }
 
 function deleteBeam(id) {
@@ -5730,28 +5786,33 @@ function smartSnap(rawX, rawZ, dragged) {
   // Achsenverwechslung wie frueher in getBeamHalfD und in den Planansichten:
   // die Tiefe in Z war bei axis 'y' die BREITE statt der HOEHE. Beim Ziehen an
   // einen stehenden Pfosten 60x120 fing der Balken dadurch 60 mm daneben.
-  const dE = _ausdehnungVon(dragged);
-  const dW = dE[0];   // Ausdehnung in X
-  const dD = dE[2];   // Ausdehnung in Z
+  /* Gerechnet wird in WELTkanten, nicht in Ankerpunkten. Ein gedrehter Balken
+     beginnt nicht bei b.x — er dreht um seinen Mittelpunkt, seine Weltkiste
+     liegt also versetzt. Frueher wurde die ungedrehte Kiste benutzt und der
+     Fang zielte auf eine Kante, die es gar nicht gibt.
+     dVx/dVz ist der Versatz zwischen Weltkante und Ankerpunkt; am Ende wird
+     wieder in den Ankerpunkt zurueckgerechnet, denn der wird gesetzt. */
+  const dK = _weltKasten(dragged);
+  const dVx = dK.x0 - dragged.x, dVz = dK.z0 - dragged.z;
+  const dW = dK.ex, dD = dK.ez;
+  const weltX = rawX + dVx, weltZ = rawZ + dVz;
 
   let bestX = null, bestXD = tol + 1;
   let bestZ = null, bestZD = tol + 1;
 
   beams.forEach(b => {
     if (selectedIds.has(b.id)) return; // skip beams being dragged
-    const be = _ausdehnungVon(b);
-    const bx0 = b.x, bx1 = b.x + be[0];
-    const bz0 = b.z, bz1 = b.z + be[2];
+    const k = _weltKasten(b);
 
     // Candidate X snap positions for dragged beam's left face
-    [bx0, bx1, bx0 - dW, bx1 - dW].forEach(cx => {
-      const d = Math.abs(cx - rawX);
-      if (d < bestXD) { bestX = cx; bestXD = d; }
+    [k.x0, k.x1, k.x0 - dW, k.x1 - dW].forEach(cx => {
+      const d = Math.abs(cx - weltX);
+      if (d < bestXD) { bestX = cx - dVx; bestXD = d; }
     });
     // Candidate Z snap positions for dragged beam's front face
-    [bz0, bz1, bz0 - dD, bz1 - dD].forEach(cz => {
-      const d = Math.abs(cz - rawZ);
-      if (d < bestZD) { bestZ = cz; bestZD = d; }
+    [k.z0, k.z1, k.z0 - dD, k.z1 - dD].forEach(cz => {
+      const d = Math.abs(cz - weltZ);
+      if (d < bestZD) { bestZ = cz - dVz; bestZD = d; }
     });
   });
 
@@ -5767,16 +5828,21 @@ function smartSnap(rawX, rawZ, dragged) {
 function smartSnapY(rawY, dragged) {
   const gridSz = snapEnabled ? (parseFloat(document.getElementById('snap-size').value) || 10) : 1;
   const tol = Math.max(150, gridSz * 5);
-  const dH = dragged.axis === 'y' ? dragged.L : dragged.H;
+  // Wie in smartSnap: Weltkanten statt Ankerpunkte, damit auch an gedrehten
+  // Bauteilen die Kante gefangen wird, die man wirklich sieht.
+  const dKY = _weltKasten(dragged);
+  const dVy = dKY.y0 - dragged.y;
+  const dH = dKY.ey;
+  const weltY = rawY + dVy;
 
   let bestY = null, bestYD = tol + 1;
   beams.forEach(b => {
     if (selectedIds.has(b.id)) return;
-    const by0 = b.y;
-    const by1 = b.y + (b.axis === 'y' ? b.L : b.H);
+    const k = _weltKasten(b);
+    const by0 = k.y0, by1 = k.y1;
     [by0, by1, by0 - dH, by1 - dH].forEach(cy => {
-      const d = Math.abs(cy - rawY);
-      if (d < bestYD) { bestY = cy; bestYD = d; }
+      const d = Math.abs(cy - weltY);
+      if (d < bestYD) { bestY = cy - dVy; bestYD = d; }
     });
   });
   return bestYD <= tol ? bestY : (snapEnabled ? Math.round(rawY / gridSz) * gridSz : rawY);
