@@ -1344,14 +1344,139 @@
     return svg.join('');
   }
 
+
+  // ---------------------------------------------------------------------------
+  // Beplankung: eine rechteckige Flaeche in Plattenformate aufteilen
+  // ---------------------------------------------------------------------------
+  /*
+   * planBeplankung — reine Zahlenfunktion, absichtlich ohne three.js und ohne DOM,
+   * damit die Stossregel in Node pruefbar ist.
+   *
+   * Der Punkt, an dem so eine Funktion ueblicherweise unbrauchbar wird: sie
+   * teilt stur das Plattenformat ab und legt die Fugen dorthin, wo gerade Platz
+   * ist. Im Holzbau muss ein Plattenstoss aber auf einem TRAEGER liegen
+   * (Staender, Sparren, Riegel) — sonst haengt die Kante frei und die Beplankung
+   * ist nicht befestigbar. Darum bekommt die Funktion die Traegerachsen und legt
+   * jede Fuge auf die naechstgelegene Achse, die noch in Reichweite liegt.
+   *
+   * WICHTIG bei der Reichweite: die Fuge wird NICHT abgezogen
+   * (max = p + format, nicht p + format - fuge). Sonst faellt genau der Traeger
+   * aus dem Fenster, der exakt auf dem Plattenmass sitzt — und das ist der
+   * Regelfall: das Staenderraster 625 wird ja gewaehlt, DAMIT die 1250er Platte
+   * auf einem Staender stoesst.
+   *
+   * opt = {
+   *   breite, hoehe   : Flaechenmasse in mm
+   *   format          : [w, h] Plattenformat in mm
+   *   fuge            : Dehnungsfuge zwischen den Platten in mm (Standard 0)
+   *   traegerU        : Achsen quer zur Breite (mm, relativ zur Flaechenkante)
+   *   traegerV        : Achsen quer zur Hoehe
+   *   minRest         : schmalstes zulaessiges Reststueck (Standard 100)
+   * }
+   * Rueckgabe { platten: [{u, v, w, h, rand}], hinweise: [..] }
+   *   u,v = linke untere Ecke in der Flaeche; rand = angeschnittenes Stueck.
+   */
+  function _kanten(laenge, format, fuge, traeger, minRest) {
+    var kanten = [0], p = 0, wache = 0;
+    traeger = (traeger || []).slice().sort(function (a, b) { return a - b; });
+    while (p < laenge - 0.5 && wache++ < 500) {
+      var max = p + format;                    // Fuge NICHT abziehen, s.o.
+      if (max >= laenge - 0.5) { kanten.push(laenge); break; }
+      // Groesste Traegerachse, die noch in Reichweite liegt und echt weiterfuehrt.
+      var ziel = null;
+      for (var i = 0; i < traeger.length; i++) {
+        var t = traeger[i];
+        if (t > p + 1 && t <= max + 0.001) ziel = t;
+      }
+      var naechste = (ziel === null) ? max : ziel;
+      // Reststueck zu schmal? Dann lieber die vorletzte Fuge zurueckziehen, aber
+      // NUR wenn dafuer eine andere Traegerachse zur Verfuegung steht — sonst
+      // bliebe der Stoss in der Luft. Ist keine da, bleibt der Splitter stehen
+      // und wird als Hinweis gemeldet.
+      if (laenge - naechste > 0.5 && laenge - naechste < minRest) {
+        var ersatz = null;
+        for (var j = 0; j < traeger.length; j++) {
+          var t2 = traeger[j];
+          if (t2 > p + minRest && t2 < naechste - 0.5 && laenge - t2 >= minRest) ersatz = t2;
+        }
+        if (ersatz !== null) naechste = ersatz;
+      }
+      kanten.push(naechste);
+      p = naechste;
+    }
+    if (kanten[kanten.length - 1] < laenge - 0.5) kanten.push(laenge);
+    return kanten;
+  }
+
+  function planBeplankung(opt) {
+    opt = opt || {};
+    var breite = Math.max(1, opt.breite || 0);
+    var hoehe = Math.max(1, opt.hoehe || 0);
+    var fmt = opt.format || [2500, 1250];
+    var fuge = Math.max(0, opt.fuge || 0);
+    var minRest = opt.minRest == null ? 100 : opt.minRest;
+    var hinweise = [];
+
+    // Ausrichtung: die Variante waehlen, die WENIGER Platten braucht. Bei
+    // Gleichstand die, die in der Hoehe ohne Quernaht auskommt — eine
+    // waagerechte Fuge ohne Riegel dahinter ist die haeufigste Fehlerquelle.
+    function zaehle(fw, fh) {
+      var ku = _kanten(breite, fw, fuge, opt.traegerU, minRest);
+      var kv = _kanten(hoehe, fh, fuge, opt.traegerV, minRest);
+      return { ku: ku, kv: kv, n: (ku.length - 1) * (kv.length - 1), reihen: kv.length - 1 };
+    }
+    var a = zaehle(fmt[0], fmt[1]);
+    var b = zaehle(fmt[1], fmt[0]);
+    var wahl = (b.n < a.n || (b.n === a.n && b.reihen < a.reihen)) ? b : a;
+
+    var platten = [];
+    for (var iv = 0; iv < wahl.kv.length - 1; iv++) {
+      for (var iu = 0; iu < wahl.ku.length - 1; iu++) {
+        var u0 = wahl.ku[iu], u1 = wahl.ku[iu + 1];
+        var v0 = wahl.kv[iv], v1 = wahl.kv[iv + 1];
+        // Die Fuge geht von der PLATTE ab, nicht von der Reichweite.
+        var w = u1 - u0 - (u1 < breite - 0.5 ? fuge : 0);
+        var h = v1 - v0 - (v1 < hoehe - 0.5 ? fuge : 0);
+        if (w < 1 || h < 1) continue;
+        var vollU = Math.abs((u1 - u0) - Math.max(fmt[0], fmt[1])) < 0.5 ||
+                    Math.abs((u1 - u0) - Math.min(fmt[0], fmt[1])) < 0.5;
+        var vollV = Math.abs((v1 - v0) - Math.max(fmt[0], fmt[1])) < 0.5 ||
+                    Math.abs((v1 - v0) - Math.min(fmt[0], fmt[1])) < 0.5;
+        platten.push({ u: u0, v: v0, w: w, h: h, rand: !(vollU && vollV) });
+      }
+    }
+
+    // Ehrliche Rueckmeldung statt stiller Naeherung.
+    var ohneTraeger = 0;
+    for (var k = 1; k < wahl.ku.length - 1; k++) {
+      var trifft = (opt.traegerU || []).some(function (t) { return Math.abs(t - wahl.ku[k]) < 1; });
+      if (!trifft) ohneTraeger++;
+    }
+    if (ohneTraeger) hinweise.push(ohneTraeger + ' senkrechte Fuge(n) liegen nicht auf einem Träger');
+    var quer = wahl.kv.length - 2;
+    if (quer > 0) {
+      var querOhne = 0;
+      for (var m = 1; m < wahl.kv.length - 1; m++) {
+        var t3 = (opt.traegerV || []).some(function (t) { return Math.abs(t - wahl.kv[m]) < 1; });
+        if (!t3) querOhne++;
+      }
+      if (querOhne) hinweise.push(querOhne + ' waagerechte Fuge(n) ohne Riegel dahinter');
+    }
+    var schmal = platten.filter(function (p2) { return p2.w < minRest || p2.h < minRest; }).length;
+    if (schmal) hinweise.push(schmal + ' sehr schmale(s) Randstück(e)');
+
+    return { platten: platten, hinweise: hinweise };
+  }
+
   // ---------------------------------------------------------------------------
   // Export
   // ---------------------------------------------------------------------------
-  var api = { pack2D: pack2D, pack2DToSVG: pack2DToSVG };
+  var api = { pack2D: pack2D, pack2DToSVG: pack2DToSVG, planBeplankung: planBeplankung };
 
   if (typeof root !== 'undefined' && root) {
     root.pack2D = pack2D;
     root.pack2DToSVG = pack2DToSVG;
+    root.planBeplankung = planBeplankung;
   }
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api;

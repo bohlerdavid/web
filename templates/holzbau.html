@@ -1361,6 +1361,20 @@ body {
         <button class="add-btn" onclick="addBeamRow()" style="background:var(--bg-card);color:var(--green);border:1px solid rgba(56,216,156,.3)">⊕⊕ Parallelreihe hinzufügen{% if user_plan != 'premium' %} 🔒{% endif %}</button>
       </div>
 
+      <div class="panel-box">
+        {# Beplanken ist bewusst KOSTENLOS: es erzeugt Konstruktion, nicht
+           Aufbereitung — und ist damit genau der Weg zum Plattenzuschnitt, wo
+           die Bezahlgrenze steht. Wer seine Wand mit einem Klick zumacht und
+           neun Platten sieht, hat einen Grund, den Zuschnitt zu wollen. #}
+        <div class="panel-title" style="margin-bottom:4px">Fläche beplanken</div>
+        <div style="font-size:11px;color:var(--text-3);line-height:1.45;margin-bottom:6px">
+          Ständer oder Sparren einer Wand markieren, dann beplanken. Die Stöße
+          werden auf die Träger gelegt.
+        </div>
+        <button class="add-btn" onclick="openBeplanken()"
+                style="background:var(--bg-card);color:var(--accent);border:1px solid rgba(78,140,221,.35)">▦ Markierte Fläche beplanken</button>
+      </div>
+
       <div class="panel-section">
         {# Vorwahl marktueblicher Querschnitte. Bewusst als Auswahlliste mit
            Gruppen statt als Knopfreihe: sechs Knoepfe passten noch, zwanzig
@@ -1843,6 +1857,59 @@ body {
   <div style="border-top:1px solid var(--border);margin:2px 0"></div>
   <div class="ctx-item" id="ctx-del-beam" style="color:var(--red)" onclick="deleteSelected();closeCtxMenu()">✕ Löschen</div>
   <div class="ctx-item" id="ctx-del-deco" style="color:var(--red);display:none" onclick="deleteDecoSelected();closeCtxMenu()">✕ Löschen</div>
+</div>
+
+<!-- FLÄCHE BEPLANKEN ────────────────────────────────────────────────────────
+     Nur Werkstoff, Stärke, Format und Fuge — die Fläche selbst kommt aus der
+     Markierung. Bewusst KEIN Premium-Schloss: das Erzeugen von Konstruktion
+     bleibt frei, bezahlt wird der Zuschnitt. -->
+<div id="bp-modal" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.75);align-items:center;justify-content:center;" onclick="if(event.target===this)closeBeplanken()">
+  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-lg);padding:26px 28px;max-width:460px;width:92%;box-shadow:0 24px 64px rgba(0,0,0,.6);position:relative;">
+    <h3 style="color:var(--text);font-size:1.1rem;margin-bottom:6px">▦ Fläche beplanken</h3>
+    <div id="bp-info" style="font-size:.8rem;color:var(--accent);margin-bottom:14px"></div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+      <div>
+        <label style="display:block;font-size:.78rem;color:var(--text-2);margin-bottom:3px">Werkstoff</label>
+        <select id="bp-material" style="width:100%;padding:7px 9px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font);font-size:.86rem">
+          <option>OSB</option><option>Spanplatte</option><option>Sperrholz</option>
+          <option>MDF</option><option>Siebdruckplatte</option>
+        </select>
+      </div>
+      <div>
+        <label style="display:block;font-size:.78rem;color:var(--text-2);margin-bottom:3px">Stärke mm</label>
+        <input id="bp-dicke" type="number" value="15" min="4" max="60" step="1"
+               style="width:100%;padding:7px 9px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font);font-size:.86rem">
+      </div>
+      <div>
+        <label style="display:block;font-size:.78rem;color:var(--text-2);margin-bottom:3px">Format lang mm</label>
+        <input id="bp-fw" type="number" value="2600" min="200" step="10"
+               style="width:100%;padding:7px 9px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font);font-size:.86rem">
+      </div>
+      <div>
+        <label style="display:block;font-size:.78rem;color:var(--text-2);margin-bottom:3px">Format breit mm</label>
+        <input id="bp-fh" type="number" value="1250" min="200" step="10"
+               style="width:100%;padding:7px 9px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font);font-size:.86rem">
+      </div>
+    </div>
+    <label style="display:block;font-size:.78rem;color:var(--text-2);margin-bottom:3px">Dehnungsfuge mm</label>
+    <input id="bp-fuge" type="number" value="0" min="0" max="20" step="1"
+           style="width:100%;padding:7px 9px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font);font-size:.86rem">
+
+    <div style="background:var(--bg-input);border-radius:var(--r);padding:11px 13px;margin:16px 0 18px;font-size:.78rem;color:var(--text-2);line-height:1.55">
+      Die Stöße werden auf die erkannten Trägerachsen gelegt — eine Fuge ohne
+      Träger dahinter wäre nicht befestigbar. Passt keine Achse, wird stur nach
+      Format geteilt und es erscheint ein Hinweis.
+      Die Platten liegen bündig auf der Außenseite und sind ganz normale Bauteile:
+      einzeln verschiebbar, sägbar, löschbar.
+    </div>
+
+    <div style="display:flex;gap:10px">
+      <button onclick="closeBeplanken()" style="flex:1;padding:10px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r);color:var(--text-2);cursor:pointer;font-family:var(--font);font-size:.9rem">Abbrechen</button>
+      <button onclick="runBeplanken()" style="flex:1;padding:10px;background:var(--accent);border:none;border-radius:var(--r);color:#fff;cursor:pointer;font-family:var(--font);font-size:.9rem;font-weight:700">Beplanken</button>
+    </div>
+    <button onclick="closeBeplanken()" style="position:absolute;top:10px;right:14px;background:none;border:none;color:var(--text-3);font-size:18px;cursor:pointer">✕</button>
+  </div>
 </div>
 
 <!-- ANGABEN FÜR DEN STATIKER ────────────────────────────────────────────────
@@ -2445,6 +2512,7 @@ Object.assign(window, {
   toggleSnap, setView, resetCamera, toggleHelp,
   openBauvorhaben, closeBauvorhaben, saveBauvorhaben,
   applyPreset,
+  openBeplanken, closeBeplanken, runBeplanken,
   saveProject, handleLoadFile,
   exportStückliste, applyEdit, deleteBeam,
   calcFloorPlan, updateFloorOutline, updateRoofOutline, drawFloorPreview,
@@ -2918,6 +2986,155 @@ function loadDemoModel() {
 function setDims(b, h) {
   document.getElementById('dim-b').value = b;
   document.getElementById('dim-h').value = h;
+}
+
+/* ══ FLÄCHE BEPLANKEN ══════════════════════════════════════════════════════
+   Aus den markierten Balken die Ebene bestimmen, die Trägerachsen ermitteln
+   und die Fläche mit hb_tools.planBeplankung in Platten aufteilen.
+
+   Stufe 1 kann bewusst NUR ungedrehte Flächen (Wände, waagerechte Decken).
+   Geneigte Dachflächen brauchen zusätzlich einen Zuschnitt am Giebel, den es
+   heute nicht gibt — lieber ehrlich ablehnen als etwas Unbaubares erzeugen.
+
+   Die Ebene wird aus den ECKEN der Balken gebildet, nicht aus ihren Mitten:
+   aus Mitten ergäbe sich eine um Bauteilbreite zu kleine Fläche. */
+const _ausdehnungVon = (b) =>
+  b.axis === 'x' ? [b.L, b.H, b.B] :
+  b.axis === 'y' ? [b.B, b.L, b.H] :
+                   [b.B, b.H, b.L];
+
+function _flaecheAusAuswahl() {
+  // Vorhandene Platten fliegen raus: sonst wandert die Ebene bei jedem Lauf
+  // um eine Plattendicke nach außen.
+  const sel = beams.filter(b => selectedIds.has(b.id) && !SHEET_MATERIALS.has(b.woodType));
+  if (sel.length < 2) return { fehler: 'Bitte mindestens zwei Balken der Fläche markieren — z. B. die Ständer einer Wand.' };
+  if (sel.some(b => (b.rx || 0) || (b.ry || 0) || (b.rz || 0))) {
+    return { fehler: 'Geneigte Flächen sind noch nicht möglich.\n\nDie Markierung enthält gedrehte Balken (z. B. Dachsparren). Beplanken funktioniert derzeit nur für ungedrehte Wände und waagerechte Decken.' };
+  }
+  const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+  sel.forEach(b => {
+    const e = _ausdehnungVon(b);
+    const p = [b.x, b.y, b.z];
+    for (let i = 0; i < 3; i++) {
+      if (p[i] < min[i]) min[i] = p[i];
+      if (p[i] + e[i] > max[i]) max[i] = p[i] + e[i];
+    }
+  });
+  const ext = [max[0] - min[0], max[1] - min[1], max[2] - min[2]];
+  let n = 0;
+  if (ext[1] < ext[n]) n = 1;
+  if (ext[2] < ext[n]) n = 2;
+  const rest = [0, 1, 2].filter(i => i !== n).sort((a, b) => ext[b] - ext[a]);
+  // Plausibilität: ohne diese Prüfung liefert Strg+A über ein ganzes Gebäude
+  // lautlos eine Platte quer durchs Haus.
+  if (ext[n] > ext[rest[1]] / 3) {
+    return { fehler: 'Die markierten Teile liegen nicht flach genug in einer Ebene.\n\nMarkiere die Bauteile EINER Wand oder Decke — nicht mehrere Wände gleichzeitig.' };
+  }
+  if (ext[rest[0]] < 200 || ext[rest[1]] < 200) {
+    return { fehler: 'Die erkannte Fläche ist zu klein zum Beplanken.' };
+  }
+  // Trägerachsen: Mitte jedes Balkens in Flächenrichtung — aber nur die, die
+  // in der Querrichtung wirklich durchlaufen. Ein 780 mm kurzer Brüstungsstiel
+  // darf keine Fuge über die volle Wandhöhe rechtfertigen.
+  const achsen = (richtung, quer) => {
+    const raus = [];
+    sel.forEach(b => {
+      const e = _ausdehnungVon(b), p = [b.x, b.y, b.z];
+      const laengsQuer = e[quer] / (max[quer] - min[quer]);
+      if (laengsQuer < 0.8) return;                    // deckt die Reihe nicht
+      raus.push(p[richtung] + e[richtung] / 2 - min[richtung]);
+    });
+    return [...new Set(raus.map(v => Math.round(v)))].sort((a, b) => a - b);
+  };
+  return {
+    min, max, normale: n, achseU: rest[0], achseV: rest[1],
+    breite: ext[rest[0]], hoehe: ext[rest[1]], dicke: ext[n],
+    traegerU: achsen(rest[0], rest[1]), traegerV: achsen(rest[1], rest[0]),
+  };
+}
+
+function openBeplanken() {
+  const f = _flaecheAusAuswahl();
+  if (f.fehler) { alert(f.fehler); return; }
+  const d = document.getElementById('bp-info');
+  if (d) d.textContent = `Erkannte Fläche: ${Math.round(f.breite)} × ${Math.round(f.hoehe)} mm`
+    + ` · ${f.traegerU.length} Träger längs, ${f.traegerV.length} quer`;
+  document.getElementById('bp-modal').style.display = 'flex';
+}
+function closeBeplanken() { document.getElementById('bp-modal').style.display = 'none'; }
+
+function runBeplanken() {
+  const f = _flaecheAusAuswahl();
+  if (f.fehler) { alert(f.fehler); closeBeplanken(); return; }
+  const werkstoff = document.getElementById('bp-material').value;
+  const dicke = parseFloat(document.getElementById('bp-dicke').value) || 15;
+  const fw = parseFloat(document.getElementById('bp-fw').value) || 2500;
+  const fh = parseFloat(document.getElementById('bp-fh').value) || 1250;
+  const fuge = Math.max(0, parseFloat(document.getElementById('bp-fuge').value) || 0);
+
+  const plan = (window.planBeplankung || planBeplankung)({
+    breite: f.breite, hoehe: f.hoehe, format: [fw, fh], fuge,
+    traegerU: f.traegerU, traegerV: f.traegerV, minRest: 150,
+  });
+  if (!plan.platten.length) { alert('Für diese Fläche ließ sich keine Aufteilung bilden.'); return; }
+
+  // Schutz gegen den zweiten Lauf: liegt auf dieser Ebene schon Plattenwerkstoff,
+  // entstuenden deckungsgleiche Platten — im 3D unsichtbar, in der Stückliste
+  // doppelt bezahlt.
+  const aussen = f.max[f.normale];
+  const schonDa = beams.filter(b => SHEET_MATERIALS.has(b.woodType) &&
+    Math.abs([b.x, b.y, b.z][f.normale] - aussen) < dicke + 1);
+  if (schonDa.length) {
+    if (!confirm(`Auf dieser Fläche liegen bereits ${schonDa.length} Platten.\n\n`
+        + 'OK = alte ersetzen, Abbrechen = nichts tun.')) { closeBeplanken(); return; }
+    pushHistory();
+    schonDa.forEach(b => { if (b.mesh) scene.remove(b.mesh); });
+    const weg = new Set(schonDa.map(b => b.id));
+    for (let i = beams.length - 1; i >= 0; i--) if (weg.has(beams[i].id)) beams.splice(i, 1);
+  } else {
+    pushHistory();
+  }
+
+  let name = 'Beplankung ' + werkstoff + ' ' + dicke;
+  let n = 1;
+  while (groups.includes(name + (n > 1 ? ' ' + n : ''))) n++;
+  const gruppe = name + (n > 1 ? ' ' + n : '');
+  groups.push(gruppe);
+
+  plan.platten.forEach(p => {
+    const e = [0, 0, 0];
+    e[f.achseU] = p.w; e[f.achseV] = p.h; e[f.normale] = dicke;
+    const pos = [0, 0, 0];
+    pos[f.achseU] = f.min[f.achseU] + p.u;
+    pos[f.achseV] = f.min[f.achseV] + p.v;
+    pos[f.normale] = aussen;                      // bündig auf der Außenseite
+    // Achse so waehlen, dass L die laengste Ausdehnung ist — sonst stuende in
+    // der Stueckliste die Plattendicke als "Laenge".
+    let axis = 'x', L, B, H;
+    const gr = Math.max(e[0], e[1], e[2]);
+    if (gr === e[0])      { axis = 'x'; L = e[0]; H = e[1]; B = e[2]; }
+    else if (gr === e[1]) { axis = 'y'; B = e[0]; L = e[1]; H = e[2]; }
+    else                  { axis = 'z'; B = e[0]; H = e[1]; L = e[2]; }
+    // Formatgleiche Platten bekommen denselben Namen — sonst listet die
+    // Stueckliste zwoelf Namen in EINER Zelle statt "12 ×".
+    const nb = {
+      id: idCounter++, name: p.rand ? gruppe + ' Randstück' : gruppe,
+      woodType: werkstoff, shape: 'rect', axis,
+      L: Math.round(L), B: Math.round(B), H: Math.round(H),
+      x: Math.round(pos[0]), y: Math.round(pos[1]), z: Math.round(pos[2]),
+      rx: 0, ry: 0, rz: 0, group: gruppe, phase: null, mesh: null,
+    };
+    nb.mesh = createBeamMesh(nb);
+    scene.add(nb.mesh);
+    beams.push(nb);
+  });
+
+  closeBeplanken();
+  updateUI();
+  const rand = plan.platten.filter(p => p.rand).length;
+  alert(`${plan.platten.length} Platten erzeugt (davon ${rand} angeschnitten).`
+    + (plan.hinweise.length ? '\n\nHinweise:\n• ' + plan.hinweise.join('\n• ') : '')
+    + '\n\nGruppe: ' + gruppe + '  — mit Strg+Z rückgängig.');
 }
 
 /* Vorwahl aus der Querschnittsliste uebernehmen.
