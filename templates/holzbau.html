@@ -1378,6 +1378,16 @@ body {
       </div>
 
       <div class="panel-section">
+        <div class="panel-title" style="margin-bottom:4px">Kollisionsprüfung</div>
+        <div style="font-size:11px;color:var(--text-3);line-height:1.45;margin-bottom:6px">
+          Findet Bauteile, die denselben Raum belegen. Im 3D sieht man eine
+          Überschneidung von 40&nbsp;mm nicht — auf der Baustelle schon.
+        </div>
+        <button class="add-btn" onclick="openKollisionen()"
+                style="background:var(--bg-card);color:var(--red);border:1px solid rgba(220,80,80,.4)">⚠ Kollisionen prüfen</button>
+      </div>
+
+      <div class="panel-section">
         {# Vorwahl marktueblicher Querschnitte. Bewusst als Auswahlliste mit
            Gruppen statt als Knopfreihe: sechs Knoepfe passten noch, zwanzig
            nicht mehr. Die freie Eingabe in den Feldern L/B/H bleibt
@@ -1439,6 +1449,31 @@ body {
       <div class="panel-title">Auswahl bearbeiten</div>
       <div id="sel-info" style="color:var(--text-3);font-size:12px;padding:6px 0">Kein Objekt ausgewählt</div>
       <div id="sel-edit" style="display:none">
+        {# Holzart und Bezeichnung waren bisher nur beim ANLEGEN einstellbar.
+           Man aendert sie aber oefter, als man neu anlegt — und wer sich
+           vergriffen hat, musste das Bauteil loeschen und neu bauen. #}
+        <div class="form-row">
+          <label>Holzart</label>
+          <select id="edit-wood" onchange="applyEdit()" style="flex:1">
+            <option value="Fichte">Fichte</option>
+            <option value="Kiefer">Kiefer</option>
+            <option value="Lärche">Lärche</option>
+            <option value="Eiche">Eiche</option>
+            <option value="Buche">Buche</option>
+            <option value="Douglasie">Douglasie</option>
+            <option value="Brettschichtholz (BSH)">BSH</option>
+            <option value="Sperrholz">Sperrholz</option>
+            <option value="OSB">OSB</option>
+            <option value="Spanplatte">Spanplatte (Pressholz)</option>
+            <option value="MDF">MDF</option>
+            <option value="Siebdruckplatte">Siebdruckplatte</option>
+            <option value="Benutzerdefiniert">Benutzerdefiniert</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Bezeichnung</label>
+          <input type="text" id="edit-name" placeholder="z.B. Sparren" onchange="applyEdit()" style="flex:1">
+        </div>
         <div class="dim-row">
           <div class="dim-cell"><label>Länge</label><input type="number" id="edit-l" min="1" step="10" onchange="applyEdit()"></div>
           <div class="dim-cell"><label>Breite</label><input type="number" id="edit-b" min="1" step="5" onchange="applyEdit()"></div>
@@ -1865,6 +1900,21 @@ body {
      Nur Werkstoff, Stärke, Format und Fuge — die Fläche selbst kommt aus der
      Markierung. Bewusst KEIN Premium-Schloss: das Erzeugen von Konstruktion
      bleibt frei, bezahlt wird der Zuschnitt. -->
+<div id="koll-modal" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.75);align-items:center;justify-content:center;" onclick="if(event.target===this)closeKollisionen()">
+  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-lg);padding:26px 28px;max-width:560px;width:92%;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.6);">
+    <h3 style="color:var(--text);font-size:1.1rem;margin-bottom:6px">⚠ Kollisionsprüfung</h3>
+    <div id="koll-info" style="font-size:.8rem;color:var(--accent);margin-bottom:12px"></div>
+    <div id="koll-liste" style="overflow-y:auto;flex:1;margin-bottom:14px"></div>
+    <div style="font-size:.74rem;color:var(--text-3);line-height:1.5;margin-bottom:12px">
+      Geprüft werden alle sichtbaren Bauteile gegeneinander. Reines Berühren
+      zählt nicht — erst ab {{ '3' }} mm echter Durchdringung. Nicht jede Meldung ist
+      ein Fehler: ein eingelassener Sparren oder ein Zapfen überschneidet sich
+      gewollt. Die Liste ist nach Tiefe sortiert, die größten zuerst.
+    </div>
+    <button class="add-btn" onclick="closeKollisionen()" style="width:100%">Schließen</button>
+  </div>
+</div>
+
 <div id="bp-modal" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.75);align-items:center;justify-content:center;" onclick="if(event.target===this)closeBeplanken()">
   <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-lg);padding:26px 28px;max-width:460px;width:92%;box-shadow:0 24px 64px rgba(0,0,0,.6);position:relative;">
     <h3 style="color:var(--text);font-size:1.1rem;margin-bottom:6px">▦ Fläche beplanken</h3>
@@ -2554,6 +2604,7 @@ Object.assign(window, {
   openBauvorhaben, closeBauvorhaben, saveBauvorhaben,
   applyPreset,
   openBeplanken, closeBeplanken, runBeplanken, bpModusWechsel,
+  openKollisionen, closeKollisionen,
   saveProject, handleLoadFile,
   exportStückliste, applyEdit, deleteBeam,
   calcFloorPlan, updateFloorOutline, updateRoofOutline, drawFloorPreview,
@@ -2835,12 +2886,14 @@ function createBeamMesh(beam) {
   else if (beam.axis === 'y') { W = beam.B; H = beam.L; D = beam.H; }
   else { W = beam.B; H = beam.H; D = beam.L; }
 
-  // Plattenwerkstoff mit Ausfräsungen → Extrusion mit Löchern, sonst Box.
-  /* Ein Schraegschnitt (shape 'poly') muss auch bei VOLLHOLZ durchlaufen —
-     ein Giebelbrett ist kein Plattenwerkstoff, hat aber dieselbe schraege
-     Kante. Fuer alles Bisherige bleibt die Bedingung unveraendert. */
-  const _hatSchraege = beam.cutouts && beam.cutouts.some(c => c.shape === 'poly');
-  if ((SHEET_MATERIALS.has(beam.woodType) || _hatSchraege) && beam.cutouts && beam.cutouts.length) {
+  /* Bauteil mit Ausschnitten → Extrusion mit Loechern, sonst Box.
+     Frueher hing das an SHEET_MATERIALS. Das traegt nicht mehr: ein
+     Giebelbrett ist kein Plattenwerkstoff, hat aber denselben Schraegschnitt
+     (shape 'poly'). Und seit die Holzart nachtraeglich aenderbar ist, saehe
+     man beim Umstellen einer OSB-Platte mit Fensterausschnitt auf Fichte
+     ploetzlich eine geschlossene Kiste — waehrend Ausschnittsliste und
+     CNC-Plan das Loch weiterfuehren. Ohne Ausschnitte bleibt es die Box. */
+  if (beam.cutouts && beam.cutouts.length) {
     geo = buildPanelGeometry(beam, W, H, D);
   } else {
     geo = new THREE.BoxGeometry(W, H, D);
@@ -3058,6 +3111,127 @@ const _ausdehnungVon = (b) =>
   b.axis === 'x' ? [b.L, b.H, b.B] :
   b.axis === 'y' ? [b.B, b.L, b.H] :
                    [b.B, b.H, b.L];
+
+/* ══════════════════════════════════════════════
+   KOLLISIONSPRÜFUNG
+   ══════════════════════════════════════════════
+   Zwei Bauteile durften bisher denselben Raum belegen, ohne dass es jemand
+   merkt. Im 3D faellt eine Ueberschneidung von 40 mm nicht auf — auf der
+   Baustelle schon, und dann ist das Holz gekauft.
+
+   Gerechnet wird mit ORIENTIERTEN Boxen (OBB) und dem Trennachsensatz, nicht
+   mit achsparallelen Kaesten: ein Sparren mit rz=32 haette als achsparallele
+   Huelle fast die doppelte Hoehe und meldete Treffer, wo keine sind.
+
+   Beruehren ist keine Kollision. Ein Pfosten UNTER einem Balken teilt sich mit
+   ihm eine Flaeche, ein Riegel stoesst stumpf an einen Staender. Deshalb wird
+   jede Box vor dem Test um die halbe Toleranz geschrumpft — erst eine echte
+   Durchdringung zaehlt. */
+const KOLLISION_TOLERANZ = 3;        // mm; darunter gilt es als Beruehrung
+
+function _obbVon(b) {
+  const e = _ausdehnungVon(b);
+  const grad = Math.PI / 180;
+  const q = new THREE.Quaternion().setFromEuler(
+    new THREE.Euler((b.rx || 0) * grad, (b.ry || 0) * grad, (b.rz || 0) * grad));
+  // rect dreht um den MITTELPUNKT, sawnAngle um die ECKE — genau der
+  // Unterschied, der beim Saegen schon einmal 134 mm gekostet hat.
+  let c;
+  if (b.shape === 'sawnAngle') {
+    c = new THREE.Vector3(e[0] / 2, e[1] / 2, e[2] / 2)
+      .applyQuaternion(q).add(new THREE.Vector3(b.x, b.y, b.z));
+  } else {
+    c = new THREE.Vector3(b.x + e[0] / 2, b.y + e[1] / 2, b.z + e[2] / 2);
+  }
+  const achsen = [
+    new THREE.Vector3(1, 0, 0).applyQuaternion(q),
+    new THREE.Vector3(0, 1, 0).applyQuaternion(q),
+    new THREE.Vector3(0, 0, 1).applyQuaternion(q),
+  ];
+  return { c, h: [e[0] / 2, e[1] / 2, e[2] / 2], achsen, e };
+}
+
+/* Grobfilter: Weltkugeln, die sich nicht schneiden, koennen sich auch als
+   Boxen nicht schneiden. Spart bei grossen Modellen den Grossteil der Paare. */
+function _obbRadius(o) { return Math.hypot(o.h[0], o.h[1], o.h[2]); }
+
+/* Trennachsensatz fuer zwei OBB. Findet sich EINE Achse, auf der sich die
+   Schatten nicht ueberlappen, beruehren sich die Koerper nicht. */
+function _obbTrifft(A, B, tol) {
+  const s = tol / 2;
+  const ah = A.h.map(v => v - s), bh = B.h.map(v => v - s);
+  if (ah.some(v => v <= 0) || bh.some(v => v <= 0)) return false;   // duenner als die Toleranz
+  const d = new THREE.Vector3().subVectors(B.c, A.c);
+  const R = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  const AR = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  const t = [0, 0, 0];
+  for (let i = 0; i < 3; i++) {
+    t[i] = d.dot(A.achsen[i]);
+    for (let j = 0; j < 3; j++) {
+      R[i][j] = A.achsen[i].dot(B.achsen[j]);
+      // Der Zuschlag faengt den Fall paralleler Achsen ab: dort wird das
+      // Kreuzprodukt zu null und die Achse waere sonst falsch-negativ.
+      AR[i][j] = Math.abs(R[i][j]) + 1e-6;
+    }
+  }
+  for (let i = 0; i < 3; i++) {              // Achsen von A
+    const r = bh[0] * AR[i][0] + bh[1] * AR[i][1] + bh[2] * AR[i][2];
+    if (Math.abs(t[i]) > ah[i] + r) return false;
+  }
+  for (let j = 0; j < 3; j++) {              // Achsen von B
+    const r = ah[0] * AR[0][j] + ah[1] * AR[1][j] + ah[2] * AR[2][j];
+    const tj = t[0] * R[0][j] + t[1] * R[1][j] + t[2] * R[2][j];
+    if (Math.abs(tj) > bh[j] + r) return false;
+  }
+  for (let i = 0; i < 3; i++) {              // die neun Kreuzachsen
+    for (let j = 0; j < 3; j++) {
+      const i1 = (i + 1) % 3, i2 = (i + 2) % 3, j1 = (j + 1) % 3, j2 = (j + 2) % 3;
+      const ra = ah[i1] * AR[i2][j] + ah[i2] * AR[i1][j];
+      const rb = bh[j1] * AR[i][j2] + bh[j2] * AR[i][j1];
+      const tt = Math.abs(t[i2] * R[i1][j] - t[i1] * R[i2][j]);
+      if (tt > ra + rb) return false;
+    }
+  }
+  return true;
+}
+
+/* Wie tief stecken sie ineinander? Fuer die Meldung genuegt eine ehrliche
+   Naeherung: die kleinste Ueberdeckung entlang der drei Achsen von A. Der
+   exakte Wert waere die minimale Durchdringungstiefe ueber alle 15 Achsen —
+   fuer eine Warnung ist das mehr Rechnerei als Nutzen. */
+function _obbTiefe(A, B) {
+  const d = new THREE.Vector3().subVectors(B.c, A.c);
+  let min = Infinity;
+  for (let i = 0; i < 3; i++) {
+    const r = B.h[0] * Math.abs(A.achsen[i].dot(B.achsen[0]))
+            + B.h[1] * Math.abs(A.achsen[i].dot(B.achsen[1]))
+            + B.h[2] * Math.abs(A.achsen[i].dot(B.achsen[2]));
+    const ueber = A.h[i] + r - Math.abs(d.dot(A.achsen[i]));
+    if (ueber < min) min = ueber;
+  }
+  return Math.max(0, min);
+}
+
+function findeKollisionen() {
+  // Ausgeblendetes zaehlt nicht mit: was man nicht sieht, kann man nicht
+  // pruefen — und eine Meldung dazu waere nicht nachvollziehbar.
+  const teile = beams.filter(b => !hiddenGroups.has(b.group));
+  const obb = teile.map(_obbVon);
+  const rad = obb.map(_obbRadius);
+  const treffer = [];
+  for (let i = 0; i < teile.length; i++) {
+    for (let j = i + 1; j < teile.length; j++) {
+      // Grobfilter zuerst — spart bei grossen Modellen fast alle Paare.
+      if (obb[i].c.distanceToSquared(obb[j].c) > (rad[i] + rad[j]) ** 2) continue;
+      if (!_obbTrifft(obb[i], obb[j], KOLLISION_TOLERANZ)) continue;
+      treffer.push({ a: teile[i], b: teile[j], tiefe: _obbTiefe(obb[i], obb[j]) });
+    }
+  }
+  // Die tiefsten zuerst: eine 80-mm-Durchdringung ist ein echter Fehler,
+  // 4 mm oft nur eine ungenaue Eingabe.
+  treffer.sort((x, y) => y.tiefe - x.tiefe);
+  return treffer;
+}
 
 /* ---- Umriss einer Fläche -----------------------------------------------
    Bis hierher wurde immer das umschreibende RECHTECK beplankt. Bei einem
@@ -3380,6 +3554,59 @@ function _schraegAnTeil(nb, f, uMin, vMin, uLen, vLen) {
   nb.cutouts = (nb.cutouts || []).concat(loecher);
   return true;
 }
+
+function openKollisionen() {
+  const t0 = performance.now();
+  const treffer = findeKollisionen();
+  const dauer = Math.round(performance.now() - t0);
+  _kollTreffer = treffer;
+  const info = document.getElementById('koll-info');
+  const liste = document.getElementById('koll-liste');
+  const sichtbar = beams.filter(b => !hiddenGroups.has(b.group)).length;
+  if (!treffer.length) {
+    info.textContent = `Keine Kollision — ${sichtbar} Bauteile geprüft (${dauer} ms).`;
+    liste.innerHTML = '<div style="font-size:.85rem;color:var(--text-3);padding:10px 0">'
+      + 'Kein Bauteil steckt in einem anderen. Berührungen an Stößen und '
+      + 'Auflagern sind normal und werden nicht gemeldet.</div>';
+  } else {
+    info.textContent = `${treffer.length} ${treffer.length === 1 ? 'Kollision' : 'Kollisionen'}`
+      + ` bei ${sichtbar} Bauteilen (${dauer} ms).`;
+    liste.innerHTML = treffer.map((k, i) => {
+      const tief = Math.round(k.tiefe);
+      // Ab 20 mm ist es keine Ungenauigkeit mehr, sondern ein echter Fehler.
+      const farbe = tief >= 20 ? 'var(--red)' : 'var(--accent)';
+      return `<div style="border:1px solid var(--border);border-radius:var(--r-sm);padding:8px 10px;margin-bottom:6px;background:var(--bg-input);cursor:pointer"
+                   data-koll="${i}">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline">
+          <strong style="font-size:.84rem;color:var(--text)">${escHtml(k.a.name)} ↔ ${escHtml(k.b.name)}</strong>
+          <span style="font-size:.8rem;font-weight:700;color:${farbe};white-space:nowrap">${tief} mm tief</span>
+        </div>
+        <div style="font-size:.72rem;color:var(--text-3);margin-top:2px">
+          ${escHtml(k.a.woodType)} ${k.a.L}×${k.a.B}×${k.a.H} · ${escHtml(k.b.woodType)} ${k.b.L}×${k.b.B}×${k.b.H}
+          — anklicken zum Markieren
+        </div>
+      </div>`;
+    }).join('');
+  }
+  document.getElementById('koll-modal').style.display = 'flex';
+}
+let _kollTreffer = [];
+function closeKollisionen() { document.getElementById('koll-modal').style.display = 'none'; }
+
+/* Ein Horcher fuer die ganze Liste statt onclick je Zeile: die Namen der
+   Bauteile kommen vom Nutzer und duerften nie als JavaScript gelesen werden. */
+document.addEventListener('DOMContentLoaded', () => {
+  const liste = document.getElementById('koll-liste');
+  if (!liste) return;
+  liste.addEventListener('click', (e) => {
+    const zeile = e.target.closest('[data-koll]');
+    if (!zeile) return;
+    const k = _kollTreffer[parseInt(zeile.dataset.koll, 10)];
+    if (!k) return;
+    selectBeamIds([k.a.id, k.b.id]);
+    closeKollisionen();
+  });
+});
 
 function openBeplanken() {
   const f = _flaecheAusAuswahl();
@@ -4315,6 +4542,10 @@ function updateSelPanel() {
   document.getElementById('st-sel').textContent = b.name;
 
   editDiv.style.display = 'block';
+  const wahlFeld = document.getElementById('edit-wood');
+  if (wahlFeld) wahlFeld.value = b.woodType;
+  const nameFeld2 = document.getElementById('edit-name');
+  if (nameFeld2) nameFeld2.value = b.name || '';
   document.getElementById('edit-l').value = b.L;
   document.getElementById('edit-b').value = b.B;
   document.getElementById('edit-h').value = b.H;
@@ -5152,6 +5383,19 @@ function applyEdit() {
   // sonst waeren sie ein Schleichweg an der Sperre vorbei.
   const locked = lockedGroups.has(b.group);
   const ox = b.x, oy = b.y, oz = b.z;
+  /* Holzart und Bezeichnung: bisher nur beim Anlegen setzbar. Der Wechsel
+     zwischen Vollholz und Plattenwerkstoff aendert mehr als die Farbe — er
+     entscheidet ueber Einkaufsliste (Stange oder Platte), Beschlaege und das
+     Ausfraes-Feld. Deshalb wird danach die Auswahl neu aufgebaut. */
+  const wahl = document.getElementById('edit-wood');
+  const alteArt = b.woodType;
+  if (wahl && wahl.value) b.woodType = wahl.value;
+  const nameFeld = document.getElementById('edit-name');
+  if (nameFeld) {
+    const n = nameFeld.value.trim();
+    if (n) b.name = n;
+    else nameFeld.value = b.name;       // leer lassen wuerde das Bauteil namenlos machen
+  }
   b.L = parseFloat(document.getElementById('edit-l').value) || b.L;
   b.B = parseFloat(document.getElementById('edit-b').value) || b.B;
   b.H = parseFloat(document.getElementById('edit-h').value) || b.H;
@@ -5167,6 +5411,12 @@ function applyEdit() {
   rebuildMesh(b);
   applyPhaseVisibility(b);
   renderPhaseFilterBar();
+  // Das Ausfraes-Feld gibt es nur fuer Plattenwerkstoffe — nach einem Wechsel
+  // der Holzart muss es also erscheinen oder verschwinden.
+  if (b.woodType !== alteArt) {
+    document.getElementById('st-sel').textContent = b.name;
+    renderCutoutPanel(b);
+  }
   updateUI();
 }
 
