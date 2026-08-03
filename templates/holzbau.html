@@ -1285,6 +1285,9 @@ body {
           <option value="Brettschichtholz (BSH)">BSH</option>
           <option value="Sperrholz">Sperrholz</option>
           <option value="OSB">OSB</option>
+          <option value="Spanplatte">Spanplatte (Pressholz)</option>
+          <option value="MDF">MDF</option>
+          <option value="Siebdruckplatte">Siebdruckplatte</option>
           <option value="Benutzerdefiniert">Benutzerdefiniert</option>
         </select>
       </div>
@@ -1359,15 +1362,59 @@ body {
       </div>
 
       <div class="panel-section">
-        <div class="panel-title" style="margin-bottom:6px">Standardquerschnitte</div>
-        <div style="display:flex;flex-wrap:wrap;gap:4px">
-          <button class="tb-btn" style="font-size:11px;height:26px;padding:0 8px" onclick="setDims(60,80)">60×80</button>
-          <button class="tb-btn" style="font-size:11px;height:26px;padding:0 8px" onclick="setDims(80,120)">80×120</button>
-          <button class="tb-btn" style="font-size:11px;height:26px;padding:0 8px" onclick="setDims(100,160)">100×160</button>
-          <button class="tb-btn" style="font-size:11px;height:26px;padding:0 8px" onclick="setDims(120,200)">120×200</button>
-          <button class="tb-btn" style="font-size:11px;height:26px;padding:0 8px" onclick="setDims(140,220)">140×220</button>
-          <button class="tb-btn" style="font-size:11px;height:26px;padding:0 8px" onclick="setDims(160,240)">160×240</button>
-        </div>
+        {# Vorwahl marktueblicher Querschnitte. Bewusst als Auswahlliste mit
+           Gruppen statt als Knopfreihe: sechs Knoepfe passten noch, zwanzig
+           nicht mehr. Die freie Eingabe in den Feldern L/B/H bleibt
+           unveraendert moeglich — die Vorwahl setzt nur B und H.
+           Bei Plattenwerkstoffen setzt sie zusaetzlich die Holzart und die
+           Staerke, weil eine Platte sonst als Kantholz angelegt wuerde. #}
+        <div class="panel-title" style="margin-bottom:6px">Querschnitt wählen</div>
+        <select id="preset-querschnitt" onchange="applyPreset(this.value); this.selectedIndex=0"
+                style="width:100%;height:28px;font-size:12px">
+          <option value="">— Standardmaße —</option>
+          <optgroup label="Latten">
+            <option value="24,48">Konterlatte 24 × 48</option>
+            <option value="30,50">Dachlatte 30 × 50</option>
+            <option value="40,60">Latte 40 × 60</option>
+          </optgroup>
+          <optgroup label="Kantholz / KVH">
+            <option value="60,80">KVH 60 × 80</option>
+            <option value="60,120">KVH 60 × 120</option>
+            <option value="60,160">KVH 60 × 160</option>
+            <option value="80,80">Kantholz 80 × 80</option>
+            <option value="80,120">KVH 80 × 120</option>
+            <option value="80,160">KVH 80 × 160</option>
+            <option value="100,100">Pfosten 100 × 100</option>
+            <option value="120,120">Pfosten 120 × 120</option>
+            <option value="140,140">Pfosten 140 × 140</option>
+          </optgroup>
+          <optgroup label="Balken / Sparren">
+            <option value="80,200">Sparren 80 × 200</option>
+            <option value="100,200">Balken 100 × 200</option>
+            <option value="120,200">Balken 120 × 200</option>
+            <option value="120,240">Balken 120 × 240</option>
+            <option value="160,240">Balken 160 × 240</option>
+          </optgroup>
+          <optgroup label="Bretter / Schalung">
+            <option value="18,120">Brett 18 × 120</option>
+            <option value="24,120">Schalbrett 24 × 120</option>
+            <option value="24,146">Rauspund 24 × 146</option>
+          </optgroup>
+          <optgroup label="Platten (setzt auch Werkstoff)">
+            <option value="p:OSB,12">OSB 12 mm</option>
+            <option value="p:OSB,15">OSB 15 mm</option>
+            <option value="p:OSB,18">OSB 18 mm</option>
+            <option value="p:OSB,22">OSB 22 mm</option>
+            <option value="p:Sperrholz,12">Sperrholz 12 mm</option>
+            <option value="p:Sperrholz,18">Sperrholz 18 mm</option>
+            <option value="p:Spanplatte,16">Spanplatte 16 mm</option>
+            <option value="p:Spanplatte,19">Spanplatte 19 mm</option>
+            <option value="p:MDF,16">MDF 16 mm</option>
+            <option value="p:MDF,19">MDF 19 mm</option>
+            <option value="p:Siebdruckplatte,15">Siebdruck 15 mm</option>
+            <option value="p:Siebdruckplatte,18">Siebdruck 18 mm</option>
+          </optgroup>
+        </select>
       </div>
     </div>
 
@@ -2272,6 +2319,13 @@ const WOOD_COLORS = {
   // jeder Helligkeitsunterschied — und trifft OSB auch besser: Spanplatte ist
   // graeuer und weniger orange als Vollholz.
   'OSB':                  0xcdc294,
+  // Weitere Plattenwerkstoffe. Farben bewusst im graubraunen Bereich und
+  // untereinander unterscheidbar — Spanplatte heller und gelblicher als OSB,
+  // MDF glatt-braun ohne Gelbstich, Siebdruck dunkel (die Phenolbeschichtung
+  // ist wirklich fast schwarzbraun).
+  'Spanplatte':           0xd8c9a3,
+  'MDF':                  0xb99b76,
+  'Siebdruckplatte':      0x6b4f3a,
   'Benutzerdefiniert':    0x888888,
 };
 
@@ -2281,13 +2335,19 @@ Object.entries(WOOD_COLORS).forEach(([k, v]) => {
 });
 
 // Plattenwerkstoffe (2D-Zuschnitt + Ausfräsungen möglich)
-const SHEET_MATERIALS = new Set(['Sperrholz', 'OSB']);
+// Wer hier steht, bekommt 2D-Zuschnitt, Ausfraesungen und die Extrusions-
+// geometrie — und faellt aus Stangen-Einkaufsliste und Verbinderzaehlung raus.
+const SHEET_MATERIALS = new Set(['Sperrholz', 'OSB', 'Spanplatte', 'MDF', 'Siebdruckplatte']);
 
 // ── Materialpreise (Richtwerte EUR/m³, in localStorage editierbar) ──
 const WOOD_PRICES_DEFAULT = {
   'Fichte': 320, 'Kiefer': 340, 'Lärche': 620, 'Eiche': 1400,
   'Buche': 900, 'Douglasie': 560, 'Brettschichtholz (BSH)': 780,
-  'Sperrholz': 900, 'OSB': 480, 'Benutzerdefiniert': 400,
+  'Sperrholz': 900, 'OSB': 480,
+  // Richtwerte EUR/m3 wie die uebrigen — im Handel wird nach Platte gekauft,
+  // fuer die Kalkulation rechnet die App aber durchgaengig ueber das Volumen.
+  'Spanplatte': 380, 'MDF': 560, 'Siebdruckplatte': 1100,
+  'Benutzerdefiniert': 400,
 };
 function getWoodPrices() {
   try { return { ...WOOD_PRICES_DEFAULT, ...(JSON.parse(localStorage.getItem('hb_wood_prices') || '{}')) }; }
@@ -2384,6 +2444,7 @@ Object.assign(window, {
   addBeam, deleteSelected, duplicateSelected,
   toggleSnap, setView, resetCamera, toggleHelp,
   openBauvorhaben, closeBauvorhaben, saveBauvorhaben,
+  applyPreset,
   saveProject, handleLoadFile,
   exportStückliste, applyEdit, deleteBeam,
   calcFloorPlan, updateFloorOutline, updateRoofOutline, drawFloorPreview,
@@ -2857,6 +2918,37 @@ function loadDemoModel() {
 function setDims(b, h) {
   document.getElementById('dim-b').value = b;
   document.getElementById('dim-h').value = h;
+}
+
+/* Vorwahl aus der Querschnittsliste uebernehmen.
+   Zwei Formen:
+     "60,120"            -> Kantholz: setzt nur B und H
+     "p:OSB,15"          -> Platte:   setzt zusaetzlich die Holzart und legt die
+                                      Staerke auf die BREITE (B), weil eine Platte
+                                      im Datenmodell ein Balken ist und die duennste
+                                      der drei Abmessungen als Dicke gilt.
+   Die Laenge (L) wird bewusst NICHT angefasst — sie ist bei jedem Bauteil anders,
+   und ein ueberschriebener Wert waere aergerlicher als ein fehlender.
+   Die freie Eingabe in den Feldern bleibt jederzeit moeglich. */
+function applyPreset(wert) {
+  if (!wert) return;
+  if (wert.startsWith('p:')) {
+    const [werkstoff, dicke] = wert.slice(2).split(',');
+    const auswahl = document.getElementById('wood-type');
+    if (auswahl) auswahl.value = werkstoff;
+    // Platte: Dicke nach B, Hoehe auf ein gaengiges Format, falls noch der
+    // Kantholz-Standardwert drinsteht — sonst bekaeme man eine 160 mm "Platte".
+    document.getElementById('dim-b').value = dicke;
+    const hFeld = document.getElementById('dim-h');
+    const h = parseFloat(hFeld.value) || 0;
+    if (h < 500) hFeld.value = 2500;
+    const lFeld = document.getElementById('dim-l');
+    const l = parseFloat(lFeld.value) || 0;
+    if (l < 500) lFeld.value = 1250;
+    return;
+  }
+  const [b, h] = wert.split(',').map(Number);
+  if (b && h) setDims(b, h);
 }
 
 // ══════════════════════════════════════════════
@@ -5565,7 +5657,15 @@ function layFlat() {
 
 function getBeamHalfW(b) { return (b.axis === 'x' ? b.L : b.B) / 2; }
 function getBeamHalfH(b) { return (b.axis === 'y' ? b.L : b.H) / 2; }
-function getBeamHalfD(b) { return (b.axis === 'z' ? b.L : b.B) / 2; }
+/* ACHTUNG, hier stand ein Fehler: die Tiefe war fuer axis 'y' falsch.
+   createBeamMesh setzt D je Achse so:  x -> B,  y -> H,  z -> L
+   (siehe die Zuweisung von W/H/D dort). Die alte Fassung gab aber bei 'y'
+   ebenfalls B zurueck. Ein stehender Pfosten (axis 'y') wurde dadurch beim
+   Spiegeln und Gruppendrehen um (H - B) versetzt — bei 80x160 also um 80 mm.
+   Die Geschwister getBeamHalfW und getBeamHalfH sind korrekt. */
+function getBeamHalfD(b) {
+  return (b.axis === 'z' ? b.L : (b.axis === 'y' ? b.H : b.B)) / 2;
+}
 
 // ── GRUPPE DREHEN / SPIEGELN (Rechtsklick auf ein Objekt der Auswahl) ──
 
@@ -7649,6 +7749,11 @@ function computeShoppingList() {
   const map = new Map();
   beams.forEach(b => {
     if ((b.shape || 'rect') !== 'rect') return;
+    // Plattenwerkstoffe gehoeren NICHT in die Stangen-Einkaufsliste: sie werden
+    // nach Format gekauft, nicht nach Laenge, und der Plattenzuschnitt nestet
+    // sie separat. Ohne diese Zeile erscheint eine OSB-Platte als "Stange zu
+    // 5000 mm" — bei einer beplankten Wand macht das die Liste unbrauchbar.
+    if (SHEET_MATERIALS.has(b.woodType)) return;
     const key = `${b.woodType}||${b.B}×${b.H}`;
     if (!map.has(key)) map.set(key, { woodType: b.woodType, B: b.B, H: b.H, pieces: [] });
     map.get(key).pieces.push(Math.round(b.L));
@@ -7680,7 +7785,13 @@ function computeShoppingList() {
 // Grobe Verbinder-/Schraubenliste (transparente Schätzung aus Bauteil-Rollen).
 function computeHardware() {
   let posts = 0, horiz = 0;
-  beams.forEach(b => { if (b.axis === 'y') posts++; else horiz++; });
+  // Platten zaehlen hier nicht mit — sie werden geschraubt, nicht mit
+  // Pfostenankern und Winkelverbindern gesetzt. Sonst bekaeme jede Beplankung
+  // zwei Winkelverbinder je Platte zugerechnet.
+  beams.forEach(b => {
+    if (SHEET_MATERIALS.has(b.woodType)) return;
+    if (b.axis === 'y') posts++; else horiz++;
+  });
   const anchors = posts;                    // Pfostenanker / Stützenfüße
   const angles = horiz * 2;                 // Winkelverbinder (2 je liegendem Balken)
   const screws = anchors * 4 + angles * 6;  // Schrauben

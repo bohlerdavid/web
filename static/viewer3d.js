@@ -22,9 +22,13 @@
   var WOOD_COLORS = {
     'Fichte': 0xd4a96a, 'Kiefer': 0xc8864c, 'Lärche': 0xb87333, 'Eiche': 0x8b6914,
     'Buche': 0xd49b63, 'Douglasie': 0xa0522d, 'Brettschichtholz (BSH)': 0xe8c090,
-    'Sperrholz': 0xf5deb3, 'OSB': 0xcdc294, 'Benutzerdefiniert': 0x888888,
+    'Sperrholz': 0xf5deb3, 'OSB': 0xcdc294,
+    // Muss zu WOOD_COLORS in templates/holzbau.html passen — sonst sieht ein
+    // geteiltes Projekt hier anders aus als im Editor.
+    'Spanplatte': 0xd8c9a3, 'MDF': 0xb99b76, 'Siebdruckplatte': 0x6b4f3a,
+    'Benutzerdefiniert': 0x888888,
   };
-  var SHEET = { 'Sperrholz': 1, 'OSB': 1 };
+  var SHEET = { 'Sperrholz': 1, 'OSB': 1, 'Spanplatte': 1, 'MDF': 1, 'Siebdruckplatte': 1 };
 
   var _mods = null;
   function loadModules() {
