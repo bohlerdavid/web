@@ -6606,6 +6606,47 @@ function executeSawCut() {
 
   pushHistory();
 
+  /* ── Gedrehte Balken richtig saegen ────────────────────────────────────────
+     Frueher wurde das zweite Stueck einfach in der WELTachse verschoben
+     (b2.x = beam.x + cutMM). Bei einem gedrehten Balken ist das falsch: die
+     Verschiebung gehoert entlang der GEDREHTEN Laengsachse. Bei einem
+     Satteldach-Sparren (rz 32 Grad) landete das abgetrennte Stueck dadurch
+     sichtbar neben dem Rest.
+     Erschwerend: createBeamMesh dreht einen rect-Balken um seinen MITTELPUNKT,
+     und der wandert, weil das Stueck kuerzer ist als das Original. Ein
+     sawnAngle-Balken wird dagegen um seine ECKE gedreht — dort genuegt die
+     gedrehte Verschiebung.
+     Ohne Drehung liefern beide Wege exakt die frueheren Werte. */
+  const _ausdehnung = (b) =>
+    b.axis === 'x' ? [b.L, b.H, b.B] :
+    b.axis === 'y' ? [b.B, b.L, b.H] :
+                     [b.B, b.H, b.L];
+  const _gedreht = (mm) => {
+    const r = Math.PI / 180;
+    const q = new THREE.Quaternion().setFromEuler(
+      new THREE.Euler((beam.rx || 0) * r, (beam.ry || 0) * r, (beam.rz || 0) * r));
+    const d = beam.axis === 'x' ? new THREE.Vector3(1, 0, 0)
+            : beam.axis === 'y' ? new THREE.Vector3(0, 1, 0)
+            :                     new THREE.Vector3(0, 0, 1);
+    return d.multiplyScalar(mm).applyQuaternion(q);
+  };
+  // rect: Versatz wird vom MITTELPUNKT des Originals aus gemessen.
+  const _setzeRect = (teil, versatzVomMittelpunkt) => {
+    const d = _gedreht(versatzVomMittelpunkt);
+    const [W0, H0, D0] = _ausdehnung(beam);
+    const [W1, H1, D1] = _ausdehnung(teil);
+    teil.x = beam.x + W0 / 2 + d.x - W1 / 2;
+    teil.y = beam.y + H0 / 2 + d.y - H1 / 2;
+    teil.z = beam.z + D0 / 2 + d.z - D1 / 2;
+  };
+  // sawnAngle: Versatz wird von der ECKE des Originals aus gemessen.
+  const _setzeSchraeg = (teil, versatzVonEcke) => {
+    const d = _gedreht(versatzVonEcke);
+    teil.x = beam.x + d.x;
+    teil.y = beam.y + d.y;
+    teil.z = beam.z + d.z;
+  };
+
   // ── Build piece data ──────────────────────────────
   const isAngled = (sawAngleDeg !== 0) && (beam.axis === 'x' || beam.axis === 'z');
   // (Y-axis angled cuts fall back to perpendicular for simplicity)
@@ -6614,9 +6655,12 @@ function executeSawCut() {
     // ── Perpendicular cut: 2 standard rect beams ──
     const b1 = { ...beam, id: idCounter++, name: beam.name + ' (1)', L: cutMM, mesh: null, shape: 'rect' };
     const b2 = { ...beam, id: idCounter++, name: beam.name + ' (2)', L: L - cutMM, mesh: null, shape: 'rect' };
-    if (beam.axis === 'x') b2.x = beam.x + cutMM;
-    else if (beam.axis === 'y') b2.y = beam.y + cutMM;
-    else b2.z = beam.z + cutMM;
+    // Mittelpunkte der beiden Stuecke im ungedrehten System, gemessen vom
+    // Mittelpunkt des Originals aus: Stueck 1 liegt bei -L/2 + cut/2,
+    // Stueck 2 bei +cut/2. _setzeRect dreht diesen Versatz und rechnet auf die
+    // gespeicherte Ecke zurueck.
+    _setzeRect(b1, -L / 2 + cutMM / 2);
+    _setzeRect(b2, cutMM / 2);
 
     // Jede Haelfte bekommt IHRE Loecher: Teil 1 faengt beim Original an
     // (Versatz 0), Teil 2 erst beim Schnitt. Ein durchgesaegtes Loch bleibt in
@@ -6646,7 +6690,6 @@ function executeSawCut() {
     // beam2.x = beam.x + cutMM (starts at front z=0 edge)
     const b2 = {
       ...beam, id: idCounter++, name: beam.name + ' (2)', shape: 'sawnAngle',
-      x: beam.x + cutMM,
       L: L - cutMM, mesh: null,
       _sawFL: 0, _sawBL: offset,    // left cut: 0 at front, offset at back
       _sawFR: L - cutMM,            // right end front (flat)
@@ -6659,6 +6702,8 @@ function executeSawCut() {
        (shape 'sawnAngle' wird dort ignoriert). Die Haelfte saehe also wieder
        rechteckig aus, der Schnittwinkel waere weg. Ohne Loecher greift die
        richtige Schraeg-Geometrie. Lieber die Schraege behalten als ein Loch. */
+    // Ecke entlang der GEDREHTEN Laengsachse versetzen statt in der Weltachse.
+    _setzeSchraeg(b2, cutMM);
     [b1, b2].forEach(nb => { delete nb.cutouts; });
     [b1, b2].forEach(nb => {
       nb.mesh = createBeamMesh(nb);
@@ -6678,7 +6723,6 @@ function executeSawCut() {
     };
     const b2 = {
       ...beam, id: idCounter++, name: beam.name + ' (2)', shape: 'sawnAngle',
-      z: beam.z + cutMM,
       L: L - cutMM, mesh: null,
       _sawFL: 0, _sawBL: offset,
       _sawFR: L - cutMM, _sawBR: L - cutMM
@@ -6690,6 +6734,8 @@ function executeSawCut() {
        (shape 'sawnAngle' wird dort ignoriert). Die Haelfte saehe also wieder
        rechteckig aus, der Schnittwinkel waere weg. Ohne Loecher greift die
        richtige Schraeg-Geometrie. Lieber die Schraege behalten als ein Loch. */
+    // Ecke entlang der GEDREHTEN Laengsachse versetzen statt in der Weltachse.
+    _setzeSchraeg(b2, cutMM);
     [b1, b2].forEach(nb => { delete nb.cutouts; });
     [b1, b2].forEach(nb => {
       nb.mesh = createBeamMesh(nb);
