@@ -92,11 +92,11 @@
     .seiten .jetzt { background: #d97706; border-color: #d97706; color: #fff; font-weight: 700; }
     .seiten .luecke { border: none; background: none; color: #c7c2b8; min-width: 18px; }
     #user-table th { position: relative; user-select: none; }
-    #user-table th[data-sort] { cursor: pointer; }
-    #user-table th[data-sort]:hover { background: #f3ede3; }
-    #user-table th[data-sort]::after { content: '↕'; opacity: .25; margin-left: 5px; font-size: .8em; }
-    #user-table th.asc::after  { content: '↑'; opacity: 1; color: #d97706; }
-    #user-table th.desc::after { content: '↓'; opacity: 1; color: #d97706; }
+    #user-table th a.sortlink { color: inherit; text-decoration: none; display: block; }
+    #user-table th a.sortlink:hover { color: #b45309; }
+    #user-table th .pfeil { opacity: .3; margin-left: 5px; font-size: .8em; }
+    #user-table th.sortiert { background: #f3ede3; }
+    #user-table th.sortiert .pfeil { opacity: 1; color: #d97706; }
     /* Lange E-Mails umbrechen statt die Tabelle aufzublaehen — genau das Problem,
        wegen dem rechts nichts mehr sichtbar war. */
     #user-table td { overflow-wrap: anywhere; }
@@ -104,24 +104,36 @@
     .col-grip:hover, .col-grip.aktiv { background: #d97706; opacity: .5; }
     #tbl-hinweis { font-size: .78rem; color: #9ca3af; margin-bottom: 6px; }
   </style>
-  {# Ehrlich sagen, dass die Sortierung im Browser laeuft und darum nur die
-     angezeigte Seite umsortiert — sonst haelt man sie fuer eine Gesamtsortierung
-     und uebersieht Eintraege auf anderen Seiten. #}
-  <div id="tbl-hinweis">Spaltenkopf klicken = sortieren (nur diese Seite) ·
+  <div id="tbl-hinweis">Spaltenkopf klicken = <b>alle {{ gesamt }} Konten</b> sortieren ·
     Trennlinie zwischen den Köpfen ziehen = Breite ändern ·
     Grundordnung: neueste Registrierung zuerst</div>
+
+  {# Die Sortierung laeuft ueber die Datenbank, nicht im Browser. Sonst wuerde
+     nur die angezeigte Seite umsortiert — "aeltester Login" zeigte dann den
+     aeltesten der 20 sichtbaren statt den aeltesten ueberhaupt.
+     Beim Spaltenwechsel faellt die Seitenzahl absichtlich weg: man landet auf
+     Seite 1 der neuen Ordnung, sonst startete man mitten drin. #}
+  {%- macro kopf(schluessel, titel, breite='') -%}
+    {%- set aktiv = (sortierung == schluessel) -%}
+    {%- set neue = 'desc' if (aktiv and richtung == 'asc') else 'asc' -%}
+    <th {% if breite %}style="width:{{ breite }}"{% endif %}{% if aktiv %} class="sortiert"{% endif %}>
+      <a class="sortlink" href="{{ url_for('admin_users', sort=schluessel, richtung=neue) }}"
+         title="Nach {{ titel }} sortieren — über alle Seiten">{{ titel }}<span
+         class="pfeil">{{ ('▲' if richtung == 'asc' else '▼') if aktiv else '↕' }}</span></a>
+    </th>
+  {%- endmacro -%}
 <table id="user-table" class="table table-hover mb-0 align-middle">
           <thead class="table-light">
             <tr>
-              <th data-sort="num" style="width:56px">#</th>
-              <th data-sort="text">Benutzername</th>
-              <th data-sort="text">Name</th>
-              <th data-sort="text">E-Mail</th>
-              <th data-sort="text" style="width:96px">Plan</th>
-              <th data-sort="text">Abo-Laufzeit</th>
+              {{ kopf('nr', '#', '56px') }}
+              {{ kopf('name', 'Benutzername') }}
+              {{ kopf('voll', 'Name') }}
+              {{ kopf('mail', 'E-Mail') }}
+              {{ kopf('plan', 'Plan', '96px') }}
+              {{ kopf('laufzeit', 'Abo-Laufzeit') }}
               <th style="width:170px">Plan setzen</th>
-              <th data-sort="date" style="width:150px">Registriert</th>
-              <th data-sort="date" style="width:150px">Letzter Login</th>
+              {{ kopf('erstellt', 'Registriert', '150px') }}
+              {{ kopf('login', 'Letzter Login', '150px') }}
               <th style="width:44px"></th>
             </tr>
           </thead>
@@ -196,7 +208,7 @@
          50 Seiten kurz. #}
       <nav class="seiten" aria-label="Seiten">
         {% if seite > 1 %}
-          <a href="{{ url_for('admin_users', seite=seite-1) }}" aria-label="Vorherige Seite">‹</a>
+          <a href="{{ url_for('admin_users', seite=seite-1, sort=sortierung, richtung=richtung) }}" aria-label="Vorherige Seite">‹</a>
         {% else %}
           <span class="u-nichts">‹</span>
         {% endif %}
@@ -214,13 +226,13 @@
           {% if n == seite %}
             <span class="jetzt" aria-current="page">{{ n }}</span>
           {% else %}
-            <a href="{{ url_for('admin_users', seite=n) }}">{{ n }}</a>
+            <a href="{{ url_for('admin_users', seite=n, sort=sortierung, richtung=richtung) }}">{{ n }}</a>
           {% endif %}
           {% set letzte.n = n %}
         {% endfor %}
 
         {% if seite < seiten %}
-          <a href="{{ url_for('admin_users', seite=seite+1) }}" aria-label="Nächste Seite">›</a>
+          <a href="{{ url_for('admin_users', seite=seite+1, sort=sortierung, richtung=richtung) }}" aria-label="Nächste Seite">›</a>
         {% else %}
           <span class="u-nichts">›</span>
         {% endif %}
@@ -284,39 +296,14 @@
     if (!tbl) return;
     var koepfe = tbl.tHead.rows[0].cells;
 
-    // ── Sortieren ──
-    function wert(zelle, art) {
-      // data-v hat Vorrang: sonst wuerde die ANZEIGE sortiert ("15.07.2026"),
-      // nicht der echte Wert — Datumsspalten laegen dann alphabetisch.
-      var v = zelle.getAttribute('data-v');
-      if (v === null) v = zelle.textContent.trim();
-      if (art === 'num') return parseFloat(String(v).replace(',', '.')) || 0;
-      if (art === 'date') return v || '';   // ISO aus der DB sortiert sich als Text korrekt
-      return String(v).toLowerCase();
-    }
-    function sortiere(idx, art, auf) {
-      var koerper = tbl.tBodies[0];
-      var zeilen = Array.prototype.slice.call(koerper.rows)
-        .filter(function (r) { return r.cells.length === koepfe.length; });
-      zeilen.sort(function (a, b) {
-        var x = wert(a.cells[idx], art), y = wert(b.cells[idx], art);
-        if (x < y) return auf ? -1 : 1;
-        if (x > y) return auf ? 1 : -1;
-        return 0;
-      });
-      zeilen.forEach(function (r) { koerper.appendChild(r); });
-    }
-    Array.prototype.forEach.call(koepfe, function (th, idx) {
-      var art = th.getAttribute('data-sort');
-      if (!art) return;
-      th.addEventListener('click', function (e) {
-        if (e.target.classList.contains('col-grip')) return;   // Ziehen ist kein Klick
-        var auf = !th.classList.contains('asc');
-        Array.prototype.forEach.call(koepfe, function (o) { o.classList.remove('asc', 'desc'); });
-        th.classList.add(auf ? 'asc' : 'desc');
-        sortiere(idx, art, auf);
-      });
-    });
+    /* Sortiert wird auf dem SERVER (siehe ADMIN_USERS_SORTIERUNG in app.py).
+       Der frühere Sortierer an dieser Stelle lief im Browser und konnte nur die
+       20 sichtbaren Zeilen umstellen — das sah aus wie eine Gesamtsortierung,
+       war aber keine. Die Spaltenköpfe sind jetzt Links.
+       Beim Ziehen an der Trennlinie darf der Link nicht auslösen: */
+    tbl.tHead.addEventListener('click', function (e) {
+      if (e.target.classList.contains('col-grip')) { e.preventDefault(); e.stopPropagation(); }
+    }, true);
 
     // ── Breite ziehen ──
     var zieht = null, startX = 0, startB = 0;

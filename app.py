@@ -2270,6 +2270,19 @@ def profile_send_reset():
 
 ADMIN_USERS_PRO_SEITE = 20
 
+# Sortierbare Spalten der Benutzerliste. Weisse Liste, weil der Schluessel aus
+# der URL kommt: nur diese Werte duerfen jemals in ein ORDER BY geraten.
+ADMIN_USERS_SORTIERUNG = {
+    'nr':       'u.created_at',            # die laufende Nummer IST die Reihenfolge
+    'name':     'u.username',
+    'voll':     'u.full_name',
+    'mail':     'u.email',
+    'plan':     "COALESCE(s.plan, 'free')",
+    'laufzeit': 's.current_period_end',
+    'erstellt': 'u.created_at',
+    'login':    'u.last_login',
+}
+
 
 @app.route('/admin/users')
 @admin_required
@@ -2279,19 +2292,43 @@ def admin_users():
     except (TypeError, ValueError):
         seite = 1
 
+    # Sortierung laeuft ueber die DATENBANK, nicht im Browser: sonst wuerde nur
+    # die angezeigte Seite umsortiert und "aeltester Login" zeigte den
+    # aeltesten der 20 sichtbaren statt den aeltesten ueberhaupt.
+    # Weisse Liste — Spaltennamen kommen NIE aus der URL in das SQL.
+    sortier_spalte = ADMIN_USERS_SORTIERUNG.get(
+        request.args.get('sort', ''), None)
+    # Ohne Angabe gilt die Grundordnung — und die Spalte wird auch so markiert,
+    # damit man sieht, wonach die Liste gerade sortiert ist.
+    sortierung = request.args.get('sort', '') if sortier_spalte else 'erstellt'
+    richtung = 'asc' if request.args.get('richtung') == 'asc' else 'desc'
+    if sortier_spalte is None:
+        sortier_spalte = 'u.created_at'
+    # NULL immer ans Ende (nie eingeloggt, kein Abo) — in beide Richtungen.
+    # Und u.id als letzter Schluessel: ohne eindeutige Ordnung koennen bei
+    # gleichen Werten Zeilen zwischen zwei Seiten doppelt oder gar nicht
+    # auftauchen.
+    order_by = '(%s IS NULL), %s %s, u.id DESC' % (
+        sortier_spalte, sortier_spalte, 'ASC' if richtung == 'asc' else 'DESC')
+
     gesamt = (query_db('SELECT COUNT(*) AS c FROM app_users', [], one=True) or {}).get('c', 0) or 0
     seiten = max(1, (gesamt + ADMIN_USERS_PRO_SEITE - 1) // ADMIN_USERS_PRO_SEITE)
     seite = min(seite, seiten)                     # ?seite=999 landet auf der letzten
     versatz = (seite - 1) * ADMIN_USERS_PRO_SEITE
 
     # Erst nur die IDs dieser Seite holen — damit der Stripe-Abgleich gleich
-    # weiss, welche Konten ueberhaupt sichtbar sind.
+    # weiss, welche Konten ueberhaupt sichtbar sind. Der LEFT JOIN muss schon
+    # hier stehen: nach Plan oder Laufzeit sortiert man ueber die
+    # Abo-Tabelle, und die Seiteneinteilung muss derselben Ordnung folgen.
     ids = [r['id'] for r in (query_db(
-        'SELECT id FROM app_users ORDER BY created_at DESC LIMIT ? OFFSET ?',
+        'SELECT u.id FROM app_users u '
+        'LEFT JOIN subscriptions s ON s.user_id = u.id '
+        'ORDER BY ' + order_by + ' LIMIT ? OFFSET ?',
         [ADMIN_USERS_PRO_SEITE, versatz]) or [])]
     if not ids:
         return render_template('admin_users.html', users=[], gesamt=gesamt,
-                               seite=1, seiten=1, pro_seite=ADMIN_USERS_PRO_SEITE, von=0, bis=0)
+                               seite=1, seiten=1, pro_seite=ADMIN_USERS_PRO_SEITE, von=0, bis=0,
+                               sortierung=sortierung, richtung=richtung)
 
     platzhalter = ','.join(['?'] * len(ids))
     # Stripe = Source of Truth — aber nur fuer die 20 sichtbaren Konten. Vorher
@@ -2311,12 +2348,13 @@ def admin_users():
         FROM app_users u
         LEFT JOIN subscriptions s ON s.user_id = u.id
         WHERE u.id IN (%s)
-        ORDER BY u.created_at DESC
-    """ % platzhalter, ids) or []
+        ORDER BY {}
+    """.format(order_by) % platzhalter, ids) or []
 
     return render_template('admin_users.html', users=users, gesamt=gesamt,
                            seite=seite, seiten=seiten, pro_seite=ADMIN_USERS_PRO_SEITE,
-                           von=versatz + 1, bis=versatz + len(users))
+                           von=versatz + 1, bis=versatz + len(users),
+                           sortierung=sortierung, richtung=richtung)
 
 
 @app.route('/admin/mails')
