@@ -9424,9 +9424,87 @@ function printProject() {
       parts.push(`<text x="${tmx}" y="${tmy}" text-anchor="middle" font-size="8" fill="#e94560" font-family="Arial" transform="rotate(-90,${tmx},${tmy})">${txt}</text>`);
     }
 
+    /* ACHSMASSE.
+       Bisher stand im Plan nur das Gesamtmass. Damit muss der Zimmerer jedes
+       Einzelmass aus der Stueckliste zurueckrechnen — dann ist der Plan
+       Dekoration. Was er zuerst sucht, ist die Kette: "Staender e = 625",
+       "OK Rähm 2540".
+
+       Mitgezaehlt wird nur, was die Reihe wirklich DURCHLAEUFT. Ein 780 mm
+       kurzer Bruestungsstiel darf keine Achse ueber die volle Wandhoehe
+       rechtfertigen — dieselbe Regel wie beim Beplanken. */
+    function _achsen(langsAchse) {
+      const spanne = langsAchse ? (wV1 - wV0) : (wU1 - wU0);
+      const roh = [];
+      rects.forEach(r => {
+        const quer = langsAchse ? (r.v1 - r.v0) : (r.u1 - r.u0);
+        if (quer < spanne * 0.6) return;                  // laeuft nicht durch
+        roh.push(langsAchse ? (r.u0 + r.u1) / 2 : (r.v0 + r.v1) / 2);
+      });
+      // Zusammenfassen: zwei Staender 8 mm auseinander sind EINE Achse, sonst
+      // stuenden im Plan zwei Masse von 8 mm nebeneinander.
+      const sortiert = roh.sort((a, b) => a - b);
+      const achsen = [];
+      sortiert.forEach(v => {
+        if (!achsen.length || Math.abs(v - achsen[achsen.length - 1]) > 20) achsen.push(v);
+        else achsen[achsen.length - 1] = (achsen[achsen.length - 1] + v) / 2;
+      });
+      return achsen;
+    }
+    // Bei sehr vielen Achsen wuerde die Kette zur schwarzen Linie — dann lieber
+    // nur das Gesamtmass. 25 ist die Grenze, ab der die Masse ueberlappen.
+    function kette(achsen, langsAchse) {
+      if (achsen.length < 2 || achsen.length > 25) return;
+      const versatz = 40;
+      for (let i = 0; i < achsen.length - 1; i++) {
+        const a = achsen[i], b2 = achsen[i + 1];
+        const mm = Math.round(b2 - a);
+        if (mm < 1) continue;
+        if (langsAchse) {
+          const [sa, sy] = toSVG(a, wV1), [sb] = toSVG(b2, wV1);
+          const y = sy + versatz;
+          parts.push(`<line x1="${sa}" y1="${y}" x2="${sb}" y2="${y}" stroke="#0f3460" stroke-width="0.6"/>`);
+          parts.push(`<line x1="${sa}" y1="${y-3}" x2="${sa}" y2="${y+3}" stroke="#0f3460" stroke-width="1"/>`);
+          parts.push(`<line x1="${sb}" y1="${y-3}" x2="${sb}" y2="${y+3}" stroke="#0f3460" stroke-width="1"/>`);
+          // Beschriftet wird nur, wenn das Mass auch hinpasst.
+          if (Math.abs(sb - sa) > 22) {
+            parts.push(`<text x="${(sa+sb)/2}" y="${y-4}" text-anchor="middle" font-size="7" fill="#0f3460" font-family="Arial">${mm}</text>`);
+          }
+        } else {
+          const [sx, sa] = toSVG(wU0, a), [, sb] = toSVG(wU0, b2);
+          const x = sx - versatz;
+          parts.push(`<line x1="${x}" y1="${sa}" x2="${x}" y2="${sb}" stroke="#0f3460" stroke-width="0.6"/>`);
+          parts.push(`<line x1="${x-3}" y1="${sa}" x2="${x+3}" y2="${sa}" stroke="#0f3460" stroke-width="1"/>`);
+          parts.push(`<line x1="${x-3}" y1="${sb}" x2="${x+3}" y2="${sb}" stroke="#0f3460" stroke-width="1"/>`);
+          if (Math.abs(sb - sa) > 22) {
+            const ty = (sa + sb) / 2;
+            parts.push(`<text x="${x-4}" y="${ty}" text-anchor="middle" font-size="7" fill="#0f3460" font-family="Arial" transform="rotate(-90,${x-4},${ty})">${mm}</text>`);
+          }
+        }
+      }
+      // Gleiche Abstaende einmal zusammenfassen: "8 × 625" sagt mehr als acht
+      // gleiche Zahlen nebeneinander.
+      const abst = [];
+      for (let i = 0; i < achsen.length - 1; i++) abst.push(Math.round(achsen[i+1] - achsen[i]));
+      const gleich = abst.length >= 3 && abst.every(v => Math.abs(v - abst[0]) <= 2);
+      if (gleich) {
+        const txt = `${abst.length} × ${abst[0]}`;
+        if (langsAchse) {
+          const [sa, sy] = toSVG(achsen[0], wV1), [sb] = toSVG(achsen[achsen.length-1], wV1);
+          parts.push(`<text x="${(sa+sb)/2}" y="${sy+versatz+11}" text-anchor="middle" font-size="7.5" font-weight="bold" fill="#0f3460" font-family="Arial">${txt}</text>`);
+        } else {
+          const [sx, sa] = toSVG(wU0, achsen[0]), [, sb] = toSVG(wU0, achsen[achsen.length-1]);
+          const ty = (sa+sb)/2, tx = sx - versatz - 12;
+          parts.push(`<text x="${tx}" y="${ty}" text-anchor="middle" font-size="7.5" font-weight="bold" fill="#0f3460" font-family="Arial" transform="rotate(-90,${tx},${ty})">${txt}</text>`);
+        }
+      }
+    }
+
     // Overall dims
     dimH(wU0, wU1, wV1, wU1-wU0);
     dimV(wV0, wV1, wU0, wV1-wV0);
+    kette(_achsen(true), true);
+    kette(_achsen(false), false);
 
     // Optional overlay polygon (e.g. Grundriss outline for top view)
     if (extraPoly && extraPoly.length >= 2) {
