@@ -1370,6 +1370,8 @@ body {
         <div style="font-size:11px;color:var(--text-3);line-height:1.45;margin-bottom:6px">
           Ständer einer Wand oder Sparren einer Dachfläche markieren, dann belegen —
           mit Platten oder Brettern. Die Stöße werden auf die Träger gelegt.
+          Für einen <b>Giebel</b> beide Sparren und das Rähm markieren: das Dreieck
+          wird erkannt und die Beplankung an der Schräge abgelängt.
         </div>
         <button class="add-btn" onclick="openBeplanken()"
                 style="background:var(--bg-card);color:var(--accent);border:1px solid rgba(78,140,221,.35)">▦ Markierte Fläche beplanken</button>
@@ -3042,6 +3044,60 @@ const _ausdehnungVon = (b) =>
   b.axis === 'y' ? [b.B, b.L, b.H] :
                    [b.B, b.H, b.L];
 
+/* ---- Umriss einer Fläche -----------------------------------------------
+   Bis hierher wurde immer das umschreibende RECHTECK beplankt. Bei einem
+   Giebeldreieck steht dann die halbe Beplankung über dem Dach. Deshalb wird
+   jetzt der echte Umriss (konvexe Hülle der Bauteilecken) mitgeführt und die
+   Aufteilung daran beschnitten. Für eine rechteckige Wand ist die Hülle
+   exakt das alte Rechteck — dort ändert sich nichts. */
+function _huelle2D(pts) {
+  const p = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  if (p.length < 3) return p;
+  const kr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const u = [], o = [];
+  for (const q of p) { while (u.length >= 2 && kr(u[u.length - 2], u[u.length - 1], q) <= 0) u.pop(); u.push(q); }
+  for (let i = p.length - 1; i >= 0; i--) { const q = p[i]; while (o.length >= 2 && kr(o[o.length - 2], o[o.length - 1], q) <= 0) o.pop(); o.push(q); }
+  u.pop(); o.pop();
+  return u.concat(o);
+}
+function _polyFlaeche(p) {
+  let s = 0;
+  for (let i = 0; i < p.length; i++) { const q = p[(i + 1) % p.length]; s += p[i][0] * q[1] - q[0] * p[i][1]; }
+  return Math.abs(s) / 2;
+}
+/* Konvexes Polygon auf ein achsparalleles Rechteck beschneiden
+   (Sutherland–Hodgman, vier Halbebenen). */
+function _polyRechteck(poly, u0, u1, v0, v1) {
+  const kanten = [
+    [a => a[0] >= u0, (a, b) => [u0, a[1] + (b[1] - a[1]) * (u0 - a[0]) / (b[0] - a[0])]],
+    [a => a[0] <= u1, (a, b) => [u1, a[1] + (b[1] - a[1]) * (u1 - a[0]) / (b[0] - a[0])]],
+    [a => a[1] >= v0, (a, b) => [a[0] + (b[0] - a[0]) * (v0 - a[1]) / (b[1] - a[1]), v0]],
+    [a => a[1] <= v1, (a, b) => [a[0] + (b[0] - a[0]) * (v1 - a[1]) / (b[1] - a[1]), v1]],
+  ];
+  let p = poly;
+  for (const [innen, schnitt] of kanten) {
+    if (p.length < 3) return [];
+    const raus = [];
+    for (let i = 0; i < p.length; i++) {
+      const a = p[i], b = p[(i + 1) % p.length];
+      const ia = innen(a), ib = innen(b);
+      if (ia) raus.push(a);
+      if (ia !== ib) raus.push(schnitt(a, b));
+    }
+    p = raus;
+  }
+  return p;
+}
+/* Umschreibendes Rechteck des beschnittenen Stücks — oder null, wenn davon
+   praktisch nichts übrig bleibt. */
+function _umrissKasten(poly, u0, u1, v0, v1) {
+  const c = _polyRechteck(poly, u0, u1, v0, v1);
+  if (c.length < 3) return null;
+  const us = c.map(q => q[0]), vs = c.map(q => q[1]);
+  return { u0: Math.min(...us), u1: Math.max(...us),
+           v0: Math.min(...vs), v1: Math.max(...vs), flaeche: _polyFlaeche(c) };
+}
+
 function _flaecheAusAuswahl() {
   // Vorhandene Platten fliegen raus: sonst wandert die Ebene bei jedem Lauf
   // um eine Plattendicke nach außen.
@@ -3057,70 +3113,126 @@ function _flaecheAusAuswahl() {
      Mittelpunkt. Dreht man das ganze Punktfeld um einen gemeinsamen Bezugspunkt
      zurück, wird aus jedem gedrehten Balken wieder eine achsparallele Kiste —
      und die Ebenenbestimmung ist dieselbe wie bei einer Wand. */
-  const schluessel = (b) => `${b.rx || 0}|${b.ry || 0}|${b.rz || 0}`;
-  const gruppen = new Map();
-  sel.forEach(b => {
-    const k = schluessel(b);
-    if (!gruppen.has(k)) gruppen.set(k, []);
-    gruppen.get(k).push(b);
-  });
-  let groesste = null;
-  gruppen.forEach(g => { if (!groesste || g.length > groesste.length) groesste = g; });
-  const verworfen = sel.length - groesste.length;
-  sel = groesste;
-  if (sel.length < 2) {
-    return { fehler: 'Die markierten Balken haben zu unterschiedliche Neigungen.\n\nMarkiere die Bauteile EINER Fläche — bei einem Satteldach also nur eine Dachhälfte.' };
-  }
-
   const grad = Math.PI / 180;
-  const dreh = new THREE.Euler((sel[0].rx || 0) * grad, (sel[0].ry || 0) * grad, (sel[0].rz || 0) * grad);
-  const q = new THREE.Quaternion().setFromEuler(dreh);
-  const qInv = q.clone().invert();
-  const gedreht = !!((sel[0].rx || 0) || (sel[0].ry || 0) || (sel[0].rz || 0));
+  const alle = sel;
 
-  // Bezugspunkt: Mittelpunkt des ersten Balkens. Jeder Punkt ist beliebig,
-  // solange derselbe fürs Hin- und Zurückdrehen benutzt wird.
-  const e0 = _ausdehnungVon(sel[0]);
-  const bezug = new THREE.Vector3(sel[0].x + e0[0] / 2, sel[0].y + e0[1] / 2, sel[0].z + e0[2] / 2);
-  // Mittelpunkt eines Balkens im zurückgedrehten Rahmen.
-  const lokaleMitte = (b) => {
+  /* Eckpunkte eines Balkens IM BEZUGSRAHMEN. Erst die eigene Drehung des
+     Balkens anwenden, dann das ganze Feld um den gemeinsamen Bezugspunkt
+     zurückdrehen. Haben alle Balken dieselbe Drehung, hebt sich beides auf und
+     es kommt exakt die alte achsparallele Kiste heraus. */
+  const eckenVon = (b, qInv, bezug) => {
     const e = _ausdehnungVon(b);
     const c = new THREE.Vector3(b.x + e[0] / 2, b.y + e[1] / 2, b.z + e[2] / 2);
-    return c.sub(bezug).applyQuaternion(qInv).add(bezug);
+    const qb = new THREE.Quaternion().setFromEuler(
+      new THREE.Euler((b.rx || 0) * grad, (b.ry || 0) * grad, (b.rz || 0) * grad));
+    const pts = [];
+    for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+      const v = new THREE.Vector3(sx * e[0] / 2, sy * e[1] / 2, sz * e[2] / 2)
+        .applyQuaternion(qb).add(c);
+      pts.push(v.sub(bezug).applyQuaternion(qInv).add(bezug));
+    }
+    return pts;
   };
 
-  const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
-  sel.forEach(b => {
-    const e = _ausdehnungVon(b);
-    const m = lokaleMitte(b);
-    const p = [m.x - e[0] / 2, m.y - e[1] / 2, m.z - e[2] / 2];
-    for (let i = 0; i < 3; i++) {
-      if (p[i] < min[i]) min[i] = p[i];
-      if (p[i] + e[i] > max[i]) max[i] = p[i] + e[i];
+  /* Ebene aus einer Balkenmenge bestimmen. Liefert null, wenn die Teile nicht
+     flach genug beieinander liegen. */
+  const ebeneAus = (menge, q, bezug) => {
+    const qInv = q.clone().invert();
+    const wolke = menge.map(b => eckenVon(b, qInv, bezug));
+    const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+    wolke.flat().forEach(v => {
+      const p = [v.x, v.y, v.z];
+      for (let i = 0; i < 3; i++) { if (p[i] < min[i]) min[i] = p[i]; if (p[i] > max[i]) max[i] = p[i]; }
+    });
+    const ext = [max[0] - min[0], max[1] - min[1], max[2] - min[2]];
+    let n = 0;
+    if (ext[1] < ext[n]) n = 1;
+    if (ext[2] < ext[n]) n = 2;
+    const rest = [0, 1, 2].filter(i => i !== n).sort((a, b) => ext[b] - ext[a]);
+    // Plausibilität: ohne diese Prüfung liefert Strg+A über ein ganzes Gebäude
+    // lautlos eine Platte quer durchs Haus.
+    if (ext[n] > ext[rest[1]] / 3) return null;
+    if (ext[rest[0]] < 200 || ext[rest[1]] < 200) return { zuKlein: true };
+    return { min, max, ext, n, rest, wolke, menge, q, bezug };
+  };
+
+  /* 1. Versuch OHNE Drehgruppierung — alle markierten Teile zusammen, jeder
+     mit seiner eigenen Drehung. Genau das braucht ein GIEBELDREIECK: dort
+     haben die beiden Sparren +32°/−32° und das Rähm 0°, liegen aber alle in
+     derselben senkrechten Ebene. Eine ungedrehte Wand landet ebenfalls hier
+     und bekommt dasselbe Ergebnis wie bisher. */
+  const einheit = new THREE.Quaternion();
+  const null3 = new THREE.Vector3(0, 0, 0);
+  let E = ebeneAus(alle, einheit, null3);
+  let gedreht = false, dreh = { rx: 0, ry: 0, rz: 0 }, verworfen = 0;
+
+  /* 2. Versuch: geneigte Fläche (Dachhälfte). Balken nach ihrer Drehung
+     gruppieren und die größte Gruppe nehmen — ein Satteldach hat zwei
+     Neigungen, verlangte man Gleichheit über die ganze Auswahl, ließe sich nie
+     eine Dachhälfte beplanken. */
+  if (!E || E.zuKlein) {
+    const schluessel = (b) => `${b.rx || 0}|${b.ry || 0}|${b.rz || 0}`;
+    const gruppen = new Map();
+    alle.forEach(b => {
+      const k = schluessel(b);
+      if (!gruppen.has(k)) gruppen.set(k, []);
+      gruppen.get(k).push(b);
+    });
+    let groesste = null;
+    gruppen.forEach(g => { if (!groesste || g.length > groesste.length) groesste = g; });
+    if (groesste.length < 2) {
+      return { fehler: 'Die markierten Balken haben zu unterschiedliche Neigungen.\n\nMarkiere die Bauteile EINER Fläche — bei einem Satteldach also nur eine Dachhälfte.' };
     }
-  });
-  const ext = [max[0] - min[0], max[1] - min[1], max[2] - min[2]];
-  let n = 0;
-  if (ext[1] < ext[n]) n = 1;
-  if (ext[2] < ext[n]) n = 2;
-  const rest = [0, 1, 2].filter(i => i !== n).sort((a, b) => ext[b] - ext[a]);
-  // Plausibilität: ohne diese Prüfung liefert Strg+A über ein ganzes Gebäude
-  // lautlos eine Platte quer durchs Haus.
-  if (ext[n] > ext[rest[1]] / 3) {
-    return { fehler: 'Die markierten Teile liegen nicht flach genug in einer Ebene.\n\nMarkiere die Bauteile EINER Wand oder Decke — nicht mehrere Wände gleichzeitig.' };
+    verworfen = alle.length - groesste.length;
+    const g0 = groesste[0];
+    const qg = new THREE.Quaternion().setFromEuler(
+      new THREE.Euler((g0.rx || 0) * grad, (g0.ry || 0) * grad, (g0.rz || 0) * grad));
+    const eg = _ausdehnungVon(g0);
+    const bez = new THREE.Vector3(g0.x + eg[0] / 2, g0.y + eg[1] / 2, g0.z + eg[2] / 2);
+    E = ebeneAus(groesste, qg, bez);
+    gedreht = !!((g0.rx || 0) || (g0.ry || 0) || (g0.rz || 0));
+    dreh = { rx: g0.rx || 0, ry: g0.ry || 0, rz: g0.rz || 0 };
   }
-  if (ext[rest[0]] < 200 || ext[rest[1]] < 200) {
-    return { fehler: 'Die erkannte Fläche ist zu klein zum Beplanken.' };
+  if (!E) {
+    return { fehler: 'Die markierten Teile liegen nicht flach genug in einer Ebene.\n\nMarkiere die Bauteile EINER Wand, Decke oder Dachfläche — nicht mehrere gleichzeitig.' };
   }
+  if (E.zuKlein) return { fehler: 'Die erkannte Fläche ist zu klein zum Beplanken.' };
+
+  const { min, max, ext, n, rest, wolke, q, bezug } = E;
+  sel = E.menge;
+
+  /* Echter Umriss: konvexe Hülle aller Ecken in Flächenkoordinaten. Bei einer
+     rechteckigen Wand ist das genau das umschreibende Rechteck; bei einem
+     Giebel das Dreieck. */
+  const umriss = _huelle2D(wolke.flat().map(v => {
+    const p = [v.x, v.y, v.z];
+    return [p[rest[0]] - min[rest[0]], p[rest[1]] - min[rest[1]]];
+  }));
+  const rechteckFlaeche = ext[rest[0]] * ext[rest[1]];
+  // Nur wenn der Umriss spürbar kleiner ist als sein Rechteck, wird
+  // beschnitten — sonst bleibt die Wand bitgenau wie bisher.
+  const beschnitten = _polyFlaeche(umriss) < rechteckFlaeche * 0.97;
+
+  const lokaleMitte = (b) => {
+    const pts = eckenVon(b, q.clone().invert(), bezug);
+    const m = new THREE.Vector3();
+    pts.forEach(p => m.add(p));
+    return m.multiplyScalar(1 / pts.length);
+  };
   // Trägerachsen: Mitte jedes Balkens in Flächenrichtung — aber nur die, die
   // in der Querrichtung wirklich durchlaufen. Ein 780 mm kurzer Brüstungsstiel
   // darf keine Fuge über die volle Wandhöhe rechtfertigen.
   const achsen = (richtung, quer) => {
     const raus = [];
+    const qInv = q.clone().invert();
     sel.forEach(b => {
-      const e = _ausdehnungVon(b), m = lokaleMitte(b);
-      const laengsQuer = e[quer] / (max[quer] - min[quer]);
+      // Ausdehnung aus der Punktwolke, nicht aus L/B/H: bei gemischten
+      // Drehungen (Giebel) hat ein geneigter Sparren keine achsparallele Kante.
+      const pts = eckenVon(b, qInv, bezug).map(v => [v.x, v.y, v.z]);
+      const qs = pts.map(p => p[quer]);
+      const laengsQuer = (Math.max(...qs) - Math.min(...qs)) / (max[quer] - min[quer]);
       if (laengsQuer < 0.8) return;                    // deckt die Reihe nicht
+      const m = lokaleMitte(b);
       raus.push([m.x, m.y, m.z][richtung] - min[richtung]);
     });
     return [...new Set(raus.map(v => Math.round(v)))].sort((a, b) => a - b);
@@ -3129,8 +3241,9 @@ function _flaecheAusAuswahl() {
     min, max, normale: n, achseU: rest[0], achseV: rest[1],
     breite: ext[rest[0]], hoehe: ext[rest[1]], dicke: ext[n],
     traegerU: achsen(rest[0], rest[1]), traegerV: achsen(rest[1], rest[0]),
+    umriss, beschnitten,
     // Fuer das Zurueckdrehen beim Erzeugen:
-    q, bezug, gedreht, dreh: { rx: sel[0].rx || 0, ry: sel[0].ry || 0, rz: sel[0].rz || 0 },
+    q, bezug, gedreht, dreh,
     verworfen, anzahl: sel.length,
   };
 }
@@ -3148,6 +3261,7 @@ function openBeplanken() {
   if (f.fehler) { alert(f.fehler); return; }
   const d = document.getElementById('bp-info');
   if (d) d.textContent = `Erkannte Fläche: ${Math.round(f.breite)} × ${Math.round(f.hoehe)} mm`
+    + (f.beschnitten ? ` (schräger Umriss, z. B. Giebel — es wird auf ${Math.round(_polyFlaeche(f.umriss) / 1e6 * 100) / 100} m² beschnitten)` : '')
     + ` · ${f.traegerU.length} Träger längs, ${f.traegerV.length} quer`;
   document.getElementById('bp-modal').style.display = 'flex';
 }
@@ -3179,14 +3293,25 @@ function _bretterErzeugen(f, gruppe) {
   let v = 0, wache = 0;
   while (v < f.hoehe - 0.5 && wache++ < 2000) {
     const h = Math.min(breite, f.hoehe - v);
-    stuecke.push({ v, h });
+    /* Bei einem Giebeldreieck wird jedes Brett auf die Breite des Umrisses in
+       seinem Streifen gekürzt. Genommen wird die WEITESTE Stelle des Streifens
+       — das Brett deckt damit sicher, und die Schräge wird beim Anlegen
+       zugesägt. Das ist genau der Ablauf auf der Baustelle. */
+    let u0 = 0, u1 = f.breite, schraeg = false;
+    if (f.beschnitten) {
+      const k = _umrissKasten(f.umriss, -1e7, 1e7, v, v + h);
+      if (!k || k.u1 - k.u0 < 50) { v += breite + abstand; continue; }
+      u0 = k.u0; u1 = k.u1;
+      schraeg = (u1 - u0) < f.breite - 1;
+    }
+    stuecke.push({ v, h, u0, laenge: u1 - u0, schraeg });
     v += breite + abstand;
   }
   stuecke.forEach((st, i) => {
     const e = [0, 0, 0];
-    e[laengs] = f.breite; e[quer] = st.h; e[f.normale] = dicke;
+    e[laengs] = st.laenge; e[quer] = st.h; e[f.normale] = dicke;
     const lm = [0, 0, 0];
-    lm[laengs] = f.min[laengs] + f.breite / 2;
+    lm[laengs] = f.min[laengs] + st.u0 + st.laenge / 2;
     lm[quer] = f.min[quer] + st.v + st.h / 2;
     lm[f.normale] = aussen + dicke / 2;
     const wm = _nachWelt(f, lm[0], lm[1], lm[2]);
@@ -3195,9 +3320,10 @@ function _bretterErzeugen(f, gruppe) {
     if (gr === e[0])      { axis = 'x'; L = e[0]; H = e[1]; B = e[2]; }
     else if (gr === e[1]) { axis = 'y'; B = e[0]; L = e[1]; H = e[2]; }
     else                  { axis = 'z'; B = e[0]; H = e[1]; L = e[2]; }
-    const angeschnitten = st.h < breite - 0.5;
+    const angeschnitten = st.h < breite - 0.5 || st.schraeg;
     const nb = {
-      id: idCounter++, name: angeschnitten ? gruppe + ' Randbrett' : gruppe,
+      id: idCounter++, name: st.schraeg ? gruppe + ' Randbrett (schräg)'
+        : angeschnitten ? gruppe + ' Randbrett' : gruppe,
       woodType: holz, shape: 'rect', axis,
       L: Math.round(L), B: Math.round(B), H: Math.round(H),
       x: Math.round(wm.x - e[0] / 2), y: Math.round(wm.y - e[1] / 2), z: Math.round(wm.z - e[2] / 2),
@@ -3209,7 +3335,8 @@ function _bretterErzeugen(f, gruppe) {
     beams.push(nb);
   });
   return { anzahl: stuecke.length,
-           rand: stuecke.filter(x => x.h < breite - 0.5).length };
+           rand: stuecke.filter(x => x.h < breite - 0.5).length,
+           schraeg: stuecke.filter(x => x.schraeg).length };
 }
 
 function runBeplanken() {
@@ -3226,6 +3353,22 @@ function runBeplanken() {
     breite: f.breite, hoehe: f.hoehe, format: [fw, fh], fuge,
     traegerU: f.traegerU, traegerV: f.traegerV, minRest: 150,
   });
+  /* Giebeldreieck: die Aufteilung entsteht über dem umschreibenden Rechteck und
+     wird hier auf den echten Umriss beschnitten. Platten ausserhalb fallen
+     weg, angeschnittene werden auf ihr Reststück verkleinert. Sie bleiben
+     rechteckig — der schräge Schnitt entsteht beim Zusägen. */
+  let ausserhalb = 0, angeschnitten = 0;
+  if (plan && f.beschnitten) {
+    plan.platten = plan.platten.filter(p => {
+      const k = _umrissKasten(f.umriss, p.u, p.u + p.w, p.v, p.v + p.h);
+      if (!k || k.flaeche < p.w * p.h * 0.02
+          || k.u1 - k.u0 < 100 || k.v1 - k.v0 < 100) { ausserhalb++; return false; }
+      if (k.u1 - k.u0 < p.w - 1 || k.v1 - k.v0 < p.h - 1) { angeschnitten++; p.rand = true; }
+      p.u = k.u0; p.w = k.u1 - k.u0;
+      p.v = k.v0; p.h = k.v1 - k.v0;
+      return true;
+    });
+  }
   if (plan && !plan.platten.length) { alert('Für diese Fläche ließ sich keine Aufteilung bilden.'); return; }
 
   // Schutz gegen den zweiten Lauf: liegt auf dieser Ebene schon Plattenwerkstoff,
@@ -3257,8 +3400,10 @@ function runBeplanken() {
     const r = _bretterErzeugen(f, gruppe);
     closeBeplanken();
     updateUI();
-    alert(`${r.anzahl} Bretter erzeugt (davon ${r.rand} angeschnitten).\n\n`
-      + `Gruppe: ${gruppe}  — mit Strg+Z rückgängig.`);
+    alert(`${r.anzahl} Bretter erzeugt (davon ${r.rand} in der Breite angeschnitten).`
+      + (r.schraeg ? `\n\n${r.schraeg} Bretter liegen an einer Schräge. Sie sind auf die`
+          + ' weiteste Stelle abgelängt und müssen an der Schräge zugesägt werden.' : '')
+      + `\n\nGruppe: ${gruppe}  — mit Strg+Z rückgängig.`);
     return;
   }
 
@@ -3299,6 +3444,9 @@ function runBeplanken() {
   updateUI();
   const rand = plan.platten.filter(p => p.rand).length;
   alert(`${plan.platten.length} Platten erzeugt (davon ${rand} angeschnitten).`
+    + (f.beschnitten ? `\n\nSchräger Umriss erkannt: ${ausserhalb} Platten lagen ganz`
+        + ` ausserhalb und entfielen, ${angeschnitten} wurden auf ihr Reststück verkleinert.`
+        + '\nDie Schräge selbst musst du zusägen — die Platten sind rechteckig angelegt.' : '')
     + (plan.hinweise.length ? '\n\nHinweise:\n• ' + plan.hinweise.join('\n• ') : '')
     + '\n\nGruppe: ' + gruppe + '  — mit Strg+Z rückgängig.');
 }

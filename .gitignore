@@ -8,3 +8,7 @@ venv/
 dist/
 build/
 holzbau.db
+
+# Chat-Exporte: enthalten Zugangsdaten, gehoeren nie ins Repo
+_chat.html
+_chat*.html
