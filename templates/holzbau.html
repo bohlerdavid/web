@@ -1371,7 +1371,7 @@ body {
           Ständer einer Wand oder Sparren einer Dachfläche markieren, dann belegen —
           mit Platten oder Brettern. Die Stöße werden auf die Träger gelegt.
           Für einen <b>Giebel</b> beide Sparren und das Rähm markieren: das Dreieck
-          wird erkannt und die Beplankung an der Schräge abgelängt.
+          wird erkannt und die Teile werden passend zu den Balken schräg zugeschnitten.
         </div>
         <button class="add-btn" onclick="openBeplanken()"
                 style="background:var(--bg-card);color:var(--accent);border:1px solid rgba(78,140,221,.35)">▦ Markierte Fläche beplanken</button>
@@ -2628,6 +2628,17 @@ function _konvexeHuelle(pts) {
    Ecke links unten. Fuer `punkte` gilt dasselbe, sonst haetten Stempel und
    Bahn zwei verschiedene Bezugspunkte. */
 function _cutoutPolygone(c, A, B) {
+  /* SCHRAEGE KANTE (shape 'poly'): ein freies Vieleck in Flaechenkoordinaten.
+     Damit bekommt eine Giebelplatte ihren ECHTEN Schraegschnitt statt einer
+     rechteckigen Naeherung — buildPanelGeometry rechnet Platte MINUS Loecher,
+     und ein Loch darf eben auch eine abgeschnittene Ecke sein.
+     Bezugspunkt wie bei Rechteck und Kreis: u,v ab der Plattenecke links unten. */
+  if (c.shape === 'poly') {
+    const pts = Array.isArray(c.ecken) ? c.ecken : [];
+    if (pts.length < 3) return [];
+    const ring = pts.map(p => [(p.u || 0) - A / 2, (p.v || 0) - B / 2]);
+    return [[ring.concat([ring[0]])]];
+  }
   const istKreis = c.shape === 'circle';
   const N = 48;
   const stempel = (u, v) => {
@@ -2825,7 +2836,11 @@ function createBeamMesh(beam) {
   else { W = beam.B; H = beam.H; D = beam.L; }
 
   // Plattenwerkstoff mit Ausfräsungen → Extrusion mit Löchern, sonst Box.
-  if (SHEET_MATERIALS.has(beam.woodType) && beam.cutouts && beam.cutouts.length) {
+  /* Ein Schraegschnitt (shape 'poly') muss auch bei VOLLHOLZ durchlaufen —
+     ein Giebelbrett ist kein Plattenwerkstoff, hat aber dieselbe schraege
+     Kante. Fuer alles Bisherige bleibt die Bedingung unveraendert. */
+  const _hatSchraege = beam.cutouts && beam.cutouts.some(c => c.shape === 'poly');
+  if ((SHEET_MATERIALS.has(beam.woodType) || _hatSchraege) && beam.cutouts && beam.cutouts.length) {
     geo = buildPanelGeometry(beam, W, H, D);
   } else {
     geo = new THREE.BoxGeometry(W, H, D);
@@ -3256,6 +3271,65 @@ function _nachWelt(f, lx, ly, lz) {
   return v.sub(f.bezug).applyQuaternion(f.q).add(f.bezug);
 }
 
+/* Schraegschnitt fuer EIN Teil der Beplankung.
+
+   Das Teil ist rechteckig angelegt; alles davon, was ausserhalb des
+   Flaechenumrisses liegt (beim Giebel also die Ecke ueber dem Sparren), wird
+   als Vieleck-Ausschnitt angehaengt. buildPanelGeometry rechnet Platte MINUS
+   Loecher — das Ergebnis ist die echte schraege Kante, kein Treppenrand.
+
+   uMin/vMin/uLen/vLen liegen in Flaechenkoordinaten (entlang f.achseU bzw.
+   f.achseV, gemessen ab f.min). Umgerechnet wird in die Flaechenbasis des
+   Teils, die _panelFaceBasis liefert — dieselbe, die die Geometrie benutzt.
+   Beides selbst zu bestimmen waere die Stelle, an der es auseinanderlaeuft. */
+function _schraegAnTeil(nb, f, uMin, vMin, uLen, vLen) {
+  if (!f || !f.beschnitten || !f.umriss || !window.polygonClipping) return false;
+  const IDX = { x: 0, y: 1, z: 2 };
+  const fb = _panelFaceBasis(nb);
+  const aA = IDX[_achseVon(fb.eA)], aB = IDX[_achseVon(fb.eB)];
+  // Die Flaechenachsen des Teils MUESSEN die der Flaeche sein — sonst ist die
+  // duennste Kante nicht die Dicke und die Umrechnung waere Unsinn.
+  if (!((aA === f.achseU && aB === f.achseV) || (aA === f.achseV && aB === f.achseU))) return false;
+
+  const nach = (u, v) => {              // Flaechenkoordinate -> Teilkoordinate
+    const p = [];
+    p[f.achseU] = u - uMin;
+    p[f.achseV] = v - vMin;
+    return [p[aA], p[aB]];
+  };
+  const zu = (r) => r.concat([r[0]]);
+  const rechteck = zu([[uMin, vMin], [uMin + uLen, vMin],
+                       [uMin + uLen, vMin + vLen], [uMin, vMin + vLen]]);
+  let aussen;
+  try {
+    aussen = window.polygonClipping.difference([rechteck], [zu(f.umriss)]);
+  } catch (e) { console.warn('Schrägschnitt: Differenz fehlgeschlagen', e); return false; }
+  if (!aussen || !aussen.length) return false;          // liegt ganz innen
+
+  const loecher = [];
+  aussen.forEach(poly => {
+    // Nur der Aussenring: Rechteck minus konvexer Umriss hat keine Inseln.
+    const ring = poly[0];
+    if (!ring || ring.length < 4) return;
+    const ecken = ring.slice(0, -1).map(([u, v]) => {
+      const q = nach(u, v);
+      return { u: Math.round(q[0] * 10) / 10, v: Math.round(q[1] * 10) / 10 };
+    });
+    if (ecken.length < 3) return;
+    // Winzige Schnipsel aus Rundungsresten wuerden nur die Liste zumuellen.
+    let fl = 0;
+    for (let i = 0; i < ecken.length; i++) {
+      const b2 = ecken[(i + 1) % ecken.length];
+      fl += ecken[i].u * b2.v - b2.u * ecken[i].v;
+    }
+    if (Math.abs(fl) / 2 < 100) return;
+    loecher.push({ shape: 'poly', ecken });
+  });
+  if (!loecher.length) return false;
+  nb.cutouts = (nb.cutouts || []).concat(loecher);
+  return true;
+}
+
 function openBeplanken() {
   const f = _flaecheAusAuswahl();
   if (f.fehler) { alert(f.fehler); return; }
@@ -3330,13 +3404,16 @@ function _bretterErzeugen(f, gruppe) {
       rx: f.dreh.rx, ry: f.dreh.ry, rz: f.dreh.rz,
       group: gruppe, phase: null, mesh: null,
     };
+    // Schraege Kante anhaengen, BEVOR das Mesh gebaut wird — createBeamMesh
+    // liest die Ausschnitte.
+    st.geschnitten = _schraegAnTeil(nb, f, st.u0, st.v, st.laenge, st.h);
     nb.mesh = createBeamMesh(nb);
     scene.add(nb.mesh);
     beams.push(nb);
   });
   return { anzahl: stuecke.length,
            rand: stuecke.filter(x => x.h < breite - 0.5).length,
-           schraeg: stuecke.filter(x => x.schraeg).length };
+           geschnitten: stuecke.filter(x => x.geschnitten).length };
 }
 
 function runBeplanken() {
@@ -3401,8 +3478,9 @@ function runBeplanken() {
     closeBeplanken();
     updateUI();
     alert(`${r.anzahl} Bretter erzeugt (davon ${r.rand} in der Breite angeschnitten).`
-      + (r.schraeg ? `\n\n${r.schraeg} Bretter liegen an einer Schräge. Sie sind auf die`
-          + ' weiteste Stelle abgelängt und müssen an der Schräge zugesägt werden.' : '')
+      + (r.geschnitten ? `\n\n${r.geschnitten} Bretter sind an der Schräge passend zu den`
+          + ' Balken zugeschnitten. Der Zuschnitt steht als Schrägschnitt am Bauteil'
+          + ' und geht in Plan und CNC-Export mit.' : '')
       + `\n\nGruppe: ${gruppe}  — mit Strg+Z rückgängig.`);
     return;
   }
@@ -3435,6 +3513,8 @@ function runBeplanken() {
       rx: f.dreh.rx, ry: f.dreh.ry, rz: f.dreh.rz,
       group: gruppe, phase: null, mesh: null,
     };
+    // Schraege Kante anhaengen, BEVOR das Mesh gebaut wird.
+    if (_schraegAnTeil(nb, f, p.u, p.v, p.w, p.h)) { p.schraeg = true; nb.name = gruppe + ' Randstück (schräg)'; }
     nb.mesh = createBeamMesh(nb);
     scene.add(nb.mesh);
     beams.push(nb);
@@ -3445,8 +3525,9 @@ function runBeplanken() {
   const rand = plan.platten.filter(p => p.rand).length;
   alert(`${plan.platten.length} Platten erzeugt (davon ${rand} angeschnitten).`
     + (f.beschnitten ? `\n\nSchräger Umriss erkannt: ${ausserhalb} Platten lagen ganz`
-        + ` ausserhalb und entfielen, ${angeschnitten} wurden auf ihr Reststück verkleinert.`
-        + '\nDie Schräge selbst musst du zusägen — die Platten sind rechteckig angelegt.' : '')
+        + ` ausserhalb und entfielen, ${angeschnitten} wurden verkleinert.`
+        + `\n${plan.platten.filter(p => p.schraeg).length} Platten sind an der Schräge passend`
+        + ' zu den Balken zugeschnitten — der Zuschnitt geht in Plan und CNC-Export mit.' : '')
     + (plan.hinweise.length ? '\n\nHinweise:\n• ' + plan.hinweise.join('\n• ') : '')
     + '\n\nGruppe: ' + gruppe + '  — mit Strg+Z rückgängig.');
 }
@@ -4217,19 +4298,26 @@ function renderCutoutPanel(b) {
   const T = (s) => (window.t ? window.t(s) : s);
   list.innerHTML = cuts.map((c, i) => {
     const istBahn = Array.isArray(c.punkte) && c.punkte.length > 1;
-    const dims = c.shape === 'circle'
+    // Schraege Kante aus der Beplankung: ihre Form steckt in den Ecken. Ein
+    // B/H-Feld waere hier eine Falle — es koennte den Schnitt nicht beschreiben.
+    const istSchraege = c.shape === 'poly';
+    const dims = istSchraege
+      ? `<span style="font-size:10px;color:var(--text-3)">${(c.ecken || []).length} Eckpunkte — Zuschnitt aus der Beplankung</span>`
+      : c.shape === 'circle'
       ? `<label style="font-size:10px;color:var(--text-3)">Ø<input type="number" value="${c.dia || 100}" min="1" step="5" style="width:56px" onchange="updateCutout(${i},'dia',this.value)"></label>`
       : `<label style="font-size:10px;color:var(--text-3)">B<input type="number" value="${c.w || 100}" min="1" step="5" style="width:52px" onchange="updateCutout(${i},'w',this.value)"></label>
          <label style="font-size:10px;color:var(--text-3)">H<input type="number" value="${c.h || 100}" min="1" step="5" style="width:52px" onchange="updateCutout(${i},'h',this.value)"></label>`;
     // Bei einer Bahn waeren ↔/↕ irrefuehrend: sie wuerden nur den ERSTEN Punkt
     // verschieben und die Bahn zerreissen. Die Werkzeuggroesse bleibt aenderbar
     // — sie wirkt auf die ganze Bahn und ist damit sinnvoll.
-    const pos = istBahn ? '' :
+    const pos = (istBahn || istSchraege) ? '' :
       `<label style="font-size:10px;color:var(--text-3)">↔<input type="number" value="${Math.round(c.u || 0)}" step="10" style="width:56px" onchange="updateCutout(${i},'u',this.value)"></label>
        <label style="font-size:10px;color:var(--text-3)">↕<input type="number" value="${Math.round(c.v || 0)}" step="10" style="width:56px" onchange="updateCutout(${i},'v',this.value)"></label>`;
     // EIN Schluessel mit Platzhaltern statt zusammengestueckelt: "Punkte" allein
     // waere ein kurzer Allerweltsschluessel, der dann auch anderswo zuschlaegt.
-    const titel = istBahn
+    const titel = istSchraege
+      ? T('◣ Schrägschnitt') + ' ' + (i + 1)
+      : istBahn
       ? T('〰 Fräsbahn {i} ({p} Punkte)').replace('{i}', () => String(i + 1)).replace('{p}', () => String(c.punkte.length))
       : T(c.shape === 'circle' ? '◯ Kreis' : '▭ Rechteck') + ' ' + (i + 1);
     // Ausgeblendet = auch NICHT gefraest und NICHT exportiert. Alles andere
@@ -4405,8 +4493,12 @@ function _cutoutsSaegen(original, teil, versatz) {
       return { u: p[aNeu], v: p[bNeu] };
     };
 
+    const istPoly = c.shape === 'poly' && Array.isArray(c.ecken) && c.ecken.length >= 3;
     const n = um(c.u || 0, c.v || 0);
-    const neu = istKreis
+    const neu = istPoly
+      ? { shape: 'poly', u: 0, v: 0,
+          ecken: c.ecken.map(p => { const q = um(p.u, p.v); return { u: Math.round(q.u), v: Math.round(q.v) }; }) }
+      : istKreis
       ? { shape: 'circle', u: Math.round(n.u), v: Math.round(n.v), dia: c.dia }
       : { shape: 'rect', u: Math.round(n.u), v: Math.round(n.v),
           w: Math.round(masse[aNeu]), h: Math.round(masse[bNeu]) };
@@ -4417,8 +4509,11 @@ function _cutoutsSaegen(original, teil, versatz) {
 
     // Liegt es ueberhaupt noch auf dieser Haelfte? Sonst nicht mitschleppen —
     // es waere unsichtbar, stuende aber in der Liste und im CNC-Plan.
-    const pkte = neu.punkte && neu.punkte.length ? neu.punkte : [{ u: neu.u, v: neu.v }];
-    const bw = istKreis ? neu.dia : neu.w, bh = istKreis ? neu.dia : neu.h;
+    const pkte = istPoly ? neu.ecken
+      : neu.punkte && neu.punkte.length ? neu.punkte : [{ u: neu.u, v: neu.v }];
+    // Beim Vieleck stecken die Masse schon in den Ecken — kein Zuschlag.
+    const bw = istPoly ? 0 : istKreis ? neu.dia : neu.w;
+    const bh = istPoly ? 0 : istKreis ? neu.dia : neu.h;
     const u0 = Math.min(...pkte.map(p => istKreis ? p.u - bw / 2 : p.u));
     const u1 = Math.max(...pkte.map(p => istKreis ? p.u + bw / 2 : p.u + bw));
     const v0 = Math.min(...pkte.map(p => istKreis ? p.v - bh / 2 : p.v));
@@ -4433,16 +4528,24 @@ function _cutoutsKopieren(quelle, ziel) {
   delete ziel.cutouts;   // die Referenz aus dem Spread MUSS zuerst weg
   const loecher = quelle.cutouts || [];
   if (!loecher.length) return true;
-  if (!IS_PREMIUM) {
-    if (_fraesUebrig() < loecher.length) return false;
-    _fraesVerbrauchen(loecher.length);
+  /* Ein Schraegschnitt zaehlt NICHT als Fraesung. Er ist die Form des Teils
+     (Giebelplatte), nicht etwas, das jemand bestellt hat — er wuerde sonst das
+     kostenlose Kontingent aufbrauchen oder das Kopieren ganz verweigern. */
+  const bestellt = loecher.filter(c => c.shape !== 'poly').length;
+  if (!IS_PREMIUM && bestellt) {
+    if (_fraesUebrig() < bestellt) return false;
+    _fraesVerbrauchen(bestellt);
   }
   // Tief bis auf die Punkte: `{ ...c }` allein wuerde das punkte-Array einer
-  // Fraesbahn nur als Referenz mitnehmen — Original und Kopie teilten sich dann
-  // dieselbe Bahn. Genau der Fehler, der bei den cutouts schon einmal drin war.
-  ziel.cutouts = loecher.map(c => (
-    Array.isArray(c.punkte) ? { ...c, punkte: c.punkte.map(p => ({ ...p })) } : { ...c }
-  ));
+  // Fraesbahn — oder die Ecken eines Schraegschnitts — nur als Referenz
+  // mitnehmen. Original und Kopie teilten sich dann dieselbe Bahn. Genau der
+  // Fehler, der bei den cutouts schon einmal drin war.
+  ziel.cutouts = loecher.map(c => {
+    const k = { ...c };
+    if (Array.isArray(c.punkte)) k.punkte = c.punkte.map(p => ({ ...p }));
+    if (Array.isArray(c.ecken)) k.ecken = c.ecken.map(p => ({ ...p }));
+    return k;
+  });
   return true;
 }
 // Ein Text fuer beide Wege ins Limit: selbst fraesen und Kopie ohne Loecher.
@@ -8661,7 +8764,9 @@ function _placementCutouts(pl) {
     if (c.aus) return [];
     const cu = c.u || 0, cv = c.v || 0;   // u entlang A (=lange Seite), v entlang B
 
-    if (Array.isArray(c.punkte) && c.punkte.length > 1) {
+    // 'poly' laeuft denselben Weg wie eine Fraesbahn: als echter Umriss, nicht
+    // als Rechteck. Sonst schnitte die Maschine die Giebelplatte gerade ab.
+    if (c.shape === 'poly' || (Array.isArray(c.punkte) && c.punkte.length > 1)) {
       const fb = _panelFaceBasis(b);
       const polys = _cutoutPolygone(c, fb.A, fb.B);
       // Die Bahnsegmente ueberlappen sich; als einzelne Polygone waeren sie im
