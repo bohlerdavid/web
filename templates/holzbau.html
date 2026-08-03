@@ -8725,6 +8725,14 @@ function printProject() {
   renderer.render(scene,camera);
 
   // --- SVG plan generator ---
+  /* Positionsnummern: dieselbe Nummer wie in der Stueckliste, damit man ein
+     Bauteil im Plan der Zeile zuordnen kann. Ohne das ist eine technische
+     Zeichnung nur ein Bild — man weiss nicht, WELCHER Balken die 4 m lange
+     Pfette ist. Gruppiert wird wie in der Liste, die Nummer gilt also fuer alle
+     massgleichen Bauteile. */
+  const _posVonId = new Map();
+  groupBeamsForList().forEach((g, i) => g.ids.forEach(id => _posVonId.set(id, i + 1)));
+
   function makePlanSVG(projectFn, W, H, label, forceScale, extraPoly = null) {
     const PAD = 55, DIM = 28;
     const svgW = W + PAD*2 + DIM*2;
@@ -8782,6 +8790,14 @@ function printProject() {
       if(rw>8&&rh>8) {
         parts.push(`<line x1="${rx}" y1="${ry}" x2="${rx+rw}" y2="${ry+rh}" stroke="#7a5020" stroke-width="0.4" opacity="0.4"/>`);
         parts.push(`<line x1="${rx+rw}" y1="${ry}" x2="${rx}" y2="${ry+rh}" stroke="#7a5020" stroke-width="0.4" opacity="0.4"/>`);
+      }
+      // Positionsnummer nur, wenn sie lesbar hineinpasst — sonst verdeckt sie
+      // das Bauteil mehr als sie hilft.
+      const pos = _posVonId.get(r.b.id);
+      if (pos && rw > 15 && rh > 11) {
+        const mx = rx + rw/2, my = ry + rh/2;
+        parts.push(`<circle cx="${mx}" cy="${my}" r="6.2" fill="#fff" fill-opacity="0.88" stroke="#333" stroke-width="0.5"/>`);
+        parts.push(`<text x="${mx}" y="${my+2.6}" text-anchor="middle" font-size="7.5" font-weight="bold" fill="#111" font-family="Arial">${pos}</text>`);
       }
     });
 
@@ -8920,13 +8936,18 @@ function printProject() {
   const _scaleOn = _scaleSel && _scaleSel.value !== 'auto' && !isNaN(_scaleFactor);
   const _scaleLbl = _scaleOn ? (_scaleFactor >= 1 ? _scaleFactor + ':1' : '1:' + Math.round(1/_scaleFactor)) : '';
   const scaledPlansHTML = _scaleOn ? `
-    <div style="page-break-before:always"></div>
-    <div class="parts-section"><h2>Maßstabsgetreue Pläne — Maßstab ${_scaleLbl}</h2></div>
-    <p style="font-size:8pt;color:#666;margin-bottom:8px">Beim Drucken „Tatsächliche Größe" / 100 % wählen (nicht „An Seite anpassen"), damit der Maßstab stimmt.${_scaleFactor===1 ? ' Bei 1:1 kannst du den Ausdruck direkt als Schablone aufs Holz legen.' : ''}</p>
-    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
-      <div><div style="font-size:8pt;font-weight:bold;color:#0f3460;margin-bottom:2px">Draufsicht</div>${makeScaledPlanSVG((x,y,z)=>[x,-z],'Draufsicht',_scaleFactor,_scaleLbl,grundrissPolyTop)}</div>
-      <div><div style="font-size:8pt;font-weight:bold;color:#0f3460;margin-bottom:2px">Vorne</div>${makeScaledPlanSVG((x,y,z)=>[x,-y],'Vorne',_scaleFactor,_scaleLbl)}</div>
-      <div><div style="font-size:8pt;font-weight:bold;color:#0f3460;margin-bottom:2px">Seite</div>${makeScaledPlanSVG((x,y,z)=>[z,-y],'Seite',_scaleFactor,_scaleLbl)}</div>
+    <div class="blatt">
+    <div class="kopf">
+      <div class="titel">Maßstäbliche Pläne<span class="unter">Maßstab ${_scaleLbl}</span></div>
+      <div class="rechts">HolzBau 3D &middot; ${today}</div>
+    </div>
+    <p class="hinweis" style="margin:0 0 8px">Beim Drucken <strong>„Tatsächliche Größe“ / 100&nbsp;%</strong> wählen —
+      nicht „An Seite anpassen“, sonst stimmt der Maßstab nicht.${_scaleFactor===1 ? ' Bei 1:1 lässt sich der Ausdruck direkt als Schablone aufs Holz legen.' : ''}</p>
+    <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start">
+      <div class="plan-box">${makeScaledPlanSVG((x,y,z)=>[x,-z],'Draufsicht',_scaleFactor,_scaleLbl,grundrissPolyTop)}<h3>Draufsicht<span>${_scaleLbl}</span></h3></div>
+      <div class="plan-box">${makeScaledPlanSVG((x,y,z)=>[x,-y],'Vorne',_scaleFactor,_scaleLbl)}<h3>Ansicht vorne<span>${_scaleLbl}</span></h3></div>
+      <div class="plan-box">${makeScaledPlanSVG((x,y,z)=>[z,-y],'Seite',_scaleFactor,_scaleLbl)}<h3>Ansicht seite<span>${_scaleLbl}</span></h3></div>
+    </div>
     </div>` : '';
 
   // --- Stückliste (grouped by measurements) ---
@@ -8937,13 +8958,31 @@ function printProject() {
     totalVol += volTotal;
     const lmTotal = (g.L/1000 * g.count).toFixed(3); // total running metres
     return `<tr>
-      <td>${pos++}</td><td>${g.count}</td><td>${escHtml(g.label)}</td><td>${escHtml(g.woodType)}</td>
-      <td>${g.L}×${g.B}×${g.H}</td><td>${lmTotal} m</td><td>${volTotal.toFixed(4)} m³</td>
+      <td class="n"><span class="pos">${pos++}</span></td><td class="n">${g.count}</td>
+      <td>${escHtml(g.label)}</td><td>${escHtml(g.woodType)}</td>
+      <td class="n">${g.L} × ${g.B} × ${g.H}</td><td class="n">${lmTotal} m</td><td class="n">${volTotal.toFixed(3)} m³</td>
     </tr>`;
   }).join('');
 
   const totalBeams = beams.length;
   const today = new Date().toLocaleDateString('de-CH');
+
+  /* Kopfangaben. Der Titel kommt aus dem Statiker-Datenblatt, wenn er dort
+     eingetragen wurde — dann traegt der Plan den Namen des Vorhabens statt
+     "Planausdruck". */
+  const bvTitel = escHtml((bauvorhaben && bauvorhaben.titel) || 'Konstruktionsplan');
+  // bvLeer wird weiter unten nochmals gebraucht — hier bewusst eigenstaendig
+  // gerechnet, weil const erst ab seiner Zeile sichtbar ist.
+  const _hatDatenblatt = Object.values(bauvorhaben || {}).some(v => (v || '').trim());
+  const _blaetter = 1 + (_hatDatenblatt ? 1 : 0) + (_scaleOn ? 1 : 0);
+  const bvSeiten = _blaetter > 1 ? ' von ' + _blaetter : '';
+  const bvOrt = escHtml((bauvorhaben && bauvorhaben.ort) || '—');
+  const _m = (v) => (v / 1000).toFixed(2).replace('.', ',');
+  // Statt eines erfundenen Massstabs die tatsaechlich dargestellte Ausdehnung:
+  // die Ansichten sind eingepasst, ein "M 1:50" waere schlicht gelogen.
+  const massTop   = ` &middot; ${_m(maxX-minX)} × ${_m(maxZ-minZ)} m`;
+  const massFront = ` &middot; ${_m(maxX-minX)} × ${_m(maxY-minY)} m`;
+  const massSide  = ` &middot; ${_m(maxZ-minZ)} × ${_m(maxY-minY)} m`;
 
   // --- Build print HTML ---
   /* Datenblatt fuer den Tragwerksplaner: die Angaben, die NICHT aus der
@@ -8957,13 +8996,10 @@ function printProject() {
     `<tr><td style="width:38%;color:#555">${escHtml(bez)}</td>` +
     `<td><strong>${wert ? escHtml(wert) : '<span style="color:#999;font-weight:normal">— nicht angegeben —</span>'}</strong></td></tr>`;
   const bauvorhabenSeite = bvLeer ? '' : `
-<div style="page-break-before:always"></div>
-<div class="page-header">
-  <div>
-    <h1>📋 ANGABEN FÜR DEN TRAGWERKSPLANER</h1>
-    <div style="color:#555;font-size:9pt;margin-top:3px">Beschreibung des Vorhabens — keine statische Berechnung</div>
-  </div>
-  <div class="meta">Datum: ${today}<br>Holzbau 3D</div>
+<div class="blatt">
+<div class="kopf">
+  <div class="titel">Angaben für den Tragwerksplaner<span class="unter">Beschreibung des Vorhabens &middot; keine statische Berechnung</span></div>
+  <div class="rechts">HolzBau 3D &middot; ${today}</div>
 </div>
 <div class="parts-section">
   <h2>Vorhaben</h2>
@@ -8993,6 +9029,7 @@ function printProject() {
   benötigt wird. Es enthält <strong>keine Bemessung und keinen Standsicherheitsnachweis</strong>.
   Die im Planer verwendeten Querschnitte sind Richtwerte aus der Vorplanung — welche Querschnitte
   zulässig sind, entscheidet die Berechnung eines Tragwerksplaners. Erstellt mit HolzBau 3D.
+</div>
 </div>`;
 
   const html = `<!DOCTYPE html>
@@ -9001,82 +9038,104 @@ function printProject() {
 <meta charset="UTF-8">
 <title>Holzbau 3D – Planausdruck</title>
 <style>
+  /* Technische Zeichnung statt Web-Optik: zurueckhaltende Graustufen, kein
+     Farbverlauf, keine abgerundeten Karten, keine Emoji. Eine Bauzeichnung wird
+     schwarzweiss kopiert, gefaxt und auf der Baustelle nass — alles, was nur
+     ueber Farbe funktioniert, ist dort verloren. */
   * { box-sizing: border-box; margin:0; padding:0; }
-  body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #222; background:#fff; }
-  @page { size: A4 landscape; margin: 12mm; }
-  @media print { body { margin:0; } .no-print { display:none; } }
+  body { font-family: "Helvetica Neue", Arial, Helvetica, sans-serif; font-size: 9.5pt;
+         color: #111; background:#fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  @page { size: A4 landscape; margin: 10mm; }
+  @media print { body { margin:0; } .no-print { display:none; } .blatt { page-break-after: always; } .blatt:last-child { page-break-after: auto; } }
 
-  .page-header {
-    display: flex; justify-content: space-between; align-items: flex-end;
-    border-bottom: 2.5px solid #0f3460; padding-bottom: 6px; margin-bottom: 14px;
-  }
-  .page-header h1 { font-size: 18pt; color: #0f3460; letter-spacing:1px; }
-  .page-header .meta { font-size: 9pt; color: #555; text-align:right; line-height:1.6; }
+  /* ── Kopf: schmale Zeile statt Werbebanner ─────────────────────────────── */
+  .kopf { display:flex; justify-content:space-between; align-items:baseline;
+          border-bottom:1.2px solid #111; padding-bottom:4px; margin-bottom:10px; }
+  .kopf .titel { font-size:12pt; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
+  .kopf .unter { font-size:8pt; color:#555; margin-left:10px; font-weight:400; letter-spacing:0; text-transform:none; }
+  .kopf .rechts { font-size:8pt; color:#555; text-align:right; line-height:1.45; }
 
-  .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px; }
-  .grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; margin-bottom:14px; }
-  .plan-box { border:1px solid #ccc; border-radius:4px; overflow:hidden; }
-  .plan-box h3 { background:#0f3460; color:#fff; font-size:9pt; padding:4px 8px; }
+  .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px; }
+  .grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:8px; }
+  /* Ansichtsrahmen: duenne Linie, Titel als Bandzeile UNTER der Zeichnung —
+     so wie in einer Zeichnung die Ansichtsbezeichnung unter dem Bild steht. */
+  .plan-box { border:0.8px solid #111; overflow:hidden; background:#fff; }
   .plan-box img, .plan-box svg { width:100%; display:block; }
+  .plan-box h3 { font-size:8pt; font-weight:700; padding:3px 6px; border-top:0.8px solid #111;
+                 letter-spacing:.05em; text-transform:uppercase; background:#f2f2f2; }
+  .plan-box h3 span { float:right; font-weight:400; text-transform:none; letter-spacing:0; color:#555; }
 
-  .parts-section h2 { font-size:13pt; color:#0f3460; border-bottom:1.5px solid #0f3460; padding-bottom:4px; margin-bottom:8px; }
-  table { width:100%; border-collapse:collapse; font-size:9pt; }
-  th { background:#0f3460; color:#fff; padding:5px 8px; text-align:left; }
-  td { padding:4px 8px; border-bottom:1px solid #e0e0e0; }
-  tr:nth-child(even) td { background:#f7f9ff; }
-  .total-row td { border-top:2px solid #0f3460; font-weight:bold; background:#eef2ff; }
+  /* ── Tabellen: Linien statt Flaechen ───────────────────────────────────── */
+  .parts-section h2, .block h2 {
+    font-size:10pt; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+    border-bottom:1px solid #111; padding-bottom:3px; margin:0 0 6px;
+  }
+  table { width:100%; border-collapse:collapse; font-size:8.5pt; }
+  th { background:#ebebeb; color:#111; padding:4px 6px; text-align:left;
+       border:0.6px solid #999; font-weight:700; }
+  td { padding:3px 6px; border:0.6px solid #ccc; }
+  td.n, th.n { text-align:right; font-variant-numeric: tabular-nums; }
+  .total-row td { border-top:1.2px solid #111; font-weight:700; background:#f2f2f2; }
+  .pos { display:inline-block; min-width:16px; text-align:center; border:0.8px solid #111;
+         border-radius:50%; font-weight:700; font-size:7.5pt; line-height:15px; height:16px; }
 
-  .print-btn { position:fixed; top:12px; right:12px; background:#0f3460; color:#fff; border:none; padding:10px 20px; border-radius:5px; cursor:pointer; font-size:11pt; z-index:100; }
-  .print-btn:hover { background:#e94560; }
+  /* ── Schriftfeld: das, was eine Zeichnung erst zur Zeichnung macht ─────── */
+  .schriftfeld { margin-top:10px; border:1.2px solid #111; display:grid;
+                 grid-template-columns: 2fr 1fr 1fr 1fr; font-size:8pt; }
+  .schriftfeld > div { border-right:0.6px solid #111; padding:4px 7px; }
+  .schriftfeld > div:last-child { border-right:none; }
+  .schriftfeld .lab { font-size:6.5pt; text-transform:uppercase; letter-spacing:.08em; color:#666; display:block; }
+  .schriftfeld .wert { font-weight:700; font-size:9pt; }
+  .hinweis { font-size:7.5pt; color:#555; line-height:1.45; margin-top:6px; }
+
+  .print-btn { position:fixed; top:10px; right:10px; background:#111; color:#fff; border:none;
+               padding:9px 18px; border-radius:3px; cursor:pointer; font-size:10pt; z-index:100; }
+  .print-btn:hover { background:#444; }
 </style>
 </head>
 <body>
-<button class="print-btn no-print" onclick="window.print()">🖨 Drucken / PDF</button>
+<button class="print-btn no-print" onclick="window.print()">Drucken / PDF</button>
 
-<div class="page-header">
-  <div>
-    <h1>🪵 HOLZBAU 3D &mdash; PLANAUSDRUCK</h1>
-    <div style="color:#555;font-size:9pt;margin-top:3px">Konstruktionsplan mit Stückliste</div>
-  </div>
-  <div class="meta">
-    Datum: ${today}<br>
-    Balken gesamt: ${totalBeams}<br>
-    Holzbau 3D
-  </div>
+<div class="blatt">
+<div class="kopf">
+  <div class="titel">${bvTitel}<span class="unter">Konstruktionsplan &middot; Ansichten und Stückliste</span></div>
+  <div class="rechts">HolzBau 3D &middot; ${today}<br>Blatt 1${bvSeiten}</div>
 </div>
 
-<!-- Row 1: 3D + Top view -->
+<!-- Ansichten. Der Titel steht UNTER der Zeichnung, wie in einer Bauzeichnung,
+     und traegt rechts den Massstabshinweis. -->
 <div class="grid-2">
   <div class="plan-box">
-    <h3>3D Ansicht (Isometrisch)</h3>
-    <img src="${imgIso}" style="background:#f0f0f0">
+    <img src="${imgIso}" style="background:#fafafa">
+    <h3>Isometrie<span>ohne Maßstab</span></h3>
   </div>
   <div class="plan-box">
-    <h3>Draufsicht (von oben)</h3>
     ${svgTop}
+    <h3>Draufsicht<span>eingepasst${massTop}</span></h3>
   </div>
 </div>
 
-<!-- Row 2: Front + Side -->
 <div class="grid-2">
   <div class="plan-box">
-    <h3>Ansicht Vorne</h3>
     ${svgFront}
+    <h3>Ansicht vorne<span>eingepasst${massFront}</span></h3>
   </div>
   <div class="plan-box">
-    <h3>Ansicht Seite</h3>
     ${svgSide}
+    <h3>Ansicht seite<span>eingepasst${massSide}</span></h3>
   </div>
 </div>
 
-<!-- Parts List -->
+<!-- Stückliste -->
 <div class="parts-section">
-  <h2>Stückliste (Materialliste)</h2>
+  <h2>Stückliste &mdash; die Positionsnummern stehen in den Ansichten</h2>
   <table>
     <thead>
       <tr>
-        <th>Pos.</th><th>Anz.</th><th>Bezeichnung</th><th>Holzart</th>
-        <th>L × B × H (mm)</th><th>Länge</th><th>Volumen</th>
+        <th class="n" style="width:42px">Pos.</th><th class="n" style="width:42px">Anz.</th>
+        <th>Bezeichnung</th><th style="width:130px">Holzart</th>
+        <th class="n" style="width:150px">L × B × H (mm)</th>
+        <th class="n" style="width:80px">Länge ges.</th><th class="n" style="width:85px">Volumen</th>
       </tr>
     </thead>
     <tbody>
@@ -9084,12 +9143,30 @@ function printProject() {
     </tbody>
     <tfoot>
       <tr class="total-row">
-        <td>${groups.length}</td><td>${totalBeams}</td>
-        <td colspan="4">Balken gesamt</td>
-        <td>${totalVol.toFixed(4)} m³</td>
+        <td class="n">${groups.length}</td><td class="n">${totalBeams}</td>
+        <td colspan="4">Positionen / Bauteile gesamt</td>
+        <td class="n">${totalVol.toFixed(3)} m³</td>
       </tr>
     </tfoot>
   </table>
+</div>
+
+<!-- Schriftfeld: Bauvorhaben, Ort, Datum, Blatt. Ohne das ist ein Ausdruck
+     kein Plan, sondern ein Bild — auf der Baustelle muss man wissen, WELCHES
+     Vorhaben, in welchem Stand. -->
+<div class="schriftfeld">
+  <div><span class="lab">Bauvorhaben</span><span class="wert">${bvTitel}</span></div>
+  <div><span class="lab">Ort</span><span class="wert">${bvOrt}</span></div>
+  <div><span class="lab">Datum</span><span class="wert">${today}</span></div>
+  <div><span class="lab">Blatt</span><span class="wert">1${bvSeiten}</span></div>
+</div>
+<p class="hinweis">
+  Erstellt mit HolzBau&nbsp;3D. Ansichten eingepasst, nicht maßstäblich — Maße
+  ausschließlich den Bemaßungen und der Stückliste entnehmen, nicht aus der
+  Zeichnung abgreifen. <strong>Kein Standsicherheitsnachweis:</strong> die
+  Querschnitte stammen aus der Vorplanung; ihre Zulässigkeit entscheidet die
+  Berechnung eines Tragwerksplaners.
+</p>
 </div>
 
 ${scaledPlansHTML}
