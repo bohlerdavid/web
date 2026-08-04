@@ -4048,8 +4048,20 @@ function openVerbindung() {
   const wer = document.getElementById('vb-wer');
   wer.innerHTML = sel.map((b, i) =>
     `<option value="${i}">${escHtml(b.name)} (${b.L}×${b.B}×${b.H})</option>`).join('');
+  /* Die Voreinstellung war "Ausklinken" — und die nimmt alles weg, was das
+     andere Bauteil belegt. Laeuft ein Balken quer DURCH den anderen, liegt der
+     danach in zwei Teilen da. Genau das ist passiert: geklickt wurde nur
+     "Verbindung erzeugen", ohne die Art zu aendern.
+     Deshalb wird jetzt vorgeschlagen, was zur Lage passt: geht ein Bauteil
+     durch, ist die Ueberblattung gemeint. */
+  const durchA = (_kerveProfil(sel[0], sel[1]) || {}).trenntDurch;
+  const durchB = (_kerveProfil(sel[1], sel[0]) || {}).trenntDurch;
+  const kreuzung = !!(durchA || durchB);
+  document.getElementById('vb-art').value = kreuzung ? 'blatt' : 'kerve';
   document.getElementById('vb-info').textContent =
-    `${sel[0].name} und ${sel[1].name}`;
+    `${sel[0].name} und ${sel[1].name}`
+    + (kreuzung ? ' — sie kreuzen sich, Überblattung vorgeschlagen'
+                : ' — eines liegt auf dem anderen, Ausklinken vorgeschlagen');
   vbArtWechsel();
   document.getElementById('vb-modal').style.display = 'flex';
 }
