@@ -3405,10 +3405,19 @@ function _kerveProfil(a, b) {
   if (_polyFlaeche(rest) > L * H * 0.9) {
     return { fehler: 'Das Gegenstück verdeckt fast den ganzen Balken. So bliebe kaum Holz übrig — bitte die Lage prüfen.' };
   }
-  // Der Stich geht IMMER durch die volle Breite. Deckt das Gegenstueck sie
-  // nicht ab, wird mehr weggenommen als noetig — das muss man wissen.
+  /* Trennt der Schnitt den Balken MITTENDRIN vollstaendig durch?
+     Genau das ist gemeldet worden: ein Balken lag in zwei Stuecken da. Beim
+     Ausklinken ist das rechnerisch richtig — es wird ja alles weggenommen, was
+     das andere Bauteil belegt —, aber es ist fast nie gewollt. Wer zwei
+     kreuzende Balken verbinden will, meint die Ueberblattung.
+     Am ENDE eines Balkens ist ein durchgehender Schnitt dagegen normal: das
+     ist schlicht ein Ablaengen. */
+  const us = rest.map(p => p[0]), vs = rest.map(p => p[1]);
+  const u0 = Math.min(...us), u1 = Math.max(...us);
+  const trenntDurch = (Math.max(...vs) - Math.min(...vs)) > H * 0.95
+                      && u0 > 5 && u1 < L - 5;
   return { ecken: _rundeEcken(rest), durch: b0 <= 2 && b1 >= BB - 2,
-           flaeche: _polyFlaeche(rest) };
+           trenntDurch, flaeche: _polyFlaeche(rest) };
 }
 
 /* UEBERBLATTUNG.
@@ -3439,13 +3448,28 @@ function _blattProfil(a, b) {
   if (d < 2) {
     return { fehler: 'Die Balken überdecken sich in der Höhe nicht — dort gibt es nichts zu verblatten.' };
   }
-  // Auf welcher Seite liegt der andere? Dort wird weggenommen — sonst saehen
-  // sich die beiden Blaetter nie.
-  const oben = ((lo + hi) / 2) > H / 2;
-  const v0 = oben ? lo + d / 2 : lo;
-  const v1 = oben ? hi : lo + d / 2;
+  /* Wer gibt oben ab, wer unten? Die Lage der Ueberdeckung im eigenen Bauteil
+     taugt dafuer NICHT: treffen sich zwei Sparren symmetrisch am First, liegt
+     sie bei beiden genau mittig — beide nahmen dann unten ab und griffen nie
+     ineinander. Nachgemessen an der Vorlage Satteldach: Sparren VL und VR
+     entfernten beide v 0..21.
+
+     Entschieden wird deshalb ueber die Weltlage der Mittelpunkte, und bei
+     Gleichstand ueber die Bauteilnummer. Die ist willkuerlich, aber fuer beide
+     Aufrufe DIESELBE — und genau darauf kommt es an: einer muss oben abgeben,
+     der andere unten. */
+  const oa = _obbVon(a), ob = _obbVon(b);
+  const aLiegtOben = Math.abs(oa.c.y - ob.c.y) > 0.5
+    ? oa.c.y > ob.c.y
+    : (a.id || 0) > (b.id || 0);
+  // Zeigt die lokale Hoehenachse nach oben oder nach unten?
+  const plusIstOben = ra.achsen[ra.iH].y >= 0;
+  // Liegt a oben, gibt es sein UNTERES Stueck der Ueberdeckung ab.
+  const kleineV = aLiegtOben === plusIstOben;
+  const v0 = kleineV ? lo : lo + d / 2;
+  const v1 = kleineV ? lo + d / 2 : hi;
   return { ecken: _rundeEcken([[u0, v0], [u1, v0], [u1, v1], [u0, v1]]),
-           tiefe: d / 2, laenge: u1 - u0, ueberdeckung: d };
+           tiefe: d / 2, laenge: u1 - u0, ueberdeckung: d, oben: aLiegtOben };
 }
 
 /* ZAPFEN UND ZAPFENLOCH.
@@ -4064,6 +4088,17 @@ function runVerbindung() {
     const A = sel[wer], B = sel[1 - wer];
     const p = _kerveProfil(A, B);
     if (p.fehler) { alert(p.fehler); return; }
+    /* Nicht stillschweigend durchtrennen. Rechnerisch ist es richtig — beim
+       Ausklinken wird alles weggenommen, was das andere Bauteil belegt —, aber
+       wer zwei kreuzende Balken verbinden will, meint fast immer die
+       Überblattung. Genau dieser Fall wurde als Fehler gemeldet. */
+    if (p.trenntDurch && !confirm(
+        `„${A.name}“ würde dabei mitten im Bauteil VOLLSTÄNDIG durchtrennt — `
+        + 'es liegt danach in zwei Teilen da.\n\n'
+        + 'Das ist beim Ausklinken rechnerisch richtig, aber selten gewollt: '
+        + 'für zwei sich kreuzende Balken ist die Überblattung gedacht. Dort '
+        + 'verliert jeder nur die halbe Überdeckung und beide bleiben ganz.\n\n'
+        + 'Trotzdem ausklinken?')) { return; }
     auftrag.push({ beam: A, ecken: p.ecken, durch: p.durch });
   } else if (art === 'zapfen') {
     const A = sel[wer], B = sel[1 - wer];
