@@ -1392,8 +1392,9 @@ body {
       <div class="panel-section">
         <div class="panel-title" style="margin-bottom:4px">Holzverbindung</div>
         <div style="font-size:11px;color:var(--text-3);line-height:1.45;margin-bottom:6px">
-          Zwei Balken markieren — Sparren und Pfette für eine <b>Kerve</b>,
-          zwei sich kreuzende Balken für eine <b>Überblattung</b>.
+          Zwei Balken markieren. Der Dialog schlägt vor, was zur Lage passt:
+          <b>Auflager</b>, wenn einer auf dem anderen liegt — dann wird nur der
+          obere eingeschnitten. <b>Überblattung</b>, wenn sie sich kreuzen.
         </div>
         <button class="add-btn" onclick="openVerbindung()"
                 style="background:var(--bg-card);color:var(--accent);border:1px solid rgba(78,140,221,.35)">⚒ Verbindung erzeugen</button>
@@ -1968,8 +1969,9 @@ body {
     <label style="display:block;font-size:.78rem;color:var(--text-2);margin-bottom:3px">Art der Verbindung</label>
     <select id="vb-art" onchange="vbArtWechsel()"
             style="width:100%;padding:7px 9px;margin-bottom:12px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font);font-size:.86rem">
-      <option value="kerve">Ausklinken / Kerve</option>
-      <option value="blatt">Überblattung</option>
+      <option value="auflager">Auflager — nur den oberen Balken einschneiden</option>
+      <option value="blatt">Überblattung — beide je zur Hälfte</option>
+      <option value="kerve">Ausklinken — Bauteil selbst wählen</option>
       <option value="zapfen">Schlitz und Zapfen</option>
     </select>
 
@@ -4057,11 +4059,11 @@ function openVerbindung() {
   const durchA = (_kerveProfil(sel[0], sel[1]) || {}).trenntDurch;
   const durchB = (_kerveProfil(sel[1], sel[0]) || {}).trenntDurch;
   const kreuzung = !!(durchA || durchB);
-  document.getElementById('vb-art').value = kreuzung ? 'blatt' : 'kerve';
+  document.getElementById('vb-art').value = kreuzung ? 'blatt' : 'auflager';
   document.getElementById('vb-info').textContent =
     `${sel[0].name} und ${sel[1].name}`
     + (kreuzung ? ' — sie kreuzen sich, Überblattung vorgeschlagen'
-                : ' — eines liegt auf dem anderen, Ausklinken vorgeschlagen');
+                : ' — eines liegt auf dem anderen, Auflager vorgeschlagen');
   vbArtWechsel();
   document.getElementById('vb-modal').style.display = 'flex';
 }
@@ -4074,12 +4076,19 @@ function vbArtWechsel() {
   document.getElementById('vb-wer-label').textContent =
     art === 'zapfen' ? 'Zapfen bekommt' : 'Ausgeklinkt wird';
   document.getElementById('vb-erklaerung').textContent =
-      art === 'kerve'
+      art === 'auflager'
+    ? 'Auflager: nur der OBERE Balken wird eingeschnitten — genau so weit, wie '
+      + 'er in den unteren eintaucht. Der untere bleibt unversehrt und trägt. '
+      + 'Das ist der Regelfall für Sparren auf Pfette; welcher Balken oben '
+      + 'liegt, ergibt sich aus der Lage.'
+    : art === 'kerve'
     ? 'Ausklinken: dem gewählten Bauteil wird genau das weggenommen, was das '
-      + 'andere belegt. Bei Sparren auf Pfette entsteht so die Kerve.'
+      + 'andere belegt — auch wenn das der untere ist. Für den Regelfall ist '
+      + '„Auflager“ die bessere Wahl, dort wird das Bauteil nicht geraten.'
     : art === 'blatt'
-    ? 'Überblattung: beide Balken verlieren im Kreuzungsbereich ihre halbe '
-      + 'Höhe — jeder auf der Seite, auf der der andere liegt.'
+    ? 'Überblattung: beide Balken teilen sich die Überdeckung je zur Hälfte, '
+      + 'jeder auf der Seite, auf der der andere liegt. Gedacht für zwei '
+      + 'Balken, die sich KREUZEN und bündig werden sollen.'
     : 'Schlitz und Zapfen: am Balkenende bleibt ein mittiger Zapfen stehen, '
       + 'das Gegenstück bekommt das passende Loch. Die Zapfenlänge wird nicht '
       + 'abgefragt, sondern gemessen — sie ist das Stück, mit dem der Balken '
@@ -4096,7 +4105,26 @@ function runVerbindung() {
      Verbindung ein leerer Schritt im Rückgängig-Verlauf stehen. */
   const auftrag = [];
   let hinweis = '';
-  if (art === 'kerve') {
+  if (art === 'auflager') {
+    /* Nur der OBERE Balken wird eingeschnitten — der untere trägt und bleibt
+       ganz. Welcher oben liegt, ergibt die Weltlage der Mittelpunkte; geraten
+       wird nichts. Genau das ist der Regelfall Sparren auf Pfette, und genau
+       das war vorher nur über „Ausklinken" und die richtige Wahl des Bauteils
+       erreichbar. */
+    const o0 = _obbVon(sel[0]), o1 = _obbVon(sel[1]);
+    const iOben = o0.c.y >= o1.c.y ? 0 : 1;
+    const A = sel[iOben], B = sel[1 - iOben];
+    const p = _kerveProfil(A, B);
+    if (p.fehler) { alert(p.fehler); return; }
+    if (p.trenntDurch && !confirm(
+        `„${A.name}“ würde dabei vollständig durchtrennt — er steckt zu tief `
+        + `in „${B.name}“.\n\nFür ein sauberes Auflager sollte er nur ein Stück `
+        + 'eintauchen. Schiebe ihn etwas höher und versuche es erneut.\n\n'
+        + 'Trotzdem einschneiden?')) { return; }
+    auftrag.push({ beam: A, ecken: p.ecken, durch: p.durch });
+    hinweis = `\n\nEingeschnitten wurde „${A.name}“ (liegt oben). `
+            + `„${B.name}“ bleibt unversehrt und trägt.`;
+  } else if (art === 'kerve') {
     const A = sel[wer], B = sel[1 - wer];
     const p = _kerveProfil(A, B);
     if (p.fehler) { alert(p.fehler); return; }
@@ -4151,7 +4179,8 @@ function runVerbindung() {
   updateUI();
 
   const nichtDurch = auftrag.filter(a => a.durch === false).length;
-  alert((art === 'kerve' ? 'Ausklinkung erzeugt.'
+  alert((art === 'auflager' ? 'Auflager eingeschnitten.'
+       : art === 'kerve' ? 'Ausklinkung erzeugt.'
        : art === 'zapfen' ? 'Zapfen und Zapfenloch erzeugt.'
        : 'Überblattung an beiden Balken erzeugt.')
     + hinweis
@@ -5314,7 +5343,8 @@ function renderCutoutPanel(b) {
     // EIN Schluessel mit Platzhaltern statt zusammengestueckelt: "Punkte" allein
     // waere ein kurzer Allerweltsschluessel, der dann auch anderswo zuschlaegt.
     const titel = c.verbindung
-      ? (c.verbindung === 'kerve' ? T('⚒ Kerve / Ausklinkung')
+      ? (c.verbindung === 'auflager' ? T('⚒ Auflager / Kerve')
+       : c.verbindung === 'kerve' ? T('⚒ Kerve / Ausklinkung')
        : c.verbindung === 'zapfen' ? T('⚒ Zapfen / Zapfenloch')
        : T('⚒ Überblattung')) + ' ' + (i + 1)
       : istSchraege
