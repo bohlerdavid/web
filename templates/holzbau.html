@@ -629,6 +629,12 @@ body {
 }
 .tab-btn.row2 { grid-row: 2; border-top: 1px solid var(--border-2); }
 .tab-pane { display: flex; flex-direction: column; }
+/* Luft am unteren Rand. Uebersetzungs-Widgets und Browser-Erweiterungen legen
+   sich gern unten links ueber die Seite — dort sass zuletzt die Auswahlliste
+   "Querschnitt waehlen" und war nicht mehr bedienbar. Die App kann solche
+   Einblendungen nicht verhindern, aber sie muss dort nichts Wichtiges
+   hinstellen. Ein leerer Streifen kostet nichts: die Leiste scrollt ohnehin. */
+.tab-pane > *:last-child { margin-bottom: 64px; }
 .tpl-card {
   background: var(--bg-2);
   border: 1px solid var(--border);
@@ -1396,11 +1402,15 @@ body {
       <div class="panel-section">
         <div class="panel-title" style="margin-bottom:4px">Kollisionsprüfung</div>
         <div style="font-size:11px;color:var(--text-3);line-height:1.45;margin-bottom:6px">
-          Findet Bauteile, die denselben Raum belegen. Im 3D sieht man eine
-          Überschneidung von 40&nbsp;mm nicht — auf der Baustelle schon.
+          Einschalten und dranlassen: überall dort, wo zwei Bauteile denselben
+          Raum belegen, wird <b>genau dieser Bereich rot</b> — auch wenn er
+          tief in der Konstruktion steckt. Aktualisiert sich beim Bauen mit.
         </div>
+        <button class="add-btn" id="btn-koll" onclick="toggleKollisionen()"
+                style="background:var(--bg-card);color:var(--red);border:1px solid rgba(220,80,80,.4)">⚠ Kollisionen anzeigen</button>
+        <div id="koll-stand" style="font-size:11px;line-height:1.45;margin-top:6px"></div>
         <button class="add-btn" onclick="openKollisionen()"
-                style="background:var(--bg-card);color:var(--red);border:1px solid rgba(220,80,80,.4)">⚠ Kollisionen prüfen</button>
+                style="background:transparent;color:var(--text-3);border:none;font-size:11px;padding:4px 0;margin-top:2px">Liste mit Maßen öffnen</button>
       </div>
 
       <div class="panel-section">
@@ -1934,6 +1944,9 @@ body {
     <div id="pr-info" style="font-size:.8rem;color:var(--accent);margin-bottom:12px"></div>
     <div id="pr-liste" style="overflow-y:auto;flex:1;margin-bottom:14px"></div>
     <div style="font-size:.74rem;color:var(--text-3);line-height:1.5;margin-bottom:12px">
+      <b>Es wird nichts automatisch gespeichert.</b> Nach dem Arbeiten hier
+      auf „Speichern“ — beim geöffneten Projekt geht das auch direkt in seiner
+      Zeile. „Als neues speichern“ legt eine Kopie an.<br>
       Der Serverspeicher ist dafür da, an einem anderen Gerät weiterzuarbeiten.
       <b>Speichern als Datei bleibt unbegrenzt und kostenlos</b> — auch im
       freien Plan. Die Bild-Vorlage wird auf dem Server nicht mitgespeichert,
@@ -2693,7 +2706,7 @@ Object.assign(window, {
   openBauvorhaben, closeBauvorhaben, saveBauvorhaben,
   applyPreset,
   openBeplanken, closeBeplanken, runBeplanken, bpModusWechsel,
-  openKollisionen, closeKollisionen,
+  openKollisionen, closeKollisionen, toggleKollisionen, zeichneKollisionen,
   openVerbindung, closeVerbindung, runVerbindung, vbArtWechsel,
   saveProject, handleLoadFile,
   openProjekte, closeProjekte, projektSpeichern, projektOeffnen,
@@ -3398,8 +3411,21 @@ function _kerveProfil(a, b) {
            flaeche: _polyFlaeche(rest) };
 }
 
-/* UEBERBLATTUNG: beide Balken verlieren im Kreuzungsbereich ihre halbe Hoehe,
-   und zwar jeder auf der Seite, auf der der andere liegt. */
+/* UEBERBLATTUNG.
+
+   Geteilt wird die TATSAECHLICHE UEBERDECKUNG, nicht die halbe Bauteilhoehe.
+   Der Unterschied ist der zwischen einer Verbindung und einem Schaden:
+
+   In der Vorlage Satteldach taucht ein Sparren (H 80) nur 32 mm in die Pfette
+   (H 120) ein. Nahm jeder Balken seine halbe EIGENE Hoehe weg, waren das
+   40 + 60 = 100 mm bei 32 mm Ueberdeckung — die Pfette war halb durchtrennt
+   und zwischen den Balken klaffte eine Luecke von 68 mm.
+
+   Richtig ist: die Ueberdeckung [lo..hi] wird halbiert. Der obere Balken gibt
+   ihre untere Haelfte ab, der untere ihre obere. Danach liegen beide bündig
+   aufeinander und es bleibt kein Spalt. Liegen zwei gleich hohe Balken
+   vollstaendig uebereinander, ist das exakt die klassische halbe Hoehe —
+   der alte Fall bleibt also erhalten. */
 function _blattProfil(a, b) {
   const { profil, ra } = _profilVon(a, b);
   const L = ra.e[ra.iL], H = ra.e[ra.iH];
@@ -3408,12 +3434,18 @@ function _blattProfil(a, b) {
   const us = rest.map(p => p[0]), vs = rest.map(p => p[1]);
   const u0 = Math.max(0, Math.min(...us)), u1 = Math.min(L, Math.max(...us));
   if (u1 - u0 < 10) return { fehler: 'Die Überdeckung ist zu klein für ein Blatt.' };
+  const lo = Math.max(0, Math.min(...vs)), hi = Math.min(H, Math.max(...vs));
+  const d = hi - lo;
+  if (d < 2) {
+    return { fehler: 'Die Balken überdecken sich in der Höhe nicht — dort gibt es nichts zu verblatten.' };
+  }
   // Auf welcher Seite liegt der andere? Dort wird weggenommen — sonst saehen
   // sich die beiden Blaetter nie.
-  const oben = ((Math.min(...vs) + Math.max(...vs)) / 2) > H / 2;
-  const v0 = oben ? H / 2 : 0, v1 = oben ? H : H / 2;
+  const oben = ((lo + hi) / 2) > H / 2;
+  const v0 = oben ? lo + d / 2 : lo;
+  const v1 = oben ? hi : lo + d / 2;
   return { ecken: _rundeEcken([[u0, v0], [u1, v0], [u1, v1], [u0, v1]]),
-           tiefe: H / 2, laenge: u1 - u0 };
+           tiefe: d / 2, laenge: u1 - u0, ueberdeckung: d };
 }
 
 /* ZAPFEN UND ZAPFENLOCH.
@@ -3507,6 +3539,82 @@ function _zapfenlochProfil(b, klotz) {
     return { fehler: 'Der Zapfen trifft das Gegenstück nicht — bitte die Lage prüfen.' };
   }
   return { ecken: _rundeEcken(rest), flaeche: _polyFlaeche(rest) };
+}
+
+/* ---- Der Überschneidungsbereich als Körper -----------------------------
+   Eine Liste sagt "80 mm tief" — man muss sie lesen und dann suchen. Sichtbar
+   rot markiert ist der Bereich sofort da, wo er ist.
+
+   Zwei orientierte Kisten schneiden sich in einem konvexen Körper. Der wird
+   exakt gebildet, nicht genähert: jede Seitenfläche von A wird an den sechs
+   Halbräumen von B beschnitten und umgekehrt. Zusammen ergibt das die
+   geschlossene Hülle des gemeinsamen Bereichs.
+
+   Warum nicht einfach beide Bauteile rot färben? Weil dann ein 6 m langer
+   Sparren rot wäre, obwohl sich nur 4 cm an seinem Ende überschneiden — man
+   sähe das Problem, aber nicht die Stelle. */
+function _obbEbenen(o) {
+  const raus = [];
+  for (let i = 0; i < 3; i++) {
+    const n = o.achsen[i], m = n.dot(o.c);
+    raus.push({ n, d: m + o.h[i], vz: 1 });     //  n·x <= m + h
+    raus.push({ n, d: m - o.h[i], vz: -1 });    //  n·x >= m - h
+  }
+  return raus;
+}
+function _obbFlaechen(o) {
+  const e = (i, s) => o.achsen[i].clone().multiplyScalar(s * o.h[i]);
+  const raus = [];
+  for (let i = 0; i < 3; i++) {
+    const j = (i + 1) % 3, k = (i + 2) % 3;
+    for (const s of [-1, 1]) {
+      const mitte = o.c.clone().add(e(i, s));
+      raus.push([
+        mitte.clone().add(e(j, -1)).add(e(k, -1)),
+        mitte.clone().add(e(j,  1)).add(e(k, -1)),
+        mitte.clone().add(e(j,  1)).add(e(k,  1)),
+        mitte.clone().add(e(j, -1)).add(e(k,  1)),
+      ]);
+    }
+  }
+  return raus;
+}
+/* Ein Polygon an einem Halbraum beschneiden (Sutherland-Hodgman in 3D). */
+function _polyClip3(poly, eb) {
+  if (!poly.length) return poly;
+  const wert = (p) => eb.vz > 0 ? (eb.d - eb.n.dot(p)) : (eb.n.dot(p) - eb.d);
+  const raus = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const wa = wert(a), wb = wert(b);
+    if (wa >= 0) raus.push(a);
+    if ((wa >= 0) !== (wb >= 0)) {
+      const t = wa / (wa - wb);
+      raus.push(a.clone().lerp(b, t));
+    }
+  }
+  return raus;
+}
+/* Die Hülle des gemeinsamen Bereichs als Dreiecksliste. */
+function _ueberlappDreiecke(A, B) {
+  const flaechen = [];
+  const sammeln = (quelle, gegen) => {
+    const ebenen = _obbEbenen(gegen);
+    _obbFlaechen(quelle).forEach(f => {
+      let p = f;
+      for (const eb of ebenen) { p = _polyClip3(p, eb); if (p.length < 3) break; }
+      if (p.length >= 3) flaechen.push(p);
+    });
+  };
+  sammeln(A, B);
+  sammeln(B, A);
+  const pos = [];
+  flaechen.forEach(p => {
+    for (let i = 1; i + 1 < p.length; i++) {
+      pos.push(p[0].x, p[0].y, p[0].z, p[i].x, p[i].y, p[i].z, p[i+1].x, p[i+1].y, p[i+1].z);
+    }
+  });
+  return pos;
 }
 
 function findeKollisionen() {
@@ -4005,6 +4113,62 @@ function runVerbindung() {
         + 'weggenommen, als nötig wäre.' : '')
     + '\n\nDie Verbindung sitzt als Ausschnitt am Bauteil und lässt sich dort '
     + 'wieder entfernen. Mit Strg+Z rückgängig.');
+}
+
+/* ---- Kollisionsanzeige: ein Schalter, kein Bericht --------------------- */
+let _kollAn = false;
+let _kollGruppe = null;
+
+function toggleKollisionen() {
+  _kollAn = !_kollAn;
+  const b = document.getElementById('btn-koll');
+  if (b) b.classList.toggle('active', _kollAn);
+  zeichneKollisionen();
+}
+
+function zeichneKollisionen() {
+  if (!_kollGruppe) {
+    _kollGruppe = new THREE.Group();
+    _kollGruppe.renderOrder = 999;
+    scene.add(_kollGruppe);
+  }
+  // Alte Markierungen weg — auch ihre Geometrie, sonst waechst der Speicher
+  // bei jedem Zug am Balken.
+  while (_kollGruppe.children.length) {
+    const m = _kollGruppe.children.pop();
+    if (m.geometry) m.geometry.dispose();
+    if (m.material) m.material.dispose();
+    _kollGruppe.remove(m);
+  }
+  const info = document.getElementById('koll-stand');
+  if (!_kollAn) { if (info) info.textContent = ''; return; }
+
+  const treffer = findeKollisionen();
+  const obb = new Map();
+  const hol = (b) => { if (!obb.has(b.id)) obb.set(b.id, _obbVon(b)); return obb.get(b.id); };
+  treffer.forEach(k => {
+    const pos = _ueberlappDreiecke(hol(k.a), hol(k.b));
+    if (pos.length < 9) return;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
+    g.computeVertexNormals();
+    /* depthTest aus: der gemeinsame Bereich steckt per Definition IN den
+       Bauteilen und wäre sonst genau von dem Holz verdeckt, um das es geht.
+       Sichtbar durch die Konstruktion hindurch ist hier das Richtige. */
+    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
+      color: 0xff2d2d, transparent: true, opacity: 0.55,
+      depthTest: false, depthWrite: false, side: THREE.DoubleSide,
+    }));
+    m.renderOrder = 999;
+    _kollGruppe.add(m);
+  });
+  if (info) {
+    info.textContent = treffer.length
+      ? `${treffer.length} ${treffer.length === 1 ? 'Überschneidung' : 'Überschneidungen'} — `
+        + `rot markiert, tiefste ${Math.round(treffer[0].tiefe)} mm`
+      : 'Keine Überschneidung gefunden.';
+    info.style.color = treffer.length ? 'var(--red)' : 'var(--text-3)';
+  }
 }
 
 function openKollisionen() {
@@ -6029,6 +6193,10 @@ function updateUI() {
   updateSelPanel();
   renderPhaseFilterBar();
   updateSceneExtent();   // Nebel/Raster/Boden an Szenengröße anpassen
+  // Nur wenn die Anzeige eingeschaltet ist — sonst kostet updateUI nichts
+  // zusätzlich. Eingeschaltet wandert die rote Markierung beim Bauen mit,
+  // statt einen Stand von vorhin zu zeigen.
+  if (_kollAn) zeichneKollisionen();
 }
 
 // ══════════════════════════════════════════════
@@ -7666,16 +7834,25 @@ async function openProjekte() {
     kasten.innerHTML = n === 0
       ? '<div style="font-size:.85rem;color:var(--text-3);padding:10px 0">'
         + 'Noch kein Projekt auf dem Server. Mit „Als neues speichern" legst du das erste an.</div>'
-      : d.projekte.map(p => `<div style="border:1px solid var(--border);border-radius:var(--r-sm);padding:8px 10px;margin-bottom:6px;background:var(--bg-input);display:flex;gap:8px;align-items:center">
+      : d.projekte.map(p => {
+          /* Das gerade geöffnete Projekt wird hervorgehoben und bekommt einen
+             eigenen Speichern-Knopf. Vorher gab es nur „Speichern" ganz unten;
+             der überschrieb zwar das offene Projekt, aber das sah man ihm
+             nicht an — die Frage „muss ich erneut speichern?" war die Folge. */
+          const offen = String(_projektId) === String(p.id);
+          return `<div style="border:1px solid ${offen ? 'var(--accent)' : 'var(--border)'};border-radius:var(--r-sm);padding:8px 10px;margin-bottom:6px;background:var(--bg-input);display:flex;gap:8px;align-items:center">
           <div style="flex:1;min-width:0">
-            <div style="font-size:.85rem;color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(p.name)}</div>
+            <div style="font-size:.85rem;color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(p.name)}${
+              offen ? ' <span style="font-weight:400;font-size:.72rem;color:var(--accent)">— gerade geöffnet</span>' : ''}</div>
             <div style="font-size:.72rem;color:var(--text-3)">${p.geaendert} · ${Math.round(p.groesse/1024)} KB</div>
           </div>
-          <button class="tb-btn" style="font-size:11px;height:26px;padding:0 9px" data-pr-oeffnen="${p.id}">Öffnen</button>
+          ${offen
+            ? `<button class="tb-btn" style="font-size:11px;height:26px;padding:0 9px;color:var(--accent);font-weight:700" data-pr-sichern="${p.id}" title="Den aktuellen Stand in dieses Projekt speichern">💾 Speichern</button>`
+            : `<button class="tb-btn" style="font-size:11px;height:26px;padding:0 9px" data-pr-oeffnen="${p.id}">Öffnen</button>`}
           <button class="tb-btn" style="font-size:11px;height:26px;padding:0 9px" data-pr-teilen="${p.id}">Teilen</button>
           <button class="tb-btn" style="font-size:11px;height:26px;padding:0 9px" data-pr-namen="${p.id}" data-pr-alt="${escHtml(p.name)}">Umbenennen</button>
           <button class="tb-btn" style="font-size:11px;height:26px;padding:0 9px;color:var(--red)" data-pr-weg="${p.id}">Löschen</button>
-        </div>`).join('');
+        </div>`; }).join('');
   } catch (e) {
     kasten.innerHTML = '';
     info.style.color = 'var(--red)';
@@ -7689,17 +7866,26 @@ async function projektSpeichern(alsNeues) {
      allein mehrere Megabyte haben und würde die Grenze sprengen. In der
      heruntergeladenen Datei ist es weiterhin dabei. */
   const daten = JSON.stringify(serializeProject(false));
-  const vorschlag = alsNeues || !_projektName ? (_projektName || 'Mein Projekt') : _projektName;
-  const name = prompt('Name des Projekts:', vorschlag);
-  if (name === null) return;
+  /* Nach dem Namen wird nur gefragt, wenn wirklich einer gebraucht wird — beim
+     Anlegen. Ein offenes Projekt zu sichern soll EIN Klick sein; jedes Mal den
+     Namen zu bestätigen ist die Art Reibung, wegen der man am Ende gar nicht
+     speichert. */
+  let name = _projektName;
+  if (alsNeues || !_projektId) {
+    const eingabe = prompt(alsNeues ? 'Name für die neue Kopie:' : 'Name des Projekts:',
+                           _projektName || 'Mein Projekt');
+    if (eingabe === null) return;
+    name = eingabe.trim() || 'Unbenanntes Projekt';
+  }
   try {
-    const felder = { name: name.trim() || 'Unbenanntes Projekt', daten };
+    const felder = { name, daten };
     if (!alsNeues && _projektId) felder.id = String(_projektId);
     const d = await _projektRuf('/projekte/speichern', felder);
+    const neu = !felder.id;
     _projektId = d.id; _projektName = d.name;
     _projektTitelZeigen();
-    alert('Gespeichert: ' + d.name);
     if (document.getElementById('pr-modal').style.display === 'flex') openProjekte();
+    else alert((neu ? 'Angelegt: ' : 'Gespeichert: ') + d.name);
   } catch (e) { alert(e.message); }
 }
 
@@ -7729,6 +7915,8 @@ document.addEventListener('DOMContentLoaded', () => {
   liste.addEventListener('click', async (e) => {
     const auf = e.target.closest('[data-pr-oeffnen]');
     if (auf) return projektOeffnen(parseInt(auf.dataset.prOeffnen, 10));
+    const sichern = e.target.closest('[data-pr-sichern]');
+    if (sichern) return projektSpeichern(false);
     const teil = e.target.closest('[data-pr-teilen]');
     if (teil) {
       /* Der Link ist NICHT offen: nur wer eine der angegebenen Adressen besitzt,
