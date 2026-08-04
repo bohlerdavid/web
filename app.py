@@ -355,6 +355,17 @@ SCHEMA_MIGRATIONS = [
     "ALTER TABLE feedback ADD COLUMN project MEDIUMTEXT NULL",
     "ALTER TABLE app_users ADD COLUMN unsub_token VARCHAR(64) NULL",
     "ALTER TABLE app_users ADD COLUMN last_upsell_sent DATETIME NULL",
+    # Wie oft die Werbemail schon rausging. Ohne Zaehler lief sie ALLE 5 TAGE
+    # unbegrenzt weiter — wer sich vor zwei Monaten registriert hat, bekam rund
+    # ein Dutzend. Das liest sich als Spam und drueckt bei Brevo die Zustellrate
+    # fuer ALLE Mails, auch fuer Verifizierung und Abo-Ablauf.
+    "ALTER TABLE app_users ADD COLUMN upsell_count INT NOT NULL DEFAULT 0",
+    # Bestandsnutzer haben schon reichlich bekommen. Sie starten deshalb bei 2
+    # und erhalten hoechstens noch EINE Mail statt drei.
+    # Idempotent: nach dem ersten Lauf steht dort 2, die Bedingung greift nicht
+    # mehr. Ein neu angeschriebener Nutzer hat 1 und wird ebenfalls nicht
+    # erfasst. Die Migrationen laufen bei JEDEM Start.
+    "UPDATE app_users SET upsell_count=2 WHERE last_upsell_sent IS NOT NULL AND upsell_count=0",
     # Verlaengerungs-Erinnerung: speichert das Periodenende, fuer das bereits
     # gemailt wurde. Als Schluessel bewusst das Datum und kein Flag — bei der
     # naechsten Periode aendert sich current_period_end, damit passt der
@@ -4188,11 +4199,28 @@ def cron_subscription_reminders():
     return jsonify(ok=True, synced=synced, reminders=log, renewals=renewals)
 
 
+# Werbemail: Obergrenze und wachsender Abstand.
+#
+# Vorher lief sie unbegrenzt alle 5 Tage weiter. Wer nach der dritten Mail nicht
+# gekauft hat, kauft auch nach der zwoelften nicht — dafuer sinkt bei Brevo die
+# Zustellrate fuer ALLE Mails, auch fuer Verifizierung und Abo-Ablauf. Der
+# Abstand waechst, damit der letzte Anlauf nicht direkt hinterherkommt.
+UPSELL_MAX = 3
+UPSELL_ABSTAND = (5, 14, 30)     # Tage vor der 1., 2. und 3. Mail
+
+
 @app.route('/cron/premium-upsell', methods=['GET', 'POST'])
 def cron_premium_upsell():
-    """Weekly upsell email to all non-premium users (trigger e.g. every Sunday ~18:00).
-    Secured via CRON_SECRET (?key= or X-Cron-Key header). Throttled to once per 5 days
-    per user, so an accidental double-trigger on the same day won't double-send."""
+    """Werbemail an Nutzer OHNE laufendes Abo. Taeglich aufrufbar — wer wann
+    dran ist, entscheidet die Abfrage, nicht der Cron-Takt.
+
+    Wer sie NICHT bekommt:
+      - laufende Abo-Kunden (aktiv oder gekuendigt mit noch bezahlter Laufzeit)
+      - wer der Werbung widersprochen hat (marketing_opt_out, Abmeldelink)
+      - wer keine bestaetigte E-Mail hat
+      - wer die Mail schon UPSELL_MAX mal bekommen hat
+    Der Abstand waechst mit jeder Mail (UPSELL_ABSTAND), damit der letzte
+    Anlauf nicht direkt hinterherkommt."""
     if not _cron_schluessel_pruefen('premium-upsell'):
         abort(403)
     base_url = os.environ.get('BASE_URL', 'https://holzbau3d.app').rstrip('/')
@@ -4210,7 +4238,11 @@ def cron_premium_upsell():
                       OR (s.status = 'cancelled' AND (s.current_period_end IS NULL OR s.current_period_end > NOW()))
                     )
                   )
-              AND (u.last_upsell_sent IS NULL OR u.last_upsell_sent < DATE_SUB(NOW(), INTERVAL 5 DAY))""",
+              AND u.upsell_count < %d
+              AND (u.last_upsell_sent IS NULL
+                   OR u.last_upsell_sent < DATE_SUB(NOW(), INTERVAL
+                        (CASE u.upsell_count WHEN 0 THEN %d WHEN 1 THEN %d ELSE %d END) DAY))"""
+        % (UPSELL_MAX, UPSELL_ABSTAND[0], UPSELL_ABSTAND[1], UPSELL_ABSTAND[2]),
         [])
     sent = 0
     failed = 0
@@ -4228,7 +4260,8 @@ def cron_premium_upsell():
             u_lang = _norm_lang(r.get('lang'))
             body = _email_upsell_html(name, subscribe_url, unsub_url, u_lang)
             if send_email(r['email'], UPSELL_I18N[u_lang]['subject'], body):
-                execute_db('UPDATE app_users SET last_upsell_sent=NOW() WHERE id=?', [r['id']])
+                execute_db('UPDATE app_users SET last_upsell_sent=NOW(), '
+                           'upsell_count=upsell_count+1 WHERE id=?', [r['id']])
                 sent += 1
             else:
                 failed += 1
