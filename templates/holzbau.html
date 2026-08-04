@@ -1097,7 +1097,7 @@ body {
     {# Serverspeicher nur fuer angemeldete Nutzer: ohne Konto gibt es keinen
        Platz, an dem etwas liegen koennte. Datei-Speichern bleibt fuer alle. #}
     {% if not demo %}
-    <button class="tb-btn" onclick="openProjekte()" title="Projekte auf dem Server">☁ Meine Projekte</button>
+    <button class="tb-btn" id="btn-projekte" onclick="openProjekte()" title="Projekte auf dem Server">☁ Meine Projekte</button>
     <span id="pr-aktuell" style="font-size:11px;color:var(--text-3);align-self:center;margin-left:2px"></span>
     {% endif %}
     <button class="tb-btn" onclick="exportStückliste()" title="Stückliste exportieren">📋 Export</button>
@@ -1398,7 +1398,7 @@ body {
           <b>Auflager</b>, wenn einer auf dem anderen liegt — dann wird nur der
           obere eingeschnitten. <b>Überblattung</b>, wenn sie sich kreuzen.
         </div>
-        <button class="add-btn" onclick="openVerbindung()"
+        <button class="add-btn" id="btn-verbindung" onclick="openVerbindung()"
                 style="background:var(--bg-card);color:var(--accent);border:1px solid rgba(78,140,221,.35)">⚒ Verbindung erzeugen</button>
       </div>
 
@@ -11154,7 +11154,7 @@ try {
      Fraesen war vorher gar nicht in der Tour, und "Export findest du hier oben"
      hat niemanden zum CNC-Fraesplan gefuehrt — er liegt zwei Klicks tiefer
      hinter "🪵 Platten", was man als Name fuer einen CNC-Export nicht sucht. */
-  var SEL = [null, '#tab-balken', '#tab-vorlagen', '#snap-size', '#view-controls', '#btn-help', '#right-panel', '#btn-tools', '#tab-list', null];
+  var SEL = [null, '#tab-balken', '#tab-vorlagen', '#snap-size', '#view-controls', '#btn-help', '#right-panel', '#btn-tools', '#btn-verbindung', '#tab-list', '#btn-projekte', null];
   var TXT = {
     de:{ next:'Weiter', prev:'Zurück', skip:'Überspringen', done:'Fertig', start:'Tour starten', no:'Kein Tutorial', dont:'Nicht mehr anzeigen', of:'von', steps:[
       {t:'Willkommen bei HolzBau 3D 👋', b:'Diese kurze Tour zeigt dir in ~30 Sekunden die wichtigsten Funktionen.'},
@@ -11165,7 +11165,9 @@ try {
       {t:'Bewegen & Drehen', b:'Objekt ziehen = bewegen, Alt+Ziehen = Höhe, Rechtsklick = drehen. Dieser Knopf zeigt jederzeit alle Steuerungen.'},
       {t:'Gruppen & Schloss', b:'Organisiere Bauteile in Gruppen: ein-/ausblenden, umbenennen, löschen. Mit dem Schloss 🔒 sperrst du eine Gruppe — sie lässt sich dann nur noch komplett bewegen, kein Teil rutscht mehr einzeln weg.'},
       {t:'Werkzeuge: Messen, Sägen, Fräsen', b:'📏 Maßband, 🪚 Säge und 🔩 Fräsen liegen hier. Zum Fräsen eine OSB- oder Sperrholzplatte auswählen, die Fräsergröße einstellen und mit gedrückter Maus über die Platte ziehen — es wird gefräst, solange du ziehst. Alt gedrückt halten ergibt eine gerade Nut.'},
+      {t:'Verbindungen & Kollisionen', b:'Unten im Reiter „Balken": zwei Balken markieren und verbinden — Auflager, Überblattung oder Zapfen als echter Zuschnitt. EIN Balken genügt auch: er wird an alles angepasst, was er berührt, und nur er selbst wird eingeschnitten. Direkt darunter die Kollisionsprüfung: einschalten und dranlassen, dann wird jede Überschneidung rot markiert — was sauber verbunden ist, bleibt still.'},
       {t:'Stückliste & Export', b:'Hier findest du die automatische Stückliste, Kalkulation, Schnittplan und Drucken/PDF. Deine Ausfräsungen gehen über „🪵 Platten“ → „⚙ CNC-DXF“ als Fräsplan 1:1 an die Maschine.'},
+      {t:'Projekte sichern & teilen', b:'Speichern als Datei bleibt unbegrenzt und kostenlos. Zusätzlich kannst du Projekte auf dem Server ablegen und am nächsten Gerät weiterarbeiten — es wird NICHTS automatisch gespeichert, du drückst selbst auf Speichern. Zum Zeigen erzeugst du einen Ansehen-Link: nur für die E-Mail-Adressen, die du freischaltest, und nach 7 Tagen löscht er sich von selbst.'},
       {t:'Fertig! 🎉', b:'Du kannst diese Tour jederzeit über den ❔-Knopf oben rechts neu starten. Viel Erfolg beim Planen!'}
     ]},
     en:{ next:'Next', prev:'Back', skip:'Skip', done:'Done', start:'Start tour', no:'No tutorial', dont:'Don\'t show again', of:'of', steps:[
@@ -11177,7 +11179,9 @@ try {
       {t:'Move & rotate', b:'Drag an object = move, Alt+drag = height, right-click = rotate. This button always shows all controls.'},
       {t:'Groups & lock', b:'Organize components into groups: show/hide, rename, delete. The lock 🔒 keeps a group together — it then only moves as a whole and no single part slips away.'},
       {t:'Tools: measure, saw, cut-out', b:'📏 Tape measure, 🪚 saw and 🔩 cut-out live here. To cut, select an OSB or plywood panel, set the cutter size and drag across the panel with the mouse held down — it cuts as long as you drag. Hold Alt for a straight groove.'},
+      {t:'Joints & clash detection', b:'At the bottom of the “Balken” tab: select two beams and join them — bearing notch, halved lap or tenon as a real cut. One beam is enough too: it is fitted to everything it touches, and only it gets cut. Right below it, clash detection: switch it on and leave it on, and every overlap turns red — anything properly joined stays quiet.'},
       {t:'Parts list & export', b:'The automatic parts list, cost calculation, cutting plan and print/PDF are here. Your cut-outs go to the machine as a 1:1 milling plan via “🪵 Platten” → “⚙ CNC-DXF”.'},
+      {t:'Save & share projects', b:'Saving as a file stays unlimited and free. On top of that you can keep projects on the server and carry on at the next device — NOTHING is saved automatically, you press save yourself. To show your work, create a view link: only for the e-mail addresses you allow, and it deletes itself after 7 days.'},
       {t:'All set! 🎉', b:'You can restart this tour anytime via the ❔ button at the top right. Happy building!'}
     ]},
     fr:{ next:'Suivant', prev:'Retour', skip:'Passer', done:'Terminé', start:'Démarrer', no:'Pas de tutoriel', dont:'Ne plus afficher', of:'sur', steps:[
@@ -11189,7 +11193,9 @@ try {
       {t:'Déplacer & tourner', b:'Glisser = déplacer, Alt+glisser = hauteur, clic droit = tourner. Ce bouton affiche toutes les commandes.'},
       {t:'Groupes & verrou', b:'Organisez les éléments en groupes : afficher/masquer, renommer, supprimer. Le verrou 🔒 maintient un groupe ensemble — il ne se déplace plus qu’en bloc, aucune pièce ne s’échappe.'},
       {t:'Outils : mesurer, scier, fraiser', b:'📏 Mètre ruban, 🪚 scie et 🔩 évidement se trouvent ici. Pour fraiser : sélectionnez un panneau OSB ou contreplaqué, réglez la taille de la fraise et glissez sur le panneau en maintenant le bouton — la fraise coupe tant que vous glissez. Maintenez Alt pour une rainure droite.'},
+      {t:'Assemblages & collisions', b:'En bas de l’onglet « Balken » : sélectionnez deux poutres et assemblez-les — appui entaillé, mi-bois ou tenon, en découpe réelle. Une seule poutre suffit aussi : elle s’ajuste à tout ce qu’elle touche, et elle seule est entaillée. Juste en dessous, la détection de collisions : activez-la et laissez-la, chaque chevauchement devient rouge — ce qui est bien assemblé reste discret.'},
       {t:'Liste & export', b:'Vous trouverez ici la liste de pièces automatique, le calcul, le plan de coupe et l’impression/PDF. Vos évidements partent vers la machine en 1:1 via « 🪵 Platten » → « ⚙ CNC-DXF ».'},
+      {t:'Enregistrer & partager', b:'L’enregistrement en fichier reste illimité et gratuit. En plus, vous pouvez déposer vos projets sur le serveur et continuer sur un autre appareil — RIEN n’est enregistré automatiquement, c’est vous qui appuyez. Pour montrer votre travail, créez un lien de consultation : réservé aux adresses que vous autorisez, supprimé après 7 jours.'},
       {t:'Terminé ! 🎉', b:'Vous pouvez relancer la visite via le bouton ❔ en haut à droite. Bonne conception !'}
     ]}
   };
