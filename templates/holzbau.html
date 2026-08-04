@@ -3635,6 +3635,49 @@ function _umrissKasten(poly, u0, u1, v0, v1) {
            v0: Math.min(...vs), v1: Math.max(...vs), flaeche: _polyFlaeche(c) };
 }
 
+/* Aufteilung fuer einen SCHRAEGEN Umriss (Giebel).
+
+   Warum nicht planBeplankung? Das legt ein Raster ueber das umschreibende
+   RECHTECK. An der Schraege bleibt davon zwangslaeufig ein Kruemel uebrig, und
+   beide Umgangsweisen damit waren im Modell zu sehen:
+     - verwirft man ihn, klafft dort ein Loch (34 x 172 mm bei 5 m Giebel),
+     - behaelt man ihn, steht eine 34 mm breite Platte da — eine Haarlinie.
+
+   Hier entsteht der Kruemel gar nicht erst. Aufgeteilt wird ZEILENWEISE ueber
+   die tatsaechliche Breite des Umrisses in dieser Zeile, und zwar gleichmaessig:
+   statt "volle Platten und ein Rest" bekommt jede Zeile gleich breite Stuecke,
+   die alle unter dem Plattenformat bleiben. Aus 4042 mm bei 2500er Platten
+   werden so zwei Stuecke zu 2021 statt 2500 + 1542, und aus einer Zeile, die
+   nur 2534 mm breit ist, zwei zu 1267 statt 2500 + 34.
+
+   Dasselbe fuer die Zeilenhoehen — sonst bliebe an der Spitze ein flacher
+   Streifen stehen. */
+function _giebelAufteilung(umriss, format, fuge) {
+  const us = umriss.map(p => p[0]), vs = umriss.map(p => p[1]);
+  const u0 = Math.min(...us), u1 = Math.max(...us);
+  const v0 = Math.min(...vs), v1 = Math.max(...vs);
+  const fw = Math.max(100, format[0]), fh = Math.max(100, format[1]);
+  const hoehe = v1 - v0;
+  const nV = Math.max(1, Math.ceil((hoehe - 0.01) / fh));
+  const hR = hoehe / nV;
+  const platten = [];
+  for (let i = 0; i < nV; i++) {
+    const v = v0 + i * hR;
+    // Wie breit ist der Umriss in DIESER Zeile? Genommen wird die weiteste
+    // Stelle — die Schraege wird danach ohnehin zugeschnitten.
+    const k = _umrissKasten(umriss, u0 - 1, u1 + 1, v, v + hR);
+    if (!k || k.u1 - k.u0 < 1) continue;
+    const laenge = k.u1 - k.u0;
+    const nU = Math.max(1, Math.ceil((laenge - 0.01) / fw));
+    const bR = laenge / nU;
+    for (let j = 0; j < nU; j++) {
+      platten.push({ u: k.u0 + j * bR, v,
+                     w: Math.max(1, bR - fuge), h: Math.max(1, hR - fuge) });
+    }
+  }
+  return { platten, hinweise: [] };
+}
+
 function _flaecheAusAuswahl() {
   // Vorhandene Platten fliegen raus: sonst wandert die Ebene bei jedem Lauf
   // um eine Plattendicke nach außen.
@@ -4125,13 +4168,19 @@ function runBeplanken() {
     lBreite = Math.max(...us) - lu0;
     lHoehe = Math.max(...vs) - lv0;
   }
-  const plan = modus === 'bretter' ? null : (window.planBeplankung || planBeplankung)({
-    breite: lBreite, hoehe: lHoehe, format: [fw, fh], fuge,
-    traegerU: f.traegerU.map(t => t - lu0), traegerV: f.traegerV.map(t => t - lv0),
-    minRest: 150,
-  });
+  /* Schräger Umriss → zeilenweise Aufteilung, sonst der gewohnte Weg über
+     planBeplankung mit Stößen auf den Trägerachsen. Bei einem Giebel gibt es
+     ohnehin kaum durchlaufende Träger, dort zählt die Krümelfreiheit. */
+  const plan = modus === 'bretter' ? null
+    : (f.beschnitten && f.umriss && f.umriss.length >= 3)
+    ? _giebelAufteilung(f.umriss, [fw, fh], fuge)
+    : (window.planBeplankung || planBeplankung)({
+        breite: lBreite, hoehe: lHoehe, format: [fw, fh], fuge,
+        traegerU: f.traegerU.map(t => t - lu0), traegerV: f.traegerV.map(t => t - lv0),
+        minRest: 150,
+      });
   // Sofort zurück in Flächenkoordinaten, damit alles Weitere unverändert bleibt.
-  if (plan && (lu0 || lv0)) plan.platten.forEach(p => { p.u += lu0; p.v += lv0; });
+  if (plan && !f.beschnitten && (lu0 || lv0)) plan.platten.forEach(p => { p.u += lu0; p.v += lv0; });
 
   /* Giebeldreieck: die Aufteilung entsteht über dem umschreibenden Rechteck und
      wird hier auf den echten Umriss beschnitten. Platten ausserhalb fallen
@@ -4141,18 +4190,13 @@ function runBeplanken() {
   if (plan && f.beschnitten) {
     plan.platten = plan.platten.filter(p => {
       const k = _umrissKasten(f.umriss, p.u, p.u + p.w, p.v, p.v + p.h);
-      /* Die Schwelle war 100 mm je Seite und 2 % der Zelle — viel zu grob.
-         Nachgemessen an einem 5 m breiten Giebel fiel damit ein Stück von
-         34 × 172 mm weg, bei 8 m und 40 Grad sogar 252 × 211 mm. Was wegfällt,
-         wird nicht etwa vom Nachbarn gedeckt: dort bleibt ein LOCH, und genau
-         das sieht man als Strich auf der Schräge.
-         Jetzt fliegt nur noch raus, was ohnehin kein Bauteil mehr wäre —
-         schmaler als 25 mm oder kleiner als eine Handfläche. Ein solcher Rest
-         ist im Modell nicht mehr zu sehen. */
-      if (!k || k.flaeche < 2500 || k.u1 - k.u0 < 25 || k.v1 - k.v0 < 25) {
-        if (k) ausserhalb++;
-        return false;
-      }
+      /* Hier wird NICHTS mehr weggeworfen, was Fläche hat.
+         Die frühere Schwelle (100 mm je Seite, 2 % der Zelle) riss Löcher;
+         sie zu lockern erzeugte stattdessen 34 mm breite Splitterplatten.
+         Beides war im Modell als Strich zu sehen. Gelöst ist es eine Ebene
+         höher — _giebelAufteilung lässt solche Krümel gar nicht entstehen.
+         Übrig bleibt nur der echte Fall "liegt vollständig ausserhalb". */
+      if (!k || k.flaeche < 100) { ausserhalb++; return false; }
       if (k.u1 - k.u0 < p.w - 1 || k.v1 - k.v0 < p.h - 1) { angeschnitten++; p.rand = true; }
       p.u = k.u0; p.w = k.u1 - k.u0;
       p.v = k.v0; p.h = k.v1 - k.v0;
