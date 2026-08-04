@@ -4113,10 +4113,26 @@ function runBeplanken() {
   const fh = parseFloat(document.getElementById('bp-fh').value) || 1250;
   const fuge = Math.max(0, parseFloat(document.getElementById('bp-fuge').value) || 0);
 
+  /* Die Aufteilung MUSS über dem Umriss liegen, nicht über der Balkenkiste.
+     Beim Entzacken werden die Schrägen bis zu ihrem Schnittpunkt verlängert;
+     die Spitze liegt dadurch ein paar Millimeter HÖHER als die Kiste der
+     Balken. Ein Raster nur über [0..hoehe] erreicht diesen Streifen nie —
+     genau dort blieb an der Spitze ein Strich stehen. */
+  let lu0 = 0, lv0 = 0, lBreite = f.breite, lHoehe = f.hoehe;
+  if (f.beschnitten && f.umriss && f.umriss.length) {
+    const us = f.umriss.map(p => p[0]), vs = f.umriss.map(p => p[1]);
+    lu0 = Math.min(...us); lv0 = Math.min(...vs);
+    lBreite = Math.max(...us) - lu0;
+    lHoehe = Math.max(...vs) - lv0;
+  }
   const plan = modus === 'bretter' ? null : (window.planBeplankung || planBeplankung)({
-    breite: f.breite, hoehe: f.hoehe, format: [fw, fh], fuge,
-    traegerU: f.traegerU, traegerV: f.traegerV, minRest: 150,
+    breite: lBreite, hoehe: lHoehe, format: [fw, fh], fuge,
+    traegerU: f.traegerU.map(t => t - lu0), traegerV: f.traegerV.map(t => t - lv0),
+    minRest: 150,
   });
+  // Sofort zurück in Flächenkoordinaten, damit alles Weitere unverändert bleibt.
+  if (plan && (lu0 || lv0)) plan.platten.forEach(p => { p.u += lu0; p.v += lv0; });
+
   /* Giebeldreieck: die Aufteilung entsteht über dem umschreibenden Rechteck und
      wird hier auf den echten Umriss beschnitten. Platten ausserhalb fallen
      weg, angeschnittene werden auf ihr Reststück verkleinert. Sie bleiben
@@ -4125,8 +4141,18 @@ function runBeplanken() {
   if (plan && f.beschnitten) {
     plan.platten = plan.platten.filter(p => {
       const k = _umrissKasten(f.umriss, p.u, p.u + p.w, p.v, p.v + p.h);
-      if (!k || k.flaeche < p.w * p.h * 0.02
-          || k.u1 - k.u0 < 100 || k.v1 - k.v0 < 100) { ausserhalb++; return false; }
+      /* Die Schwelle war 100 mm je Seite und 2 % der Zelle — viel zu grob.
+         Nachgemessen an einem 5 m breiten Giebel fiel damit ein Stück von
+         34 × 172 mm weg, bei 8 m und 40 Grad sogar 252 × 211 mm. Was wegfällt,
+         wird nicht etwa vom Nachbarn gedeckt: dort bleibt ein LOCH, und genau
+         das sieht man als Strich auf der Schräge.
+         Jetzt fliegt nur noch raus, was ohnehin kein Bauteil mehr wäre —
+         schmaler als 25 mm oder kleiner als eine Handfläche. Ein solcher Rest
+         ist im Modell nicht mehr zu sehen. */
+      if (!k || k.flaeche < 2500 || k.u1 - k.u0 < 25 || k.v1 - k.v0 < 25) {
+        if (k) ausserhalb++;
+        return false;
+      }
       if (k.u1 - k.u0 < p.w - 1 || k.v1 - k.v0 < p.h - 1) { angeschnitten++; p.rand = true; }
       p.u = k.u0; p.w = k.u1 - k.u0;
       p.v = k.v0; p.h = k.v1 - k.v0;
