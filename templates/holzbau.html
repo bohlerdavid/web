@@ -1392,7 +1392,9 @@ body {
       <div class="panel-section">
         <div class="panel-title" style="margin-bottom:4px">Holzverbindung</div>
         <div style="font-size:11px;color:var(--text-3);line-height:1.45;margin-bottom:6px">
-          Zwei Balken markieren. Der Dialog schlägt vor, was zur Lage passt:
+          <b>Ein</b> Balken markieren: er wird an alles angepasst, was er berührt —
+          nur er selbst wird eingeschnitten.<br>
+          <b>Zwei</b> Balken markieren: der Dialog schlägt vor, was zur Lage passt:
           <b>Auflager</b>, wenn einer auf dem anderen liegt — dann wird nur der
           obere eingeschnitten. <b>Überblattung</b>, wenn sie sich kreuzen.
         </div>
@@ -1966,14 +1968,20 @@ body {
     <h3 style="color:var(--text);font-size:1.1rem;margin-bottom:6px">⚒ Holzverbindung</h3>
     <div id="vb-info" style="font-size:.8rem;color:var(--accent);margin-bottom:12px"></div>
 
-    <label style="display:block;font-size:.78rem;color:var(--text-2);margin-bottom:3px">Art der Verbindung</label>
-    <select id="vb-art" onchange="vbArtWechsel()"
-            style="width:100%;padding:7px 9px;margin-bottom:12px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font);font-size:.86rem">
-      <option value="auflager">Auflager — nur den oberen Balken einschneiden</option>
-      <option value="blatt">Überblattung — beide je zur Hälfte</option>
-      <option value="kerve">Ausklinken — Bauteil selbst wählen</option>
-      <option value="zapfen">Schlitz und Zapfen</option>
-    </select>
+    <div id="vb-einzeln" style="display:none;font-size:.78rem;color:var(--text-2);line-height:1.5;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);padding:9px 11px;margin-bottom:12px"></div>
+
+    <div id="vb-art-zeile">
+      <label style="display:block;font-size:.78rem;color:var(--text-2);margin-bottom:3px">Art der Verbindung</label>
+      <select id="vb-art" onchange="vbArtWechsel()"
+              style="width:100%;padding:7px 9px;margin-bottom:12px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font);font-size:.86rem">
+        <option value="auflager">Auflager — nur den oberen Balken einschneiden</option>
+        <option value="blatt">Überblattung — beide je zur Hälfte</option>
+        <option value="kerve">Ausklinken — Bauteil selbst wählen</option>
+        <option value="zapfen">Schlitz und Zapfen</option>
+        {# Nur fuer den Einzelfall; die Zeile ist dann ohnehin ausgeblendet. #}
+        <option value="anpassen" hidden>Nur das markierte Bauteil anpassen</option>
+      </select>
+    </div>
 
     <div id="vb-wer-zeile" style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
       <label id="vb-wer-label" style="font-size:.78rem;color:var(--text-2);white-space:nowrap">Ausgeklinkt wird</label>
@@ -4032,21 +4040,63 @@ function _schraegAnTeil(nb, f, uMin, vMin, uLen, vLen) {
 /* ---- Verbindungen: Bedienung ------------------------------------------- */
 function _verbindungTeile() {
   const sel = beams.filter(b => selectedIds.has(b.id));
-  return sel.length === 2 ? sel : null;
+  return (sel.length === 1 || sel.length === 2) ? sel : null;
+}
+
+/* Womit ueberschneidet sich EIN Bauteil? Grundlage fuer den Fall "nur das
+   markierte anpassen": man markiert den Sparren, und er wird an alles
+   angepasst, was er beruehrt — ohne dass man jedes Gegenstueck einzeln
+   dazuklicken muss. */
+function _gegenstuecke(b) {
+  const o = _obbVon(b), r = _obbRadius(o);
+  return beams.filter(x => {
+    if (x.id === b.id || hiddenGroups.has(x.group)) return false;
+    if (SHEET_MATERIALS.has(x.woodType)) return false;   // Platten sind keine Verbindung
+    const ox = _obbVon(x);
+    if (o.c.distanceToSquared(ox.c) > (r + _obbRadius(ox)) ** 2) return false;
+    return _obbTrifft(o, ox, KOLLISION_TOLERANZ);
+  });
 }
 
 function openVerbindung() {
   const sel = _verbindungTeile();
   if (!sel) {
-    alert('Für eine Verbindung müssen GENAU ZWEI Bauteile markiert sein.\n\n'
-        + 'Zum Beispiel Sparren und Pfette für eine Kerve, oder zwei sich '
-        + 'kreuzende Balken für eine Überblattung.');
+    alert('Bitte EIN oder ZWEI Bauteile markieren.\n\n'
+        + '• Ein Bauteil: es wird an alles angepasst, was es berührt — nur '
+        + 'dieses eine wird eingeschnitten.\n'
+        + '• Zwei Bauteile: Auflager, Überblattung oder Zapfen zwischen genau '
+        + 'diesen beiden.');
     return;
   }
   if (sel.some(b => SHEET_MATERIALS.has(b.woodType))) {
     alert('Holzverbindungen gibt es nur zwischen Balken, nicht an Plattenwerkstoff.');
     return;
   }
+
+  /* EIN Bauteil markiert: es wird an alles angepasst, was es beruehrt, und nur
+     es selbst wird eingeschnitten. Vorher passierte hier gar nichts — man
+     musste jedes Gegenstueck einzeln dazuklicken, obwohl die Geometrie schon
+     weiss, welche das sind. */
+  const einzeln = sel.length === 1;
+  document.getElementById('vb-einzeln').style.display = einzeln ? 'block' : 'none';
+  document.getElementById('vb-art-zeile').style.display = einzeln ? 'none' : 'block';
+  if (einzeln) {
+    const gegen = _gegenstuecke(sel[0]);
+    document.getElementById('vb-art').value = 'anpassen';
+    document.getElementById('vb-info').textContent = gegen.length
+      ? `Nur „${sel[0].name}“ wird eingeschnitten — angepasst an `
+        + `${gegen.length} ${gegen.length === 1 ? 'Bauteil' : 'Bauteile'}`
+      : `„${sel[0].name}“ berührt kein anderes Bauteil`;
+    document.getElementById('vb-einzeln').textContent = gegen.length
+      ? 'Angepasst wird an: ' + gegen.map(b => b.name).join(', ')
+        + '. Diese Bauteile bleiben unversehrt.'
+      : 'Es gibt nichts anzupassen. Schiebe das Bauteil so, dass es die '
+        + 'anderen berührt, oder markiere zwei Bauteile.';
+    vbArtWechsel();
+    document.getElementById('vb-modal').style.display = 'flex';
+    return;
+  }
+
   const wer = document.getElementById('vb-wer');
   wer.innerHTML = sel.map((b, i) =>
     `<option value="${i}">${escHtml(b.name)} (${b.L}×${b.B}×${b.H})</option>`).join('');
@@ -4076,7 +4126,12 @@ function vbArtWechsel() {
   document.getElementById('vb-wer-label').textContent =
     art === 'zapfen' ? 'Zapfen bekommt' : 'Ausgeklinkt wird';
   document.getElementById('vb-erklaerung').textContent =
-      art === 'auflager'
+      art === 'anpassen'
+    ? 'Nur das markierte Bauteil wird eingeschnitten — an jeder Stelle genau '
+      + 'so weit, wie es in ein anderes eintaucht. Alle anderen bleiben '
+      + 'unversehrt. Das ist der schnelle Weg für einen Sparren, der über '
+      + 'mehrere Pfetten läuft.'
+    : art === 'auflager'
     ? 'Auflager: nur der OBERE Balken wird eingeschnitten — genau so weit, wie '
       + 'er in den unteren eintaucht. Der untere bleibt unversehrt und trägt. '
       + 'Das ist der Regelfall für Sparren auf Pfette; welcher Balken oben '
@@ -4105,7 +4160,37 @@ function runVerbindung() {
      Verbindung ein leerer Schritt im Rückgängig-Verlauf stehen. */
   const auftrag = [];
   let hinweis = '';
-  if (art === 'auflager') {
+  if (art === 'anpassen') {
+    /* Ein Bauteil markiert: es wird an ALLES angepasst, was es beruehrt, und
+       nur es selbst wird eingeschnitten. Ein Sparren ueber drei Pfetten
+       bekommt so drei Kerven in einem Zug. */
+    const A = sel[0];
+    const gegen = _gegenstuecke(A);
+    if (!gegen.length) {
+      alert(`„${A.name}“ berührt kein anderes Bauteil — es gibt nichts anzupassen.\n\n`
+          + 'Schiebe es so, dass es die anderen berührt.');
+      return;
+    }
+    const durch = [];
+    for (const B of gegen) {
+      const p = _kerveProfil(A, B);
+      if (p.fehler) continue;            // dieses Gegenstueck passt nicht, andere schon
+      if (p.trenntDurch) { durch.push(B.name); continue; }
+      auftrag.push({ beam: A, ecken: p.ecken, durch: p.durch });
+    }
+    if (!auftrag.length) {
+      alert(durch.length
+        ? `„${A.name}“ würde an ${durch.join(', ')} vollständig durchtrennt.\n\n`
+          + 'Für ein sauberes Auflager soll er nur ein Stück eintauchen — '
+          + 'schiebe ihn etwas höher.'
+        : `An „${A.name}“ ließ sich nichts anpassen.`);
+      return;
+    }
+    hinweis = `\n\nEingeschnitten wurde nur „${A.name}“, an ${auftrag.length} `
+            + `${auftrag.length === 1 ? 'Stelle' : 'Stellen'}. Die anderen `
+            + 'Bauteile bleiben unversehrt.'
+            + (durch.length ? `\n\nÜbersprungen (würde durchtrennen): ${durch.join(', ')}.` : '');
+  } else if (art === 'auflager') {
     /* Nur der OBERE Balken wird eingeschnitten — der untere trägt und bleibt
        ganz. Welcher oben liegt, ergibt die Weltlage der Mittelpunkte; geraten
        wird nichts. Genau das ist der Regelfall Sparren auf Pfette, und genau
@@ -4179,7 +4264,8 @@ function runVerbindung() {
   updateUI();
 
   const nichtDurch = auftrag.filter(a => a.durch === false).length;
-  alert((art === 'auflager' ? 'Auflager eingeschnitten.'
+  alert((art === 'anpassen' ? 'Bauteil angepasst.'
+       : art === 'auflager' ? 'Auflager eingeschnitten.'
        : art === 'kerve' ? 'Ausklinkung erzeugt.'
        : art === 'zapfen' ? 'Zapfen und Zapfenloch erzeugt.'
        : 'Überblattung an beiden Balken erzeugt.')
@@ -5343,7 +5429,8 @@ function renderCutoutPanel(b) {
     // EIN Schluessel mit Platzhaltern statt zusammengestueckelt: "Punkte" allein
     // waere ein kurzer Allerweltsschluessel, der dann auch anderswo zuschlaegt.
     const titel = c.verbindung
-      ? (c.verbindung === 'auflager' ? T('⚒ Auflager / Kerve')
+      ? (c.verbindung === 'anpassen' ? T('⚒ Anpassung')
+       : c.verbindung === 'auflager' ? T('⚒ Auflager / Kerve')
        : c.verbindung === 'kerve' ? T('⚒ Kerve / Ausklinkung')
        : c.verbindung === 'zapfen' ? T('⚒ Zapfen / Zapfenloch')
        : T('⚒ Überblattung')) + ' ' + (i + 1)
