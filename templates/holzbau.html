@@ -3651,6 +3651,68 @@ function _ueberlappDreiecke(A, B) {
   return pos;
 }
 
+/* ---- Weggeschnittenes zaehlt nicht mehr als Kollision -------------------
+   Die Pruefung rechnet mit der vollen Kiste eines Balkens — von einer Kerve
+   weiss sie nichts. Nach einer sauberen Verbindung blieb der Bereich deshalb
+   rot markiert, obwohl dort gar kein Holz mehr ist.
+
+   Geprueft wird punktweise: liegt der gemeinsame Bereich vollstaendig in
+   Aussparungen des einen ODER des anderen Bauteils, ist er weggefraest. Genau
+   das leistet eine richtige Verbindung — beim Auflager nimmt der obere alles
+   weg, bei der Ueberblattung teilen sich beide die Ueberdeckung. */
+/* Punkt in einem KONVEXEN Profil, mit Toleranz.
+
+   Der uebliche Strahlentest taugt hier nicht: die Eckpunkte des gemeinsamen
+   Bereichs liegen GENAU auf dem Rand der Aussparung — beim Auflager ist die
+   Aussparung ja exakt dieser Bereich. Auf der Kante ist ein strenger Test ein
+   Muenzwurf, und die Meldung blieb dadurch stehen.
+
+   Alle Verbindungsprofile sind konvex (Kerve = Schnitt zweier Kisten,
+   Blatt und Zapfen = Rechtecke), also genuegt: der Punkt liegt auf derselben
+   Seite jeder Kante. Eine halbe Millimeter Toleranz faellt neben der
+   Kollisionstoleranz von 3 mm nicht ins Gewicht. */
+function _punktInPoly(ecken, u, v, tol = 0.5) {
+  let plus = 0, minus = 0;
+  for (let i = 0; i < ecken.length; i++) {
+    const a = ecken[i], b = ecken[(i + 1) % ecken.length];
+    const dx = b.u - a.u, dy = b.v - a.v;
+    const len = Math.hypot(dx, dy) || 1;
+    const d = ((u - a.u) * dy - (v - a.v) * dx) / len;
+    if (d > tol) plus++; else if (d < -tol) minus++;
+  }
+  return plus === 0 || minus === 0;
+}
+function _inAussparung(b, p) {
+  const cuts = (b.cutouts || []).filter(c => c.verbindung && Array.isArray(c.ecken));
+  if (!cuts.length) return false;
+  const ra = _lokalRahmen(b);
+  const l = _nachLokal(ra, { x: p[0], y: p[1], z: p[2] });
+  // Der Stich geht durch die volle Breite — quer dazu muss der Punkt nur im
+  // Bauteil liegen.
+  if (l[ra.iB] < -0.5 || l[ra.iB] > ra.e[ra.iB] + 0.5) return false;
+  return cuts.some(c => _punktInPoly(c.ecken, l[ra.iL], l[ra.iH]));
+}
+/* Ist vom gemeinsamen Bereich nach den Aussparungen noch etwas uebrig?
+   Abgetastet werden alle Eckpunkte der Huelle UND die Dreiecksmitten — bei
+   konvexen Aussparungen genuegt das; eine exakte Koerperdifferenz waere fuer
+   eine Warnanzeige mehr Aufwand als Nutzen. */
+function _nochHolzDa(a, b, oa, ob) {
+  if (!(a.cutouts || []).some(c => c.verbindung)
+      && !(b.cutouts || []).some(c => c.verbindung)) return true;
+  const pos = _ueberlappDreiecke(oa, ob);
+  if (pos.length < 9) return true;
+  for (let i = 0; i < pos.length; i += 9) {
+    const p1 = [pos[i], pos[i+1], pos[i+2]];
+    const p2 = [pos[i+3], pos[i+4], pos[i+5]];
+    const p3 = [pos[i+6], pos[i+7], pos[i+8]];
+    const mitte = [(p1[0]+p2[0]+p3[0])/3, (p1[1]+p2[1]+p3[1])/3, (p1[2]+p2[2]+p3[2])/3];
+    for (const p of [p1, p2, p3, mitte]) {
+      if (!_inAussparung(a, p) && !_inAussparung(b, p)) return true;
+    }
+  }
+  return false;
+}
+
 function findeKollisionen() {
   // Ausgeblendetes zaehlt nicht mit: was man nicht sieht, kann man nicht
   // pruefen — und eine Meldung dazu waere nicht nachvollziehbar.
@@ -3663,6 +3725,9 @@ function findeKollisionen() {
       // Grobfilter zuerst — spart bei grossen Modellen fast alle Paare.
       if (obb[i].c.distanceToSquared(obb[j].c) > (rad[i] + rad[j]) ** 2) continue;
       if (!_obbTrifft(obb[i], obb[j], KOLLISION_TOLERANZ)) continue;
+      // Ist der gemeinsame Bereich durch eine Verbindung schon weggeschnitten,
+      // steckt dort kein Holz mehr — dann ist es auch keine Kollision.
+      if (!_nochHolzDa(teile[i], teile[j], obb[i], obb[j])) continue;
       treffer.push({ a: teile[i], b: teile[j], tiefe: _obbTiefe(obb[i], obb[j]) });
     }
   }
@@ -4309,7 +4374,18 @@ function zeichneKollisionen() {
   const obb = new Map();
   const hol = (b) => { if (!obb.has(b.id)) obb.set(b.id, _obbVon(b)); return obb.get(b.id); };
   treffer.forEach(k => {
-    const pos = _ueberlappDreiecke(hol(k.a), hol(k.b));
+    const roh = _ueberlappDreiecke(hol(k.a), hol(k.b));
+    /* Teilweise weggeschnitten: die Dreiecke, die vollstaendig in einer
+       Aussparung liegen, gehoeren nicht mehr zum Holz und werden nicht
+       markiert. Sonst leuchtete nach einer halben Verbindung noch der ganze
+       urspruengliche Bereich. */
+    const pos = [];
+    for (let i = 0; i < roh.length; i += 9) {
+      const eck = [[roh[i],roh[i+1],roh[i+2]], [roh[i+3],roh[i+4],roh[i+5]],
+                   [roh[i+6],roh[i+7],roh[i+8]]];
+      const weg = eck.every(p => _inAussparung(k.a, p) || _inAussparung(k.b, p));
+      if (!weg) pos.push(...roh.slice(i, i + 9));
+    }
     if (pos.length < 9) return;
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
