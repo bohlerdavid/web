@@ -735,7 +735,17 @@ _reset_attempts    = {}
 LOGIN_MAX_ATTEMPTS    = 5
 LOGIN_LOCKOUT_SECONDS = 300
 REGISTER_MAX_ATTEMPTS = 10
-CHECKOUT_MAX_ATTEMPTS = 5
+# Fuenf Versuche pro IP und zehn Minuten — daran ist der Kauf gescheitert.
+# Der Zaehler laeuft bei JEDEM Aufruf hoch, auch beim erfolgreichen. Wer den
+# Knopf beim Ausprobieren fuenfmal drueckt, oder wer bei Stripe abbricht und es
+# noch einmal versucht, ist danach zehn Minuten gesperrt — und die Meldung
+# stand ausserhalb des Bildes. Fuer den Kunden: "es passiert nix".
+# Schlimmer noch: gezaehlt wurde pro IP. Hinter einem Firmenanschluss oder im
+# Mobilfunk teilen sich viele Leute eine Adresse; fuenf Kaufversuche von
+# irgendwem sperrten dort alle anderen mit.
+# Jetzt pro KONTO (die Route ist ohnehin angemeldet) und mit Luft nach oben.
+# Missbrauch einer einzelnen Anmeldung bremst das immer noch.
+CHECKOUT_MAX_ATTEMPTS = 12
 RESEND_MAX_ATTEMPTS   = 3
 RESET_MAX_ATTEMPTS    = 3
 
@@ -3331,7 +3341,11 @@ def admin_set_plan():
     if not user_id or plan not in ('free', 'premium'):
         flash('Ungültige Eingabe.', 'danger')
         return redirect(url_for('admin_users'))
-    status = 'active' if plan == 'premium' else 'cancelled'
+    # 'cancelled' heisst in der Abo-Seite: "Dein Abo wurde gekuendigt, du kannst
+    # es wieder aktivieren" — samt Erneuern-Karten. Wer nie eines hatte, bekam
+    # damit eine Falschaussage zu lesen und landete im falschen Zweig.
+    # 'expired' fuehrt in den normalen Kaufzweig.
+    status = 'active' if plan == 'premium' else 'expired'
     existing = query_db('SELECT id FROM subscriptions WHERE user_id=?', [user_id], one=True)
     if existing:
         execute_db('UPDATE subscriptions SET plan=?, status=?, stripe_sub_id=NULL WHERE user_id=?',
@@ -4249,7 +4263,8 @@ def subscribe_create_checkout():
         # aber der Kunde bekommt einen Weg zurueck statt einer Fehlerseite.
         logger.warning('Checkout mit veraltetem CSRF-Merkmal abgewiesen')
         return redirect(url_for('subscribe', fehler='sitzung') + '#abo-aktion')
-    if _check_rate_limit(_checkout_attempts, request.remote_addr, CHECKOUT_MAX_ATTEMPTS):
+    if _check_rate_limit(_checkout_attempts, 'u%s' % session.get('user_id'),
+                         CHECKOUT_MAX_ATTEMPTS):
         flash('Zu viele Versuche. Bitte warte kurz.', 'danger')
         return redirect(url_for('subscribe', fehler='limit') + '#abo-aktion')
     stripe_key = os.environ.get('STRIPE_SECRET_KEY')
