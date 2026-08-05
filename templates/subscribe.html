@@ -142,6 +142,36 @@
 </div>
 
 <!-- Action section -->
+{# Die Meldung steht sonst nur ganz OBEN auf der Seite. Wer unten bei den
+   Karten steht und klickt, kommt nach dem Fehlversuch an dieselbe Stelle
+   zurueck — der Browser stellt die Scrollposition wieder her, und der Hinweis
+   liegt ausserhalb des Bildes. Fuer den Kunden sieht das aus, als passiere
+   nichts. Darum steht er hier noch einmal, direkt ueber dem Knopf, und die
+   Sprungmarke bringt den Browser genau hierher. #}
+<div id="abo-aktion"></div>
+{% set f = request.args.get('fehler') %}
+{% if f %}
+<div class="info-card" style="border-color:#fca5a5;background:#fef2f2;">
+  <div style="display:flex;gap:10px;align-items:flex-start;">
+    <i class="bi bi-exclamation-triangle-fill" style="color:#dc2626;font-size:1.1rem;"></i>
+    <div style="font-size:.9rem;color:#991b1b;line-height:1.55;">
+      {% if f == 'sitzung' %}
+        <strong>Deine Sitzung war abgelaufen.</strong> Es wurde nichts abgebucht.
+        Klick bitte einfach noch einmal auf den Knopf unten — jetzt geht es durch.
+      {% elif f == 'limit' %}
+        <strong>Zu viele Versuche in kurzer Zeit.</strong> Bitte warte einen
+        Moment und probiere es dann erneut.
+      {% else %}
+        <strong>Die Zahlung liess sich gerade nicht starten.</strong>
+        Es wurde nichts abgebucht. Bitte versuche es noch einmal — falls es
+        wieder nicht klappt, schreib uns kurz an
+        <a href="mailto:info@holzbau3d.app" style="color:#991b1b;font-weight:700;">info@holzbau3d.app</a>,
+        dann schalten wir dich von Hand frei.
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
 {% if not stripe_configured %}
 <div class="info-card" style="border-color:#fde68a;background:#fffbeb;">
   <h5 style="color:#92400e;"><i class="bi bi-exclamation-triangle me-2"></i>Stripe nicht konfiguriert</h5>

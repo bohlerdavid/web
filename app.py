@@ -4134,6 +4134,52 @@ def subscribe():
                            sub=row_to_dict(sub) if sub else {}, csrf_token=generate_csrf())
 
 
+@app.route('/subscribe/status')
+@login_required
+def subscribe_status():
+    """Was entscheidet die Abo-Seite gerade fuer DICH?
+
+    Ein Kunde und der Betreiber melden beide "der Abo-Link tut nichts". Von
+    aussen war nichts zu sehen: die Seite braucht ein Login, und in ein fremdes
+    Konto sieht man zu Recht nicht hinein. Statt weiter zu raten, sagt die Seite
+    hier selbst, welchen der vier Bloecke sie anzeigt und warum.
+
+    Nur die EIGENEN Werte, nur angemeldet, und keine Kennungen — weder
+    Stripe-IDs noch Schluessel. Wer das hier aufruft, sieht nichts, was er nicht
+    ohnehin ueber sich selbst wissen darf.
+    """
+    user_id = session['user_id']
+    sub = row_to_dict(query_db('SELECT * FROM subscriptions WHERE user_id=?', [user_id], one=True))
+    plan = get_user_plan(user_id)
+    stripe_da = bool(os.environ.get('STRIPE_SECRET_KEY'))
+    status = sub.get('status')
+    # Dieselbe Reihenfolge wie in subscribe.html — sonst diagnostiziert man
+    # etwas anderes, als der Kunde sieht.
+    if not stripe_da:
+        block, kaufknopf = 'stripe-fehlt', False
+    elif plan == 'premium' and status != 'cancelled':
+        block, kaufknopf = 'kuendigen', False
+    elif sub and status == 'cancelled':
+        block, kaufknopf = 'erneuern', True
+    else:
+        block, kaufknopf = 'kaufen', True
+    return jsonify({
+        'angezeigter_block': block,
+        'kaufknopf_sichtbar': kaufknopf,
+        'plan': plan,
+        'status_in_der_datenbank': status,
+        'abo_zeile_vorhanden': bool(sub),
+        'mit_stripe_verknuepft': bool(sub.get('stripe_customer_id') or sub.get('stripe_sub_id')),
+        'laufzeit_bis': str(sub.get('current_period_end') or ''),
+        'stripe_eingerichtet': stripe_da,
+        'jahresabo_eingerichtet': bool(os.environ.get('STRIPE_YEARLY_PRICE_ID')),
+        'hinweis': ('Du bist bereits Premium — deshalb steht dort "Abo kündigen" '
+                    'und kein Kaufknopf.' if block == 'kuendigen'
+                    else 'Der Kaufknopf müsste sichtbar sein.' if kaufknopf
+                    else 'Stripe ist nicht eingerichtet.'),
+    })
+
+
 @app.route('/subscribe/create-checkout', methods=['POST'])
 @login_required
 def subscribe_create_checkout():
@@ -4144,12 +4190,10 @@ def subscribe_create_checkout():
         # hinein. Abgewiesen wird der Kauf weiterhin (nichts wird ausgefuehrt),
         # aber der Kunde bekommt einen Weg zurueck statt einer Fehlerseite.
         logger.warning('Checkout mit veraltetem CSRF-Merkmal abgewiesen')
-        flash('Deine Sitzung war abgelaufen — bitte klick noch einmal auf "Abonnieren".',
-              'warning')
-        return redirect(url_for('subscribe'))
+        return redirect(url_for('subscribe', fehler='sitzung') + '#abo-aktion')
     if _check_rate_limit(_checkout_attempts, request.remote_addr, CHECKOUT_MAX_ATTEMPTS):
         flash('Zu viele Versuche. Bitte warte kurz.', 'danger')
-        return redirect(url_for('subscribe'))
+        return redirect(url_for('subscribe', fehler='limit') + '#abo-aktion')
     stripe_key = os.environ.get('STRIPE_SECRET_KEY')
     plan_type = request.form.get('plan_type', 'monthly')
     if plan_type == 'yearly':
@@ -4157,16 +4201,17 @@ def subscribe_create_checkout():
     else:
         price_id = os.environ.get('STRIPE_PRICE_ID')
     if not stripe_key or not price_id:
-        flash('Stripe ist nicht konfiguriert.', 'danger')
-        return redirect(url_for('subscribe'))
-    try:
+        logger.error('Checkout ohne Stripe-Konfiguration angefordert')
+        return redirect(url_for('subscribe', fehler='technik') + '#abo-aktion')
+    user_id = session['user_id']
+    sub_row = query_db('SELECT stripe_customer_id FROM subscriptions WHERE user_id=?', [user_id], one=True)
+    customer_id = sub_row['stripe_customer_id'] if sub_row and sub_row['stripe_customer_id'] else None
+
+    def _sitzung(kunde):
         import stripe
         stripe.api_key = stripe_key
-        user_id = session['user_id']
-        sub_row = query_db('SELECT stripe_customer_id FROM subscriptions WHERE user_id=?', [user_id], one=True)
-        customer_id = sub_row['stripe_customer_id'] if sub_row and sub_row['stripe_customer_id'] else None
-        checkout = stripe.checkout.Session.create(
-            customer=customer_id,
+        return stripe.checkout.Session.create(
+            customer=kunde,
             payment_method_types=['card'],
             line_items=[{'price': price_id, 'quantity': 1}],
             mode='subscription',
@@ -4175,15 +4220,32 @@ def subscribe_create_checkout():
             metadata={'user_id': str(user_id), 'plan_type': plan_type},
             subscription_data={'metadata': {'user_id': str(user_id), 'plan_type': plan_type}},
         )
+
+    try:
+        try:
+            checkout = _sitzung(customer_id)
+        except Exception as e1:
+            # Ein gespeicherter Stripe-Kunde kann zu einem ANDEREN Schluessel
+            # gehoeren — typisch nach dem Wechsel von Test- auf Live-Modus.
+            # Stripe antwortet dann "No such customer", und zwar jedes Mal:
+            # der Kunde kommt nie zur Kasse, egal wie oft er klickt. Das
+            # betrifft genau die, die schon einmal ein Abo hatten.
+            # Zweiter Versuch ohne Kundenkennung — Stripe legt dann eine neue
+            # an. Lieber ein doppelter Kundeneintrag als ein verlorener Kauf.
+            if not customer_id:
+                raise
+            logger.warning('Checkout mit gespeichertem Stripe-Kunden fehlgeschlagen (%s: %s) '
+                           '— zweiter Versuch ohne Kundenkennung',
+                           type(e1).__name__, str(e1)[:200])
+            checkout = _sitzung(None)
         return redirect(checkout.url, code=303)
     except Exception as e:
         # Der Kunde wollte zahlen und konnte nicht — das ist die eine Meldung,
         # die nicht nur im Log stehen darf. Ohne einen zweiten Weg gibt er auf.
-        logger.error('Stripe checkout error: %s', type(e).__name__)
-        flash('Die Zahlung liess sich gerade nicht starten. Bitte versuche es erneut — '
-              'oder schreib uns kurz an info@holzbau3d.app, dann klaeren wir das von Hand.',
-              'danger')
-        return redirect(url_for('subscribe'))
+        # Die Meldung von Stripe gehoert ins Log. Ohne sie stand dort nur
+        # "Exception" — und die naechste Suche begann wieder bei null.
+        logger.error('Stripe checkout error: %s: %s', type(e).__name__, str(e)[:300])
+        return redirect(url_for('subscribe', fehler='technik') + '#abo-aktion')
 
 
 @app.route('/subscribe/cancel', methods=['POST'])
