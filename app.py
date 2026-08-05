@@ -3541,6 +3541,64 @@ def admin_stripe_check():
         except Exception as e:
             L.append('Stripe-Fehler: ' + type(e).__name__ + ': ' + str(e)[:160])
     L.append('')
+    # ── PROBELAUF: genau der Klick, der beim Kunden nichts tut ──────────────
+    # Zwei Runden Raten haben nichts gebracht, weil die eigentliche Antwort von
+    # Stripe nirgends sichtbar war. Hier wird der Kauf mit DENSELBEN Werten
+    # angestossen wie im echten Knopf — und die Antwort im Klartext gezeigt.
+    # Es entsteht hoechstens eine unbezahlte Checkout-Sitzung; die verfaellt.
+    L.append('=== Probelauf: derselbe Aufruf wie der Kauf-Knopf ===')
+    if not sk or not price_m:
+        L.append('Kein Schluessel oder kein Monatspreis gesetzt — Probelauf entfaellt.')
+    else:
+        uid = session.get('user_id')
+        row = query_db('SELECT stripe_customer_id, plan, status FROM subscriptions WHERE user_id=?',
+                       [uid], one=True)
+        kunde = (row or {}).get('stripe_customer_id') or None
+        L.append('Dein Konto: plan=' + str((row or {}).get('plan') or 'free')
+                 + '  status=' + str((row or {}).get('status') or '-')
+                 + '  Stripe-Kunde=' + (kunde or '(keiner)'))
+        if kunde:
+            try:
+                k = _stripe_api_get('customers/' + kunde)
+                L.append('  Kunde bei Stripe: gefunden, livemode=' + str(k.get('livemode')))
+                if bool(k.get('livemode')) != (mode == 'LIVE') and mode in ('TEST', 'LIVE'):
+                    L.append('  !! Der Kunde gehoert zum anderen Modus — genau das bricht den Kauf ab.')
+            except Exception as e:
+                L.append('  Kunde bei Stripe: NICHT GEFUNDEN (' + type(e).__name__ + ': '
+                         + str(e)[:120] + ')')
+                L.append('  -> Das ist die Ursache, wenn der Knopf nichts tut.')
+        try:
+            import stripe
+            stripe.api_key = sk
+
+            def probe(mit_kunde):
+                return stripe.checkout.Session.create(
+                    customer=mit_kunde,
+                    payment_method_types=['card'],
+                    line_items=[{'price': price_m, 'quantity': 1}],
+                    mode='subscription',
+                    success_url=request.host_url + 'subscribe?success=1',
+                    cancel_url=request.host_url + 'subscribe?cancelled=1',
+                    metadata={'user_id': str(uid), 'plan_type': 'monthly', 'probelauf': '1'},
+                )
+            if kunde:
+                try:
+                    probe(kunde)
+                    L.append('MIT gespeichertem Kunden:  OK — Stripe haette geoeffnet.')
+                except Exception as e:
+                    L.append('MIT gespeichertem Kunden:  FEHLER ' + type(e).__name__)
+                    L.append('   ' + str(e)[:400])
+            try:
+                probe(None)
+                L.append('OHNE Kundenkennung:        OK — der zweite Versuch traegt.')
+            except Exception as e:
+                L.append('OHNE Kundenkennung:        FEHLER ' + type(e).__name__)
+                L.append('   ' + str(e)[:400])
+                L.append('   -> Dann liegt es NICHT am Kunden, sondern an Preis, Schluessel')
+                L.append('      oder Kontoeinstellung. Der Text oben sagt, woran.')
+        except Exception as e:
+            L.append('Probelauf nicht moeglich: ' + type(e).__name__ + ': ' + str(e)[:200])
+    L.append('')
     if not price_y:
         L.append('NAECHSTER SCHRITT: STRIPE_YEARLY_PRICE_ID in Railway setzen')
         L.append('(Stripe > Produkte > Premium > Jahres-Preis > price_... kopieren).')
