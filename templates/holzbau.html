@@ -2003,9 +2003,18 @@ body {
       <span style="font-size:.72rem;color:var(--text-3);white-space:nowrap">0 = ein Drittel</span>
     </div>
 
+    <div id="vb-breite-zeile" style="display:none;align-items:center;gap:8px;margin-bottom:12px">
+      <label style="font-size:.78rem;color:var(--text-2);white-space:nowrap">Zapfenbreite (mm)</label>
+      <input type="number" id="vb-breite" min="10" step="5" value="0"
+             style="flex:1;padding:7px 9px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font);font-size:.86rem">
+      <span style="font-size:.72rem;color:var(--text-3);white-space:nowrap">0 = volle Breite</span>
+    </div>
+
     <div id="vb-erklaerung" style="font-size:.76rem;color:var(--text-3);line-height:1.5;margin-bottom:14px"></div>
     <div style="font-size:.72rem;color:var(--text-3);line-height:1.5;margin-bottom:14px">
-      Der Schnitt geht durch die volle Breite des Balkens. Die Verbindung sitzt
+      Ein Schnitt geht in der Regel durch die volle Breite des Balkens; nur der
+      Zapfen mit Schulter und sein Sackloch hören auf halber Tiefe auf.
+      Die Verbindung sitzt
       danach als Ausschnitt am Bauteil und lässt sich dort einzeln wieder
       entfernen. <b>Statisch geprüft wird nichts</b> — ein Zapfen oder eine
       Kerve schwächt den Querschnitt, das gehört in die Hand eines
@@ -2842,6 +2851,46 @@ function _cutoutPolygone(c, A, B) {
   return polys;
 }
 
+/* Bis wie tief geht ein Ausschnitt?
+
+   Der Regelfall ist DURCH: eine Kerve, eine Ueberblattung, ein Fensterloch.
+   Zwei Faelle sind es nicht, und beide gehoeren zum Zapfen:
+     - das BLINDE Zapfenloch, das im Balken endet statt auf der Rueckseite
+       wieder herauszukommen,
+     - die seitliche SCHULTER eines vierseitig abgesetzten Zapfens, die nur
+       eine Wange tief ist.
+   `t0`/`t1` sind Millimeter entlang der Stichachse, gemessen von der einen
+   Bauteilflanke. Fehlen sie, geht der Schnitt durch — alte Projekte und alle
+   bisherigen Verbindungen aendern sich dadurch um kein Byte. */
+function _cutTiefe(c, T) {
+  const t0 = Math.max(0, Math.min(T, c.t0 != null ? c.t0 : 0));
+  const t1 = Math.max(t0, Math.min(T, c.t1 != null ? c.t1 : T));
+  return [t0, t1];
+}
+const _cutGehtDurch = (c, T) => { const [t0, t1] = _cutTiefe(c, T); return t0 <= 0.01 && t1 >= T - 0.01; };
+
+/* Mehrere Geometrien zu einer zusammenlegen.
+   BufferGeometryUtils waere ein weiterer Modul-Import ueber die Importmap —
+   fuer drei Attribute ist das mehr Abhaengigkeit als Nutzen. */
+function _geoVerschmelzen(liste) {
+  const teile = liste.map(g => (g.index ? g.toNonIndexed() : g));
+  let n = 0;
+  teile.forEach(g => { n += g.attributes.position.count; });
+  const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), uv = new Float32Array(n * 2);
+  let o = 0;
+  teile.forEach(g => {
+    pos.set(g.attributes.position.array, o * 3);
+    if (g.attributes.normal) nor.set(g.attributes.normal.array, o * 3);
+    if (g.attributes.uv) uv.set(g.attributes.uv.array, o * 2);
+    o += g.attributes.position.count;
+  });
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  return geo;
+}
+
 function buildPanelGeometry(beam, W, H, D) {
   const axes = [
     { v: W, e: new THREE.Vector3(1, 0, 0) },
@@ -2875,10 +2924,26 @@ function buildPanelGeometry(beam, W, H, D) {
          Polygonen und muss immer vereint werden.
      Ohne die Bibliothek bleibt es beim alten Weg; sie liegt lokal unter
      static/polygon-clipping.umd.js und fehlt praktisch nie. */
+  /* SCHICHTEN. Geht jeder Ausschnitt durch — der Normalfall —, gibt es genau
+     eine Schicht und es passiert exakt dasselbe wie bisher. Endet einer auf
+     halber Tiefe (blindes Zapfenloch, seitliche Zapfenschulter), wird der
+     Balken an den Tiefengrenzen in Scheiben zerlegt: jede Scheibe bekommt ihr
+     eigenes Profil und ihre eigene Extrusionstiefe. Danach sind es wieder
+     Extrusionen — kein CSG, keine neue Bibliothek. */
+  const grenzen = new Set([0, T]);
+  cuts.forEach(c => { const [t0, t1] = _cutTiefe(c, T); grenzen.add(t0); grenzen.add(t1); });
+  const kanten = [...grenzen].sort((x, y) => x - y);
+  const schichten = [];
+  for (let i = 0; i < kanten.length - 1; i++) {
+    if (kanten[i + 1] - kanten[i] > 0.05) schichten.push([kanten[i], kanten[i + 1]]);
+  }
+  if (!schichten.length) schichten.push([0, T]);
+
+  const profilVon = (aktiv) => {
   let shapes = null;
-  if (cuts.length && window.polygonClipping) {
+  if (aktiv.length && window.polygonClipping) {
     try {
-      const loecher = cuts.map(c => _cutoutPolygone(c, A, B));
+      const loecher = aktiv.map(c => _cutoutPolygone(c, A, B));
       const rest = window.polygonClipping.difference([plattenRing], ...loecher);
       shapes = rest.map(poly => {
         const s = new THREE.Shape();
@@ -2914,7 +2979,7 @@ function buildPanelGeometry(beam, W, H, D) {
     const shape = new THREE.Shape();
     plattenRing.forEach(([x, y], i) => i === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y));
     shape.closePath();
-    cuts.forEach(c => {
+    aktiv.forEach(c => {
       _cutoutPolygone(c, A, B).forEach(poly => {
         const path = new THREE.Path();
         poly[0].forEach(([x, y], i) => i === 0 ? path.moveTo(x, y) : path.lineTo(x, y));
@@ -2924,9 +2989,20 @@ function buildPanelGeometry(beam, W, H, D) {
     });
     shapes = [shape];
   }
+    return shapes;
+  };
 
-  const geo = new THREE.ExtrudeGeometry(shapes, { depth: T, bevelEnabled: false });
-  geo.translate(0, 0, -T / 2);  // entlang Extrude-Achse zentrieren
+  const scheiben = schichten.map(([t0, t1]) => {
+    const mitte = (t0 + t1) / 2;
+    const aktiv = cuts.filter(c => {
+      const [c0, c1] = _cutTiefe(c, T);
+      return c0 - 0.01 <= mitte && mitte <= c1 + 0.01;
+    });
+    const g = new THREE.ExtrudeGeometry(profilVon(aktiv), { depth: t1 - t0, bevelEnabled: false });
+    g.translate(0, 0, t0 - T / 2);   // entlang Extrude-Achse an ihren Platz
+    return g;
+  });
+  const geo = scheiben.length === 1 ? scheiben[0] : _geoVerschmelzen(scheiben);
   const eX = face[0].e.clone(), eY = face[1].e.clone(), eZ = axes[ti].e.clone();
   if (eX.clone().cross(eY).dot(eZ) < 0) eZ.negate();  // Rechtshändigkeit sichern
   geo.applyMatrix4(new THREE.Matrix4().makeBasis(eX, eY, eZ));
@@ -3612,9 +3688,11 @@ function _lbhAus(axis, e) {
 
 /* Der Zapfen als eigenstaendiger Klotz in der Welt — Gegenstueck fuer die
    Lochrechnung. Er erbt Achse und Drehung des Balkens. */
-function _zapfenKlotz(a, amEnde, zl, dicke) {
+function _zapfenKlotz(a, amEnde, zl, dicke, breite) {
   const ra = _lokalRahmen(a);
   const L = ra.e[ra.iL], H = ra.e[ra.iH], BB = ra.e[ra.iB];
+  // Ohne Angabe so breit wie das Bauteil — das ist der alte Fall.
+  const bw = breite > 0 ? Math.max(10, Math.min(BB, breite)) : BB;
   const lok = [];
   lok[ra.iL] = amEnde ? L - zl / 2 : zl / 2;
   lok[ra.iH] = H / 2;
@@ -3627,7 +3705,7 @@ function _zapfenKlotz(a, amEnde, zl, dicke) {
     wc.z += ra.achsen[i].z * d;
   }
   const e = [];
-  e[ra.iL] = zl; e[ra.iH] = dicke; e[ra.iB] = BB;
+  e[ra.iL] = zl; e[ra.iH] = dicke; e[ra.iB] = bw;
   const m = _lbhAus(a.axis, e);
   // _obbVon bildet den Mittelpunkt als Ecke + Ausdehnung/2 OHNE Drehung —
   // die Ecke muss also entsprechend zurueckgerechnet werden.
@@ -3637,7 +3715,7 @@ function _zapfenKlotz(a, amEnde, zl, dicke) {
 }
 
 /* Die beiden Abnahmen am Balken a, damit ein mittiger Zapfen stehen bleibt. */
-function _zapfenProfile(a, b, wunschDicke) {
+function _zapfenProfile(a, b, wunschDicke, wunschBreite) {
   const { profil, ra } = _profilVon(a, b);
   const L = ra.e[ra.iL], H = ra.e[ra.iH];
   const rest = _polyRechteck(profil, 0, L, 0, H);
@@ -3657,24 +3735,51 @@ function _zapfenProfile(a, b, wunschDicke) {
   const dicke = Math.max(10, Math.min(H - 10, Math.round(wunschDicke || H / 3)));
   const v0 = (H - dicke) / 2, v1 = (H + dicke) / 2;
   const a0 = amEnde ? L - zl : 0, a1 = amEnde ? L : zl;
-  return {
-    profile: [
-      _rundeEcken([[a0, 0], [a1, 0], [a1, v0], [a0, v0]]),
-      _rundeEcken([[a0, v1], [a1, v1], [a1, H], [a0, H]]),
-    ],
-    amEnde, zl, dicke, hoehe: H,
-  };
+
+  /* VIERSEITIGE SCHULTER.
+
+     Bisher lief der Zapfen ueber die volle Bauteilbreite — im Handwerk ist
+     das Schlitz und Zapfen, und es war das einzig Moegliche, solange ein
+     Schnitt nur DURCH gehen konnte. Ist eine Zapfenbreite genannt, kommen zwei
+     weitere Schnitte dazu: ueber die volle Hoehe, aber nur eine Wange tief.
+     Danach hat der Zapfen auf allen vier Seiten eine Schulter — und das Loch
+     im Gegenstueck bricht seitlich nicht mehr aus. */
+  const BB = ra.e[ra.iB];
+  const breite = wunschBreite > 0
+    ? Math.max(10, Math.min(BB, Math.round(wunschBreite))) : BB;
+  const w0 = (BB - breite) / 2, w1 = (BB + breite) / 2;
+  const profile = [
+    { ecken: _rundeEcken([[a0, 0], [a1, 0], [a1, v0], [a0, v0]]) },
+    { ecken: _rundeEcken([[a0, v1], [a1, v1], [a1, H], [a0, H]]) },
+  ];
+  if (breite < BB - 0.5) {
+    const wange = _rundeEcken([[a0, 0], [a1, 0], [a1, H], [a0, H]]);
+    profile.push({ ecken: wange, t0: 0, t1: w0 });
+    profile.push({ ecken: wange, t0: w1, t1: BB });
+  }
+  return { profile, amEnde, zl, dicke, breite, hoehe: H, tiefe: BB };
 }
 
-/* Das Loch im Gegenstueck: genau der Umriss des Zapfenklotzes. */
+/* Das Loch im Gegenstueck: genau der Umriss des Zapfenklotzes — und genau so
+   TIEF wie er.
+
+   Das war der eigentliche Mangel am Zapfen. Der Schnitt ging durch die volle
+   Breite des Gegenstuecks, quer dazu lag aber gerade die Zapfendicke.
+   Nachgemessen am Fensterrahmen: Zapfen 27 mm dick, Loch 80 mm — 53 mm Luft.
+   Das haelt nichts. Jetzt begrenzt `t0/t1` das Loch auf die Ausdehnung des
+   Zapfens entlang der Stichachse; es bleibt ein Sackloch, wo der Zapfen
+   aufhoert, und wird nur dann ein Durchbruch, wenn der Zapfen selbst durchgeht. */
 function _zapfenlochProfil(b, klotz) {
-  const { profil, ra } = _profilVon(b, klotz);
-  const L = ra.e[ra.iL], H = ra.e[ra.iH];
+  const { profil, b0, b1, ra } = _profilVon(b, klotz);
+  const L = ra.e[ra.iL], H = ra.e[ra.iH], T = ra.e[ra.iB];
   const rest = _polyRechteck(profil, 0, L, 0, H);
   if (rest.length < 3 || _polyFlaeche(rest) < 100) {
     return { fehler: 'Der Zapfen trifft das Gegenstück nicht — bitte die Lage prüfen.' };
   }
-  return { ecken: _rundeEcken(rest), flaeche: _polyFlaeche(rest) };
+  const t0 = Math.max(0, Math.min(T, b0)), t1 = Math.max(t0, Math.min(T, b1));
+  return { ecken: _rundeEcken(rest), flaeche: _polyFlaeche(rest),
+           t0: Math.round(t0 * 10) / 10, t1: Math.round(t1 * 10) / 10,
+           durch: t0 <= 0.5 && t1 >= T - 0.5, tiefe: T };
 }
 
 /* ---- Der Überschneidungsbereich als Körper -----------------------------
@@ -3789,10 +3894,17 @@ function _inAussparung(b, p) {
   if (!cuts.length) return false;
   const ra = _lokalRahmen(b);
   const l = _nachLokal(ra, { x: p[0], y: p[1], z: p[2] });
+  const T = ra.e[ra.iB];
   // Der Stich geht durch die volle Breite — quer dazu muss der Punkt nur im
-  // Bauteil liegen.
-  if (l[ra.iB] < -0.5 || l[ra.iB] > ra.e[ra.iB] + 0.5) return false;
-  return cuts.some(c => _punktInPoly(c.ecken, l[ra.iL], l[ra.iH]));
+  // Bauteil liegen. AUSSER bei einem blinden Zapfenloch oder einer seitlichen
+  // Zapfenschulter: die hoeren auf halber Tiefe auf, und dahinter steht wieder
+  // Holz. Wer das uebersieht, meldet dort keine Kollision, wo eine ist.
+  if (l[ra.iB] < -0.5 || l[ra.iB] > T + 0.5) return false;
+  return cuts.some(c => {
+    const [t0, t1] = _cutTiefe(c, T);
+    if (l[ra.iB] < t0 - 0.5 || l[ra.iB] > t1 + 0.5) return false;
+    return _punktInPoly(c.ecken, l[ra.iL], l[ra.iH]);
+  });
 }
 /* Ist vom gemeinsamen Bereich nach den Aussparungen noch etwas uebrig?
    Abgetastet werden alle Eckpunkte der Huelle UND die Dreiecksmitten — bei
@@ -4290,6 +4402,7 @@ function vbArtWechsel() {
   const wer = art === 'kerve' || art === 'zapfen';
   document.getElementById('vb-wer-zeile').style.display = wer ? 'flex' : 'none';
   document.getElementById('vb-dicke-zeile').style.display = art === 'zapfen' ? 'flex' : 'none';
+  document.getElementById('vb-breite-zeile').style.display = art === 'zapfen' ? 'flex' : 'none';
   document.getElementById('vb-wer-label').textContent =
     art === 'zapfen' ? 'Zapfen bekommt' : 'Ausgeklinkt wird';
   document.getElementById('vb-erklaerung').textContent =
@@ -4311,10 +4424,14 @@ function vbArtWechsel() {
     ? 'Überblattung: beide Balken teilen sich die Überdeckung je zur Hälfte, '
       + 'jeder auf der Seite, auf der der andere liegt. Gedacht für zwei '
       + 'Balken, die sich KREUZEN und bündig werden sollen.'
-    : 'Schlitz und Zapfen: am Balkenende bleibt ein mittiger Zapfen stehen, '
-      + 'das Gegenstück bekommt das passende Loch. Die Zapfenlänge wird nicht '
-      + 'abgefragt, sondern gemessen — sie ist das Stück, mit dem der Balken '
-      + 'schon im Gegenstück steckt. Schiebe ihn vorher so weit hinein.';
+    : 'Zapfen: am Balkenende bleibt ein mittiger Zapfen stehen, das Gegenstück '
+      + 'bekommt das passende Loch — genau so tief wie der Zapfen dick ist, '
+      + 'nicht mehr quer durch das ganze Bauteil. Die Zapfenlänge wird nicht '
+      + 'abgefragt, sondern gemessen: sie ist das Stück, mit dem der Balken '
+      + 'schon im Gegenstück steckt. Schiebe ihn vorher so weit hinein. '
+      + 'Ohne Breitenangabe läuft der Zapfen über die volle Bauteilbreite — '
+      + 'das ist Schlitz und Zapfen. Mit Breite bekommt er auf allen vier '
+      + 'Seiten eine Schulter und das Loch wird ein Sackloch.';
 }
 
 function runVerbindung() {
@@ -4394,17 +4511,25 @@ function runVerbindung() {
     auftrag.push({ beam: A, ecken: p.ecken, durch: p.durch });
   } else if (art === 'zapfen') {
     const A = sel[wer], B = sel[1 - wer];
-    const z = _zapfenProfile(A, B, parseFloat(document.getElementById('vb-dicke').value) || 0);
+    const z = _zapfenProfile(A, B,
+      parseFloat(document.getElementById('vb-dicke').value) || 0,
+      parseFloat(document.getElementById('vb-breite').value) || 0);
     if (z.fehler) { alert(z.fehler); return; }
     // Erst das Loch rechnen: schlaegt es fehl, bleibt auch der Zapfen aus —
     // ein Zapfen ohne Gegenloch waere schlimmer als gar keine Verbindung.
-    const loch = _zapfenlochProfil(B, _zapfenKlotz(A, z.amEnde, z.zl, z.dicke));
+    const loch = _zapfenlochProfil(B, _zapfenKlotz(A, z.amEnde, z.zl, z.dicke, z.breite));
     if (loch.fehler) { alert(loch.fehler); return; }
-    z.profile.forEach(ecken => auftrag.push({ beam: A, ecken }));
-    auftrag.push({ beam: B, ecken: loch.ecken });
-    hinweis = `\n\nZapfen ${Math.round(z.zl)} mm lang, ${z.dicke} mm dick `
-      + `(von ${Math.round(z.hoehe)} mm Bauteilhöhe), über die volle Breite. `
-      + 'Das Loch geht durch — ein Durchzapfen.';
+    z.profile.forEach(p2 => auftrag.push({ beam: A, ecken: p2.ecken, t0: p2.t0, t1: p2.t1 }));
+    auftrag.push({ beam: B, ecken: loch.ecken, t0: loch.t0, t1: loch.t1 });
+    hinweis = `\n\nZapfen ${Math.round(z.zl)} mm lang, ${z.dicke} mm dick, `
+      + `${Math.round(z.breite)} mm breit (Bauteil ${Math.round(z.hoehe)} × ${Math.round(z.tiefe)} mm)`
+      + (z.breite >= z.tiefe - 0.5
+          ? ' — über die volle Breite, also Schlitz und Zapfen.'
+          : ' — mit vierseitiger Schulter.')
+      + (loch.durch
+          ? '\nDas Loch geht durch: ein Durchzapfen.'
+          : `\nDas Loch ist ein Sackloch, ${Math.round(loch.t1 - loch.t0)} mm tief `
+            + `in ein ${Math.round(loch.tiefe)} mm starkes Bauteil.`);
   } else {
     for (const [A, B] of [[sel[0], sel[1]], [sel[1], sel[0]]]) {
       const p = _blattProfil(A, B);
@@ -4423,8 +4548,12 @@ function runVerbindung() {
     // zweiten Lauf der alte Ausschnitt zusätzlich stehen.
     beam.cutouts = (beam.cutouts || []).filter(c => !c.verbindung);
   });
-  auftrag.forEach(({ beam, ecken }) => {
-    beam.cutouts.push({ shape: 'poly', ebene: 'seite', ecken, verbindung: art });
+  auftrag.forEach(({ beam, ecken, t0, t1 }) => {
+    const c = { shape: 'poly', ebene: 'seite', ecken, verbindung: art };
+    // Tiefe nur setzen, wenn sie den Schnitt wirklich begrenzt — sonst stuende
+    // in jedem alten Ausschnitt ploetzlich ein Feld, das nichts aendert.
+    if (t0 != null && t1 != null) { c.t0 = t0; c.t1 = t1; }
+    beam.cutouts.push(c);
   });
   betroffen.forEach(rebuildMesh);
   closeVerbindung();
@@ -5734,6 +5863,63 @@ function _panelFaceBasis(beam) {
            eA: axes[w.iA].e, eB: axes[w.iB].e, eT: axes[w.ti].e };
 }
 
+/* UMRISS EINES BAUTEILS FUER SEINE WERKSTATTZEICHNUNG.
+
+   Die Einzelteil-Zeichnung war ein leeres Rechteck L x H mit zwei Diagonalen —
+   fuer einen Balken ohne Bearbeitung richtig, fuer jeden anderen das falsche
+   Blatt. Genau dieses Blatt nimmt man aber mit an die Saege: ein Sparren mit
+   Kerve, ein Kopfband mit zwei 45-Grad-Schnitten, ein Zapfen — nichts davon
+   war darauf zu sehen.
+
+   Geliefert wird der Umriss in BAUTEILKOORDINATEN (Laenge, Hoehe), Nullpunkt
+   unten links. Durchgehende Schnitte formen den Umriss; ein Sackloch aendert
+   ihn nicht und kommt getrennt als gestrichelte Kante samt Tiefe zurueck. */
+function _teilUmriss(b) {
+  const cuts = (b.cutouts || []).filter(c => !c.aus);
+  const L = b.L, H = b.H;
+  const leer = { ringe: [[[0, 0], [L, 0], [L, H], [0, H]]], blind: [] };
+  if (!cuts.length || !window.polygonClipping) return leer;
+  try {
+    let W2, H2, D2;
+    if (b.axis === 'x') { W2 = b.L; H2 = b.H; D2 = b.B; }
+    else if (b.axis === 'y') { W2 = b.B; H2 = b.L; D2 = b.H; }
+    else { W2 = b.B; H2 = b.H; D2 = b.L; }
+    const ax = _balkenAchsen(b), w = _flaechenWahl(b, W2, H2, D2);
+    const werte = [W2, H2, D2];
+    const A = werte[w.iA], B = werte[w.iB], T = werte[w.ti];
+    /* Welche der beiden Flaechenachsen ist die LAENGE? Bei einer Verbindung
+       ist es immer A (Laenge x Hoehe, quer gestochen); bei einer Platte mit
+       Fensterausschnitt kann es B sein. Wer das verwechselt, zeichnet die
+       Aussparung um 90 Grad gedreht — und das faellt erst am Werkstueck auf. */
+    const uIstA = (w.iA === ax.iL);
+    if (!uIstA && w.iB !== ax.iL) return leer;      // Laengsachse wird gestochen
+    const nach = ([pa, pb]) => uIstA
+      ? [pa + A / 2, pb + B / 2]
+      : [pb + B / 2, pa + A / 2];
+    const platte = [[-A/2,-B/2],[A/2,-B/2],[A/2,B/2],[-A/2,B/2],[-A/2,-B/2]];
+    const durch = cuts.filter(c => _cutGehtDurch(c, T));
+    const blindCuts = cuts.filter(c => !_cutGehtDurch(c, T));
+    let ringe = [[[0, 0], [A, 0], [A, B], [0, B]].map(([x, y]) =>
+      uIstA ? [x, y] : [y, x])];
+    if (durch.length) {
+      const rest = window.polygonClipping.difference(
+        [platte], ...durch.map(c => _cutoutPolygone(c, A, B)));
+      if (rest && rest.length) {
+        ringe = [];
+        rest.forEach(poly => poly.forEach(ring => ringe.push(ring.slice(0, -1).map(nach))));
+      }
+    }
+    const blind = blindCuts.map(c => {
+      const [t0, t1] = _cutTiefe(c, T);
+      return { tiefe: Math.round((t1 - t0) * 10) / 10, von: Math.round(t0 * 10) / 10,
+               ringe: _cutoutPolygone(c, A, B).map(poly => poly[0].slice(0, -1).map(nach)) };
+    });
+    return { ringe, blind };
+  } catch (err) {
+    return leer;
+  }
+}
+
 /* UMRISS EINES BAUTEILS IN EINER ANSICHT — als Vieleck, nicht als Kiste.
 
    Seit es Holzverbindungen gibt, ist ein Balken nicht mehr zwangslaeufig ein
@@ -5768,7 +5954,7 @@ function _ansichtRinge(b, projectFn) {
       const p = [cx + v.x, cy + v.y, cz + v.z];
       welt.push(p); uv.push(projectFn(p[0], p[1], p[2]));
     }
-    return { ringe: [_huelle2D(uv)], welt };
+    return { ringe: [_huelle2D(uv)], kanten: [], welt };
   };
   if (!cuts.length || !window.polygonClipping) return huelle();
 
@@ -5787,26 +5973,45 @@ function _ansichtRinge(b, projectFn) {
     };
     const A = bas.A, B = bas.B, T = bas.T;
     const platte = [[-A/2,-B/2],[A/2,-B/2],[A/2,B/2],[-A/2,B/2],[-A/2,-B/2]];
-    const loecher = cuts.map(c => _cutoutPolygone(c, A, B));
-    const flaechen = window.polygonClipping.difference([platte], ...loecher);
+
+    /* In SCHICHTEN, aus demselben Grund wie in buildPanelGeometry: ein blindes
+       Zapfenloch und die seitliche Schulter eines Zapfens hoeren auf halber
+       Tiefe auf. Geht alles durch — der Normalfall —, ist es genau eine
+       Schicht und dieselbe Rechnung wie zuvor. */
+    const grenzen = new Set([0, T]);
+    cuts.forEach(c => { const [t0, t1] = _cutTiefe(c, T); grenzen.add(t0); grenzen.add(t1); });
+    const kanten2 = [...grenzen].sort((x, y) => x - y);
+    const teile = [];
+    for (let k = 0; k < kanten2.length - 1; k++) {
+      const t0 = kanten2[k], t1 = kanten2[k + 1];
+      if (t1 - t0 <= 0.05) continue;
+      const mitte = (t0 + t1) / 2;
+      const aktiv = cuts.filter(c => {
+        const [c0, c1] = _cutTiefe(c, T);
+        return c0 - 0.01 <= mitte && mitte <= c1 + 0.01;
+      });
+      const loecher = aktiv.map(c => _cutoutPolygone(c, A, B));
+      const flaechen = loecher.length
+        ? window.polygonClipping.difference([platte], ...loecher)
+        : [[platte]];
+      if (!flaechen || !flaechen.length) continue;     // Schicht ganz weggefraest
+      for (const seite of [t0 - T / 2, t1 - T / 2]) {
+        teile.push(flaechen.map(poly => poly.map(ring => ring.map(([pa, pb]) => pkt(pa, pb, seite)))));
+      }
+      // Mantelflaechen: jede Kante der Flaeche, durch die Schichtdicke gezogen.
+      flaechen.forEach(poly => poly.forEach(ring => {
+        for (let i = 0; i < ring.length - 1; i++) {
+          const a0 = pkt(ring[i][0], ring[i][1], t0 - T / 2);
+          const a1 = pkt(ring[i + 1][0], ring[i + 1][1], t0 - T / 2);
+          const b1 = pkt(ring[i + 1][0], ring[i + 1][1], t1 - T / 2);
+          const b0 = pkt(ring[i][0], ring[i][1], t1 - T / 2);
+          teile.push([[[a0, a1, b1, b0, a0]]]);
+        }
+      }));
+    }
     // Frist eine Fraesbahn die Platte ganz weg, bleibt nichts uebrig. Dann ist
     // der volle Quader die ehrlichere Auskunft als ein leeres Blatt.
-    if (!flaechen || !flaechen.length) return huelle();
-
-    const teile = [];
-    for (const seite of [-T / 2, T / 2]) {
-      teile.push(flaechen.map(poly => poly.map(ring => ring.map(([pa, pb]) => pkt(pa, pb, seite)))));
-    }
-    // Mantelflaechen: jede Kante der Flaeche, durch die Dicke gezogen.
-    flaechen.forEach(poly => poly.forEach(ring => {
-      for (let i = 0; i < ring.length - 1; i++) {
-        const a0 = pkt(ring[i][0], ring[i][1], -T / 2);
-        const a1 = pkt(ring[i + 1][0], ring[i + 1][1], -T / 2);
-        const b1 = pkt(ring[i + 1][0], ring[i + 1][1], T / 2);
-        const b0 = pkt(ring[i][0], ring[i][1], T / 2);
-        teile.push([[[a0, a1, b1, b0, a0]]]);
-      }
-    }));
+    if (!teile.length) return huelle();
     const sil = window.polygonClipping.union(...teile);
     if (!sil || !sil.length) return huelle();
     /* Mehrere getrennte Stuecke gibt es wirklich: eine Fraesbahn quer durch
@@ -5814,7 +6019,22 @@ function _ansichtRinge(b, projectFn) {
        Fuellregel evenodd macht daraus Loecher, wo Loecher hingehoeren. */
     const ringe = [];
     sil.forEach(poly => poly.forEach(ring => ringe.push(ring.slice(0, -1))));
-    return { ringe, welt };
+
+    /* Ein blindes Zapfenloch aendert den Umriss NICHT — dahinter steht ja
+       Holz. Genau deshalb waere es im Plan unsichtbar, obwohl man in der
+       Werkstatt hineinsieht. Seine Oeffnung wird darum als eigene Kante
+       zurueckgegeben und nur gestrichelt gezeichnet, nicht als Loch gefuellt:
+       ein Sackloch ist kein Durchbruch, und der Plan soll beides
+       unterscheiden. */
+    const kanten = [];
+    cuts.forEach(c => {
+      if (_cutGehtDurch(c, T)) return;
+      const [t0, t1] = _cutTiefe(c, T);
+      const seite = (t0 <= 0.01 ? t0 : (t1 >= T - 0.01 ? t1 : (t0 + t1) / 2)) - T / 2;
+      _cutoutPolygone(c, A, B).forEach(poly =>
+        kanten.push(poly[0].slice(0, -1).map(([pa, pb]) => pkt(pa, pb, seite))));
+    });
+    return { ringe, kanten, welt };
   } catch (err) {
     return huelle();
   }
@@ -10179,10 +10399,30 @@ function drawPartSVG(ids) {
   p.push(`<rect width="${W}" height="${Hsvg}" fill="white"/>`);
   p.push(`<text x="${W/2}" y="26" text-anchor="middle" font-size="15" font-weight="bold" font-family="Arial" fill="#0f3460">${escHtml(b.name)} — ${count}×</text>`);
   p.push(`<text x="${W/2}" y="44" text-anchor="middle" font-size="11" font-family="Arial" fill="#555">${escHtml(b.woodType)} · Querschnitt ${B}×${H} mm</text>`);
-  // Seitenansicht (Länge × Höhe)
-  p.push(`<rect x="${ox}" y="${oy}" width="${vw}" height="${vh}" fill="${fill}" fill-opacity="0.65" stroke="#7a5020" stroke-width="1"/>`);
-  p.push(`<line x1="${ox}" y1="${oy}" x2="${ox+vw}" y2="${oy+vh}" stroke="#7a5020" stroke-width="0.5" opacity="0.4"/>`);
-  p.push(`<line x1="${ox+vw}" y1="${oy}" x2="${ox}" y2="${oy+vh}" stroke="#7a5020" stroke-width="0.5" opacity="0.4"/>`);
+  /* Seitenansicht (Laenge x Hoehe) — als ECHTER Umriss.
+     Hier stand ein leeres Rechteck mit zwei Diagonalen. Fuer einen Balken ohne
+     Bearbeitung war das richtig; sobald eine Kerve, ein Kopfbandschnitt oder
+     ein Zapfen dran ist, war es das falsche Blatt an der Saege. */
+  const um = _teilUmriss(b);
+  const zuSVG = ([u, v]) => [ox + u * scale, oy + (H - v) * scale];   // v nach oben
+  const pfad = um.ringe.map(r => 'M ' + r.map(pt => {
+    const q = zuSVG(pt); return q[0].toFixed(1) + ' ' + q[1].toFixed(1);
+  }).join(' L ') + ' Z').join(' ');
+  p.push(`<path d="${pfad}" fill-rule="evenodd" fill="${fill}" fill-opacity="0.65" stroke="#7a5020" stroke-width="1" stroke-linejoin="round"/>`);
+  // Ein Sackloch aendert den Umriss nicht — es waere sonst unsichtbar.
+  um.blind.forEach(bl => bl.ringe.forEach(r => {
+    const d2 = 'M ' + r.map(pt => {
+      const q = zuSVG(pt); return q[0].toFixed(1) + ' ' + q[1].toFixed(1);
+    }).join(' L ') + ' Z';
+    p.push(`<path d="${d2}" fill="none" stroke="#7a5020" stroke-width="0.9" stroke-dasharray="5 3"/>`);
+    const mx = r.reduce((n, pt) => n + zuSVG(pt)[0], 0) / r.length;
+    const my = r.reduce((n, pt) => n + zuSVG(pt)[1], 0) / r.length;
+    p.push(`<text x="${mx.toFixed(1)}" y="${(my + 3).toFixed(1)}" text-anchor="middle" font-size="9" font-family="Arial" fill="#7a5020">${bl.tiefe} mm tief</text>`);
+  }));
+  if (!(b.cutouts || []).some(c => !c.aus)) {
+    p.push(`<line x1="${ox}" y1="${oy}" x2="${ox+vw}" y2="${oy+vh}" stroke="#7a5020" stroke-width="0.5" opacity="0.4"/>`);
+    p.push(`<line x1="${ox+vw}" y1="${oy}" x2="${ox}" y2="${oy+vh}" stroke="#7a5020" stroke-width="0.5" opacity="0.4"/>`);
+  }
   // Längen-Bemaßung unten
   const dy = oy + vh + 26;
   p.push(`<line x1="${ox}" y1="${oy+vh}" x2="${ox}" y2="${dy+4}" stroke="#e94560" stroke-width="0.7"/>`);
@@ -10197,6 +10437,17 @@ function drawPartSVG(ids) {
   p.push(`<line x1="${ox}" y1="${oy+vh}" x2="${dx-4}" y2="${oy+vh}" stroke="#e94560" stroke-width="0.7"/>`);
   p.push(`<line x1="${dx}" y1="${oy}" x2="${dx}" y2="${oy+vh}" stroke="#e94560" stroke-width="0.9"/>`);
   p.push(`<text x="${dx-4}" y="${oy+vh/2}" text-anchor="middle" font-size="11" font-family="Arial" fill="#e94560" transform="rotate(-90 ${dx-4} ${oy+vh/2})">${H} mm</text>`);
+  // Was am Bauteil bearbeitet wird, gehoert in Worten aufs Blatt — nicht nur
+  // als Strich. Wer nur die Zeichnung hat, muss wissen, wie tief er stemmt.
+  const bearb = (b.cutouts || []).filter(c => !c.aus);
+  if (bearb.length) {
+    const sack = um.blind.length;
+    p.push(`<text x="${ox}" y="${Hsvg-30}" font-size="10" font-family="Arial" fill="#7a5020">`
+      + `⚒ ${bearb.length} Bearbeitung${bearb.length === 1 ? '' : 'en'}`
+      + (sack ? ` — davon ${sack} als Sackloch (gestrichelt, Tiefe angeschrieben)`
+              : ' — durchgehend')
+      + `</text>`);
+  }
   p.push(`<text x="${ox}" y="${Hsvg-14}" font-size="9" font-family="Arial" fill="#999">erstellt mit holzbau3d.app</text>`);
   p.push(`</svg>`);
   const blob = new Blob([p.join('\n')], { type: 'image/svg+xml' });
@@ -10397,6 +10648,14 @@ function _placementCutouts(pl) {
     // Ausgeblendet = nicht fraesen. Dieselbe Regel wie in buildPanelGeometry:
     // was im Modell fehlt, darf die Maschine nicht schneiden.
     if (c.aus) return [];
+    /* Ein in der TIEFE begrenzter Schnitt — das Sackloch am Zapfen — kann hier
+       heute nicht ankommen: Holzverbindungen sind auf Plattenwerkstoff
+       gesperrt, und nur sie setzen t0/t1. Sollte sich das je aendern, muss der
+       Plan die Tiefe mitfuehren, sonst fraest die Maschine durch das Werkstueck.
+       Lieber laut in der Konsole als leise im Holz. */
+    if (c.t0 != null || c.t1 != null) {
+      console.warn('CNC-Plan: Aussparung mit begrenzter Tiefe würde als Durchbruch ausgegeben', c);
+    }
     const cu = c.u || 0, cv = c.v || 0;   // u entlang A (=lange Seite), v entlang B
 
     // 'poly' laeuft denselben Weg wie eine Fraesbahn: als echter Umriss, nicht
@@ -11355,7 +11614,7 @@ try {
       {t:'Bewegen & Drehen', b:'Objekt ziehen = bewegen, Alt+Ziehen = Höhe, Rechtsklick = drehen. Dieser Knopf zeigt jederzeit alle Steuerungen.'},
       {t:'Gruppen & Schloss', b:'Organisiere Bauteile in Gruppen: ein-/ausblenden, umbenennen, löschen. Mit dem Schloss 🔒 sperrst du eine Gruppe — sie lässt sich dann nur noch komplett bewegen, kein Teil rutscht mehr einzeln weg.'},
       {t:'Werkzeuge: Messen, Sägen, Fräsen', b:'📏 Maßband, 🪚 Säge und 🔩 Fräsen liegen hier. Zum Fräsen eine OSB- oder Sperrholzplatte auswählen, die Fräsergröße einstellen und mit gedrückter Maus über die Platte ziehen — es wird gefräst, solange du ziehst. Alt gedrückt halten ergibt eine gerade Nut.'},
-      {t:'Verbindungen & Kollisionen', b:'Unten im Reiter „Balken": zwei Balken markieren und verbinden — Auflager, Überblattung oder Zapfen als echter Zuschnitt. EIN Balken genügt auch: er wird an alles angepasst, was er berührt, und nur er selbst wird eingeschnitten. Direkt darunter die Kollisionsprüfung: einschalten und dranlassen, dann wird jede Überschneidung rot markiert — was sauber verbunden ist, bleibt still.'},
+      {t:'Verbindungen & Kollisionen', b:'Unten im Reiter „Balken": zwei Balken markieren und verbinden — Auflager, Überblattung oder Zapfen als echter Zuschnitt. Beim Zapfen kannst du eine Breite angeben: dann bekommt er eine Schulter auf allen vier Seiten und das Gegenstück ein Sackloch statt eines Schlitzes quer durch. EIN Balken genügt auch: er wird an alles angepasst, was er berührt, und nur er selbst wird eingeschnitten. Direkt darunter die Kollisionsprüfung: einschalten und dranlassen, dann wird jede Überschneidung rot markiert — was sauber verbunden ist, bleibt still.'},
       {t:'Stückliste & Export', b:'Hier findest du die automatische Stückliste, Kalkulation, Schnittplan und Drucken/PDF. Deine Ausfräsungen gehen über „🪵 Platten“ → „⚙ CNC-DXF“ als Fräsplan 1:1 an die Maschine.'},
       {t:'Projekte sichern & teilen', b:'Speichern als Datei bleibt unbegrenzt und kostenlos. Zusätzlich kannst du Projekte auf dem Server ablegen und am nächsten Gerät weiterarbeiten — es wird NICHTS automatisch gespeichert, du drückst selbst auf Speichern. Zum Zeigen erzeugst du einen Ansehen-Link: nur für die E-Mail-Adressen, die du freischaltest, und nach 7 Tagen löscht er sich von selbst.'},
       {t:'Fertig! 🎉', b:'Du kannst diese Tour jederzeit über den ❔-Knopf oben rechts neu starten. Viel Erfolg beim Planen!'}
@@ -11369,7 +11628,7 @@ try {
       {t:'Move & rotate', b:'Drag an object = move, Alt+drag = height, right-click = rotate. This button always shows all controls.'},
       {t:'Groups & lock', b:'Organize components into groups: show/hide, rename, delete. The lock 🔒 keeps a group together — it then only moves as a whole and no single part slips away.'},
       {t:'Tools: measure, saw, cut-out', b:'📏 Tape measure, 🪚 saw and 🔩 cut-out live here. To cut, select an OSB or plywood panel, set the cutter size and drag across the panel with the mouse held down — it cuts as long as you drag. Hold Alt for a straight groove.'},
-      {t:'Joints & clash detection', b:'At the bottom of the “Balken” tab: select two beams and join them — bearing notch, halved lap or tenon as a real cut. One beam is enough too: it is fitted to everything it touches, and only it gets cut. Right below it, clash detection: switch it on and leave it on, and every overlap turns red — anything properly joined stays quiet.'},
+      {t:'Joints & clash detection', b:'At the bottom of the “Balken” tab: select two beams and join them — bearing notch, halved lap or tenon as a real cut. Give the tenon a width and it gets a shoulder on all four sides, while the counterpart gets a blind mortise instead of a slot straight through. One beam is enough too: it is fitted to everything it touches, and only it gets cut. Right below it, clash detection: switch it on and leave it on, and every overlap turns red — anything properly joined stays quiet.'},
       {t:'Parts list & export', b:'The automatic parts list, cost calculation, cutting plan and print/PDF are here. Your cut-outs go to the machine as a 1:1 milling plan via “🪵 Platten” → “⚙ CNC-DXF”.'},
       {t:'Save & share projects', b:'Saving as a file stays unlimited and free. On top of that you can keep projects on the server and carry on at the next device — NOTHING is saved automatically, you press save yourself. To show your work, create a view link: only for the e-mail addresses you allow, and it deletes itself after 7 days.'},
       {t:'All set! 🎉', b:'You can restart this tour anytime via the ❔ button at the top right. Happy building!'}
@@ -11383,7 +11642,7 @@ try {
       {t:'Déplacer & tourner', b:'Glisser = déplacer, Alt+glisser = hauteur, clic droit = tourner. Ce bouton affiche toutes les commandes.'},
       {t:'Groupes & verrou', b:'Organisez les éléments en groupes : afficher/masquer, renommer, supprimer. Le verrou 🔒 maintient un groupe ensemble — il ne se déplace plus qu’en bloc, aucune pièce ne s’échappe.'},
       {t:'Outils : mesurer, scier, fraiser', b:'📏 Mètre ruban, 🪚 scie et 🔩 évidement se trouvent ici. Pour fraiser : sélectionnez un panneau OSB ou contreplaqué, réglez la taille de la fraise et glissez sur le panneau en maintenant le bouton — la fraise coupe tant que vous glissez. Maintenez Alt pour une rainure droite.'},
-      {t:'Assemblages & collisions', b:'En bas de l’onglet « Balken » : sélectionnez deux poutres et assemblez-les — appui entaillé, mi-bois ou tenon, en découpe réelle. Une seule poutre suffit aussi : elle s’ajuste à tout ce qu’elle touche, et elle seule est entaillée. Juste en dessous, la détection de collisions : activez-la et laissez-la, chaque chevauchement devient rouge — ce qui est bien assemblé reste discret.'},
+      {t:'Assemblages & collisions', b:'En bas de l’onglet « Balken » : sélectionnez deux poutres et assemblez-les — appui entaillé, mi-bois ou tenon, en découpe réelle. Donnez une largeur au tenon : il reçoit un épaulement sur quatre faces et la pièce opposée une mortaise borgne au lieu d’une mortaise traversante. Une seule poutre suffit aussi : elle s’ajuste à tout ce qu’elle touche, et elle seule est entaillée. Juste en dessous, la détection de collisions : activez-la et laissez-la, chaque chevauchement devient rouge — ce qui est bien assemblé reste discret.'},
       {t:'Liste & export', b:'Vous trouverez ici la liste de pièces automatique, le calcul, le plan de coupe et l’impression/PDF. Vos évidements partent vers la machine en 1:1 via « 🪵 Platten » → « ⚙ CNC-DXF ».'},
       {t:'Enregistrer & partager', b:'L’enregistrement en fichier reste illimité et gratuit. En plus, vous pouvez déposer vos projets sur le serveur et continuer sur un autre appareil — RIEN n’est enregistré automatiquement, c’est vous qui appuyez. Pour montrer votre travail, créez un lien de consultation : réservé aux adresses que vous autorisez, supprimé après 7 jours.'},
       {t:'Terminé ! 🎉', b:'Vous pouvez relancer la visite via le bouton ❔ en haut à droite. Bonne conception !'}
