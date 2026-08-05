@@ -360,6 +360,10 @@ SCHEMA_MIGRATIONS = [
     # ein Dutzend. Das liest sich als Spam und drueckt bei Brevo die Zustellrate
     # fuer ALLE Mails, auch fuer Verifizierung und Abo-Ablauf.
     "ALTER TABLE app_users ADD COLUMN upsell_count INT NOT NULL DEFAULT 0",
+    # Einmalige Ankuendigung neuer Funktionen. Eigene Spalte statt eines Flags
+    # im Upsell-Zaehler: die beiden Mails haben verschiedene Zwecke, und diese
+    # hier darf sich NIE wiederholen, auch nicht wenn der Cron zweimal laeuft.
+    "ALTER TABLE app_users ADD COLUMN feature_mail_sent DATETIME NULL",
     # Bestandsnutzer haben schon reichlich bekommen. Sie starten deshalb bei 2
     # und erhalten hoechstens noch EINE Mail statt drei.
     # Idempotent: nach dem ersten Lauf steht dort 2, die Bedingung greift nicht
@@ -4225,6 +4229,226 @@ def cron_subscription_reminders():
 # Abstand waechst, damit der letzte Anlauf nicht direkt hinterherkommt.
 UPSELL_MAX = 3
 UPSELL_ABSTAND = (5, 14, 30)     # Tage vor der 1., 2. und 3. Mail
+
+
+
+# ══════════════════════════════════════════════
+# EINMALIGE FUNKTIONS-ANKUENDIGUNG
+# ══════════════════════════════════════════════
+# Bewusst KEINE Werbemail: sie erzaehlt, was dazugekommen ist, und verkauft
+# nichts. Fuer zahlende Kunden ist das ein Service, fuer alle anderen der beste
+# Grund zurueckzukommen. Genau ein Satz am Ende weist Nicht-Abonnenten darauf
+# hin, was davon Premium ist — mehr nicht.
+#
+# Wer sie NICHT bekommt: wer der Werbung widersprochen hat. Eine
+# "Neuigkeiten"-Mail an Abgemeldete ist rechtlich weiterhin Werbung und
+# praktisch das, was die Zustellrate ruiniert.
+#
+# EINMALIG ueber feature_mail_sent: ein zweiter Cron-Aufruf findet niemanden
+# mehr. Deshalb liegt sie auch NICHT im taeglichen Cron.
+FEATURE_MAIL_I18N = {
+    'de': {
+        'subject': 'Neu in HolzBau 3D: Holzverbindungen, Kollisionsprüfung und Projekte online',
+        'preheader': 'Auflager und Überblattung als echter Zuschnitt, rote Kollisionsanzeige, Projekte speichern und teilen.',
+        'hallo': 'Hallo',
+        'fallback_name': 'zusammen',
+        'intro': 'In den letzten Wochen ist einiges dazugekommen — hier das Wichtigste in Kürze.',
+        'punkte': [
+            ('Holzverbindungen',
+             'Auflager, Überblattung sowie Schlitz und Zapfen als echte Geometrie — nicht angedeutet, sondern zugeschnitten. Ein Bauteil markieren genügt: es wird an alles angepasst, was es berührt, und nur es selbst wird eingeschnitten.'),
+            ('Kollisionsprüfung',
+             'Einschalten und dranlassen: wo zwei Bauteile denselben Raum belegen, wird genau dieser Bereich rot — auch tief in der Konstruktion. Eine Überschneidung von 40 mm sieht man im 3D nicht, auf der Baustelle schon.'),
+            ('Giebel beplanken',
+             'Dreieckige Flächen werden erkannt und die Platten passend zu den Sparren schräg zugeschnitten. Kein Nacharbeiten von Hand mehr.'),
+            ('Schnitt A–A und Achsmaße',
+             'Der Plan enthält jetzt einen Vertikalschnitt und Maßketten der Ständer- und Riegelachsen — damit muss niemand mehr Maße aus der Stückliste zurückrechnen.'),
+            ('Projekte online speichern und teilen',
+             'Projekte auf dem Server ablegen und am nächsten Gerät weiterarbeiten. Zum Zeigen einen Ansehen-Link erzeugen — nur für die E-Mail-Adressen, die du freischaltest, 7 Tage gültig, danach löscht er sich selbst.'),
+        ],
+        'cta': 'Jetzt ausprobieren',
+        'premium_hinweis': 'Schnittplan, CNC-Export und die maßstäblichen Pläne gehören zu Premium — Planen, Verbinden und die Kollisionsprüfung sind für alle da.',
+        'schluss': 'Wenn dir etwas fehlt oder etwas nicht stimmt: einfach auf diese Mail antworten. Fast alles hier oben ist aus solchen Rückmeldungen entstanden.',
+        'gruss': 'Viele Grüße<br>David von HolzBau 3D',
+        'unsub': 'Keine E-Mails mehr erhalten',
+    },
+    'en': {
+        'subject': 'New in HolzBau 3D: timber joints, clash detection and projects online',
+        'preheader': 'Bearing notches and halved laps as real cuts, red clash display, save and share projects.',
+        'hallo': 'Hello',
+        'fallback_name': 'there',
+        'intro': 'Quite a bit has been added over the past weeks — here are the highlights.',
+        'punkte': [
+            ('Timber joints',
+             'Bearing notch, halved lap and mortise-and-tenon as real geometry — actually cut, not just hinted at. Select a single part: it is fitted to everything it touches, and only it gets cut.'),
+            ('Clash detection',
+             'Switch it on and leave it on: wherever two parts occupy the same space, exactly that region turns red — even deep inside the structure. A 40 mm overlap is invisible in 3D, but not on site.'),
+            ('Cladding gable ends',
+             'Triangular surfaces are detected and the panels are cut at an angle to match the rafters. No more reworking by hand.'),
+            ('Section A–A and axis dimensions',
+             'Plans now include a vertical section and dimension chains for stud and rail axes — nobody has to back-calculate measurements from the parts list any more.'),
+            ('Save projects online and share them',
+             'Keep projects on the server and carry on at the next device. Create a view link to show your work — only for the e-mail addresses you allow, valid for 7 days, then deleted automatically.'),
+        ],
+        'cta': 'Try it now',
+        'premium_hinweis': 'Cutting plans, CNC export and true-to-scale drawings are Premium — planning, joints and clash detection are there for everyone.',
+        'schluss': 'If something is missing or does not work: just reply to this e-mail. Almost everything above came out of feedback like that.',
+        'gruss': 'Best regards<br>David from HolzBau 3D',
+        'unsub': 'Stop receiving e-mails',
+    },
+    'fr': {
+        'subject': 'Nouveau dans HolzBau 3D : assemblages, détection de collisions et projets en ligne',
+        'preheader': 'Appuis entaillés et mi-bois en découpe réelle, collisions en rouge, projets enregistrés et partagés.',
+        'hallo': 'Bonjour',
+        'fallback_name': 'à tous',
+        'intro': 'Beaucoup de choses se sont ajoutées ces dernières semaines — voici l’essentiel.',
+        'punkte': [
+            ('Assemblages bois',
+             'Appui entaillé, mi-bois et tenon-mortaise en géométrie réelle — vraiment découpés, pas seulement suggérés. Sélectionnez une seule pièce : elle s’ajuste à tout ce qu’elle touche, et elle seule est entaillée.'),
+            ('Détection de collisions',
+             'Activez-la et laissez-la : partout où deux pièces occupent le même espace, cette zone précise devient rouge — même au cœur de la structure. Un chevauchement de 40 mm ne se voit pas en 3D, sur le chantier si.'),
+            ('Habillage des pignons',
+             'Les surfaces triangulaires sont reconnues et les panneaux découpés en biais selon les chevrons. Plus de reprise à la main.'),
+            ('Coupe A–A et cotes d’axes',
+             'Les plans comportent désormais une coupe verticale et des chaînes de cotes des axes de montants et traverses — plus besoin de recalculer les mesures depuis la liste de pièces.'),
+            ('Projets en ligne et partage',
+             'Enregistrez vos projets sur le serveur et continuez sur un autre appareil. Créez un lien de consultation — réservé aux adresses e-mail que vous autorisez, valable 7 jours, puis supprimé automatiquement.'),
+        ],
+        'cta': 'Essayer maintenant',
+        'premium_hinweis': 'Plans de coupe, export CNC et plans à l’échelle relèvent de Premium — la conception, les assemblages et la détection de collisions sont pour tout le monde.',
+        'schluss': 'S’il manque quelque chose ou si un point ne va pas : répondez simplement à cet e-mail. Presque tout ce qui précède vient de retours de ce genre.',
+        'gruss': 'Cordialement<br>David de HolzBau 3D',
+        'unsub': 'Ne plus recevoir d’e-mails',
+    },
+}
+
+
+def _email_feature_html(display_name, editor_url, unsub_url, lang='de', premium=False):
+    """Die Ankuendigung im selben Gewand wie die uebrigen Mails."""
+    T = FEATURE_MAIL_I18N.get(_norm_lang(lang), FEATURE_MAIL_I18N['de'])
+    name = html.escape(display_name or '').strip() or T['fallback_name']
+    punkte = ''.join(
+        '<tr><td style="padding:9px 0;line-height:1.55;">'
+        '<strong style="color:#3a2a1a;">' + titel + '</strong><br>'
+        '<span style="color:#5a4a3a;">' + text + '</span></td></tr>'
+        for titel, text in T['punkte'])
+    # Der Premium-Hinweis nur fuer die, die keins haben — einem zahlenden Kunden
+    # zu erklaeren, was Premium kann, ist bestenfalls ueberfluessig.
+    hinweis = ('' if premium else
+               '<tr><td style="padding:14px 0 0;font-size:13px;line-height:1.5;'
+               'color:#7a6a5a;">' + T['premium_hinweis'] + '</td></tr>')
+    lg = _norm_lang(lang)
+    return (
+        '<!DOCTYPE html>\n<html lang="' + lg + '"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1.0"></head>\n'
+        '<body style="margin:0;padding:0;background:#f0e9df;">\n'
+        '  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#f0e9df;'
+        'font-size:1px;line-height:1px;">' + T['preheader'] + '</div>\n'
+        '  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        'style="background:#f0e9df;padding:24px 12px;"><tr><td align="center">\n'
+        '    <table role="presentation" width="600" cellpadding="0" cellspacing="0" '
+        'style="width:600px;max-width:600px;background:#fbf7f1;border:1px solid #e3d6c4;'
+        'border-radius:14px;overflow:hidden;font-family:Georgia,\'Times New Roman\',serif;">\n'
+        '      <tr><td style="height:5px;background:#9a5b2c;font-size:0;line-height:0;">&nbsp;</td></tr>\n'
+        '      <tr><td style="padding:26px 40px 8px;">\n'
+        '        <table role="presentation" cellpadding="0" cellspacing="0"><tr>\n'
+        '          <td style="width:30px;vertical-align:middle;"><div style="width:26px;'
+        'height:26px;background:#9a5b2c;border-radius:6px;"></div></td>\n'
+        '          <td style="padding-left:10px;vertical-align:middle;font-size:20px;'
+        'font-weight:bold;color:#3a2a1a;">HolzBau&nbsp;3D</td>\n'
+        '        </tr></table>\n      </td></tr>\n'
+        '      <tr><td style="padding:10px 40px 0;font-size:16px;color:#3a2a1a;">'
+        + T['hallo'] + ' ' + name + ',</td></tr>\n'
+        '      <tr><td style="padding:10px 40px 0;font-size:15px;line-height:1.6;'
+        'color:#5a4a3a;">' + T['intro'] + '</td></tr>\n'
+        '      <tr><td style="padding:12px 40px 0;"><table role="presentation" width="100%" '
+        'cellpadding="0" cellspacing="0" style="font-size:14px;">\n'
+        + punkte + hinweis +
+        '      </table></td></tr>\n'
+        '      <tr><td align="center" style="padding:26px 40px 6px;">\n'
+        '        <a href="' + editor_url + '" style="display:inline-block;background:#9a5b2c;'
+        'color:#fff;text-decoration:none;padding:13px 30px;border-radius:8px;font-size:16px;'
+        'font-weight:bold;">' + T['cta'] + '</a>\n      </td></tr>\n'
+        '      <tr><td style="padding:20px 40px 0;font-size:14px;line-height:1.6;'
+        'color:#5a4a3a;">' + T['schluss'] + '</td></tr>\n'
+        '      <tr><td style="padding:18px 40px 26px;font-size:14px;line-height:1.6;'
+        'color:#3a2a1a;">' + T['gruss'] + '</td></tr>\n'
+        '      <tr><td style="padding:14px 40px 22px;border-top:1px solid #e3d6c4;'
+        'font-size:12px;color:#9a8a7a;">\n'
+        '        <a href="' + unsub_url + '" style="color:#9a8a7a;">' + T['unsub'] + '</a>\n'
+        '      </td></tr>\n    </table>\n  </td></tr></table>\n</body></html>')
+
+
+@app.route('/admin/feature-mail-vorschau')
+@admin_required
+def admin_feature_mail_vorschau():
+    """Erst lesen, dann senden. Eine Rundmail an alle laesst sich nicht
+    zurueckholen — die Vorschau kostet nichts und verhindert genau das.
+    ?lang=de|en|fr und ?premium=1 zeigen die Varianten."""
+    basis = os.environ.get('BASE_URL', 'https://holzbau3d.app').rstrip('/')
+    return _email_feature_html('David', basis + '/editor',
+                               basis + '/abmelden?token=BEISPIEL',
+                               _norm_lang(request.args.get('lang', 'de')),
+                               request.args.get('premium') == '1')
+
+
+@app.route('/cron/feature-mail', methods=['GET', 'POST'])
+def cron_feature_mail():
+    """Einmalige Ankuendigung neuer Funktionen.
+
+    Absichtlich hinter dem CRON_SECRET und NICHT im taeglichen Cron: sie wird
+    von Hand ausgeloest, wenn sie raus soll. Ein zweiter Aufruf findet niemanden
+    mehr, weil feature_mail_sent gesetzt ist.
+
+    Wer sie bekommt: bestaetigte E-Mail, kein Werbe-Widerspruch, noch nicht
+    angeschrieben. Abo oder nicht spielt keine Rolle — neue Funktionen sind fuer
+    zahlende Kunden ein Service, nicht Werbung.
+    """
+    if not _cron_schluessel_pruefen('feature-mail'):
+        abort(403)
+    basis = os.environ.get('BASE_URL', 'https://holzbau3d.app').rstrip('/')
+    rows = query_db(
+        """SELECT u.id, u.email, u.full_name, u.username, u.unsub_token, u.lang,
+                  COALESCE(s.plan, 'free') AS plan, COALESCE(s.status, '') AS status,
+                  s.current_period_end
+             FROM app_users u
+             LEFT JOIN subscriptions s ON s.user_id = u.id
+            WHERE u.email IS NOT NULL AND u.email <> ''
+              AND u.email_verified = 1
+              AND u.marketing_opt_out = 0
+              AND u.feature_mail_sent IS NULL""", []) or []
+    sent, failed = 0, 0
+    for r in rows:
+        try:
+            token = r.get('unsub_token')
+            if not token:
+                token = secrets.token_urlsafe(32)
+                execute_db('UPDATE app_users SET unsub_token=? WHERE id=?', [token, r['id']])
+            u_lang = _norm_lang(r.get('lang'))
+            ende = r.get('current_period_end')
+            premium = (r.get('plan') == 'premium' and (
+                r.get('status') == 'active'
+                or (r.get('status') == 'cancelled'
+                    and (not ende or ende > datetime.now()))))
+            body = _email_feature_html(r.get('full_name') or r.get('username') or '',
+                                       basis + '/editor',
+                                       basis + '/abmelden?token=' + token,
+                                       u_lang, premium)
+            if send_email(r['email'], FEATURE_MAIL_I18N[u_lang]['subject'], body):
+                # SOFORT markieren, nicht am Ende des Laufs: bricht er in der
+                # Mitte ab, darf niemand die Mail beim naechsten Versuch ein
+                # zweites Mal bekommen.
+                execute_db('UPDATE app_users SET feature_mail_sent=NOW() WHERE id=?', [r['id']])
+                sent += 1
+            else:
+                failed += 1
+        except Exception as e:
+            logger.error('feature-mail an Nutzer %s fehlgeschlagen: %s',
+                         r.get('id'), type(e).__name__)
+            failed += 1
+    _cron_protokoll('feature-mail', True,
+                    '%d Ankuendigung(en) verschickt, %d fehlgeschlagen, %d Empfaenger gefunden'
+                    % (sent, failed, len(rows)))
+    return jsonify(ok=True, sent=sent, failed=failed, kandidaten=len(rows))
 
 
 @app.route('/cron/premium-upsell', methods=['GET', 'POST'])
