@@ -750,7 +750,29 @@ def _is_safe_redirect(url):
     if not url or not url.startswith('/') or url.startswith('//') or url.startswith('/\\'):
         return False
     teile = urlparse(url)
-    return not teile.scheme and not teile.netloc
+    if teile.scheme or teile.netloc:
+        return False
+    return _ist_per_get_erreichbar(teile.path)
+
+
+def _ist_per_get_erreichbar(pfad):
+    """Kann man diesen Pfad ueberhaupt mit einer GET-Anfrage aufrufen?
+
+    Nach dem Login wird `next` als GET angesteuert. Zeigt es auf eine Route,
+    die nur POST kann, bekommt der Kunde 405 METHOD NOT ALLOWED — eine nackte
+    Fehlerseite. Genau das passierte auf dem Weg zum Abo: der Kaufknopf schickt
+    an /subscribe/create-checkout (nur POST); war die Sitzung abgelaufen,
+    landete man ueber das Login als GET dort. Fuer den Kunden sah das aus wie
+    "der Link funktioniert nicht" — und der Kauf war zu Ende.
+    """
+    from werkzeug.routing import RequestRedirect
+    try:
+        app.url_map.bind('').match(pfad, method='GET')
+        return True
+    except RequestRedirect:
+        return True          # nur ein fehlender Schraegstrich — per GET erreichbar
+    except Exception:
+        return False         # unbekannt oder nur POST
 
 
 def _check_rate_limit(store, ip, max_attempts, window=600):
@@ -786,9 +808,31 @@ def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if 'user_id' not in session:
-            return redirect(url_for('login', next=request.path))
+            return redirect(url_for('login', next=_ziel_nach_login()))
         return f(*args, **kwargs)
     return decorated
+
+
+def _ziel_nach_login():
+    """Wohin nach dem Login — und zwar so, dass man dort auch ankommt.
+
+    Bisher wurde stur request.path mitgegeben. Bei einem abgeschickten
+    Formular ist das eine Route, die nur POST kann; nach dem Login wird sie
+    als GET aufgerufen und der Kunde bekommt 405. Auf dem Weg zum Abo war das
+    das Ende des Kaufs.
+
+    Fuer eine GET-Anfrage bleibt alles wie bisher. Fuer ein Formular nehmen wir
+    die Seite, von der es kam — dort steht der Knopf noch einmal.
+    """
+    if request.method == 'GET':
+        return request.path
+    hin = request.referrer or ''
+    teile = urlparse(hin)
+    if hin and (not teile.netloc or teile.netloc == urlparse(request.host_url).netloc):
+        pfad = teile.path or ''
+        if pfad.startswith('/') and not pfad.startswith('//') and _ist_per_get_erreichbar(pfad):
+            return pfad
+    return ''
 
 
 def admin_required(f):
@@ -4094,7 +4138,15 @@ def subscribe():
 @login_required
 def subscribe_create_checkout():
     if not validate_csrf(request.form.get('csrf_token', '')):
-        abort(403)
+        # Eine nackte 403-Seite war hier die zweite Sackgasse auf dem Weg zum
+        # Abo. Das Merkmal veraltet mit der Sitzung, und die haelt eine Stunde
+        # — wer den Tab beim Ueberlegen offen liegen laesst, klickt genau da
+        # hinein. Abgewiesen wird der Kauf weiterhin (nichts wird ausgefuehrt),
+        # aber der Kunde bekommt einen Weg zurueck statt einer Fehlerseite.
+        logger.warning('Checkout mit veraltetem CSRF-Merkmal abgewiesen')
+        flash('Deine Sitzung war abgelaufen — bitte klick noch einmal auf "Abonnieren".',
+              'warning')
+        return redirect(url_for('subscribe'))
     if _check_rate_limit(_checkout_attempts, request.remote_addr, CHECKOUT_MAX_ATTEMPTS):
         flash('Zu viele Versuche. Bitte warte kurz.', 'danger')
         return redirect(url_for('subscribe'))
@@ -4125,8 +4177,12 @@ def subscribe_create_checkout():
         )
         return redirect(checkout.url, code=303)
     except Exception as e:
+        # Der Kunde wollte zahlen und konnte nicht — das ist die eine Meldung,
+        # die nicht nur im Log stehen darf. Ohne einen zweiten Weg gibt er auf.
         logger.error('Stripe checkout error: %s', type(e).__name__)
-        flash('Zahlung konnte nicht gestartet werden. Bitte versuche es erneut.', 'danger')
+        flash('Die Zahlung liess sich gerade nicht starten. Bitte versuche es erneut — '
+              'oder schreib uns kurz an info@holzbau3d.app, dann klaeren wir das von Hand.',
+              'danger')
         return redirect(url_for('subscribe'))
 
 
