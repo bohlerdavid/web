@@ -307,7 +307,7 @@
  *
  * Balken-Objekt:
  *   { name, woodType, shape:'rect', L, B, H, axis, x, y, z, rx, ry, rz,
- *     group, phase }
+ *     group, phase, cutouts? }
  *
  * Konvention (identisch zum 3D-Editor):
  *   - Ursprung (x,y,z) = MINIMALE Ecke ("Punkt 0"), Millimeter, y=0 = Boden.
@@ -316,17 +316,29 @@
  *        Hoehe  entlang Y = (axis==='y' ? L : H)
  *        Tiefe  entlang Z = (axis==='z' ? L : B)
  *   - axis: Achse entlang der die Laenge L laeuft.
- *        'x'/'z' = liegend/horizontal, 'y' = stehend (Pfosten).
  *   - rx/ry/rz: Drehung in Grad um die jeweilige Achse, angewandt um den
  *        Balken-Mittelpunkt (fuer Dachneigungen der Sparren).
  *   - woodType nur aus:
  *        'Fichte','Kiefer','Lärche','Eiche','Douglasie','Brettschichtholz (BSH)'
+ *
+ * KONSTRUKTIVE REGELN (seit der Ueberarbeitung der Vorlagen):
+ *   1. Kein Bauteil steckt in einem anderen. Wo ein geneigter Sparren auf
+ *      einer waagerechten Pfette liegt, bekommt er eine KERVE — sonst
+ *      beruehrt er sie nur auf einer Linie oder schneidet hinein.
+ *   2. Jede Last findet einen Weg bis zum Boden. Pfetten liegen AUF den
+ *      Stuetzen, nicht in ihnen; sich kreuzende Rahmenhoelzer werden ueber
+ *      Eck VERBLATTET, damit beide aufliegen.
+ *   3. Ein Rechteck aus vier gelenkig verbundenen Staeben ist beweglich.
+ *      Wo Kopfbaender geometrisch moeglich sind, sitzen welche.
+ *   Das ersetzt keinen Standsicherheitsnachweis — es sorgt dafuer, dass die
+ *   Vorlage baubar ist und nicht nur so aussieht.
  * ==========================================================================*/
 
 (function (root) {
   'use strict';
 
-  var DEG = 180 / Math.PI;
+  var DEG = 180 / Math.PI, RAD = Math.PI / 180;
+  var r1 = function (v) { return Math.round(v * 10) / 10; };
 
   // Balken-Factory: fuellt alle Pflichtfelder mit sinnvollen Defaults.
   function mk(o) {
@@ -338,9 +350,9 @@
       B:        Math.round(o.B),
       H:        Math.round(o.H),
       axis:     o.axis     != null ? o.axis     : 'x',
-      x:        Math.round(o.x || 0),
-      y:        Math.round(o.y || 0),
-      z:        Math.round(o.z || 0),
+      x:        r1(o.x || 0),
+      y:        r1(o.y || 0),
+      z:        r1(o.z || 0),
       rx:       o.rx != null ? o.rx : 0,
       ry:       o.ry != null ? o.ry : 0,
       rz:       o.rz != null ? o.rz : 0,
@@ -365,241 +377,553 @@
     return out;
   }
 
+  /* ==========================================================================
+   * GEOMETRIE — dieselben Formeln wie im Editor
+   * ========================================================================*/
+
+  function ausd(b) {
+    if (b.axis === 'x') return [b.L, b.H, b.B];
+    if (b.axis === 'y') return [b.B, b.L, b.H];
+    return [b.B, b.H, b.L];
+  }
+  function achsen(b) {
+    if (b.axis === 'y') return { iL: 1, iH: 2, iB: 0 };
+    if (b.axis === 'z') return { iL: 2, iH: 1, iB: 0 };
+    return { iL: 0, iH: 1, iB: 2 };
+  }
+  // Quaternion aus Euler XYZ — Zeichen fuer Zeichen wie THREE.Quaternion.
+  function quat(rx, ry, rz) {
+    var c1 = Math.cos(rx / 2), s1 = Math.sin(rx / 2),
+        c2 = Math.cos(ry / 2), s2 = Math.sin(ry / 2),
+        c3 = Math.cos(rz / 2), s3 = Math.sin(rz / 2);
+    return [s1 * c2 * c3 + c1 * s2 * s3, c1 * s2 * c3 - s1 * c2 * s3,
+            c1 * c2 * s3 + s1 * s2 * c3, c1 * c2 * c3 - s1 * s2 * s3];
+  }
+  function dreh(q, v) {
+    var x = v[0], y = v[1], z = v[2], qx = q[0], qy = q[1], qz = q[2], qw = q[3];
+    var ix =  qw * x + qy * z - qz * y, iy =  qw * y + qz * x - qx * z;
+    var iz =  qw * z + qx * y - qy * x, iw = -qx * x - qy * y - qz * z;
+    return [ix * qw + iw * -qx + iy * -qz - iz * -qy,
+            iy * qw + iw * -qy + iz * -qx - ix * -qz,
+            iz * qw + iw * -qz + ix * -qy - iy * -qx];
+  }
+  // Weltlage eines Punktes in lokalen, an der Bauteilecke beginnenden Koordinaten.
+  function welt(b, lok) {
+    var e = ausd(b), q = quat((b.rx || 0) * RAD, (b.ry || 0) * RAD, (b.rz || 0) * RAD);
+    var d = dreh(q, [lok[0] - e[0] / 2, lok[1] - e[1] / 2, lok[2] - e[2] / 2]);
+    return [b.x + e[0] / 2 + d[0], b.y + e[1] / 2 + d[1], b.z + e[2] / 2 + d[2]];
+  }
+
+  /* Die Schnittebene eines Bauteils ist die LAENGS-HOEHEN-Ebene; gestochen
+     wird durch die Breite. In ihr ist die Abbildung (u,v) -> Welt affin, also
+     durch drei Punkte vollstaendig bestimmt. Damit laesst sich jeder
+     Halbraum der Welt in eine Gerade in (u,v) uebersetzen — und ein
+     Gegenstueck ist nichts anderes als ein Schnitt von Halbraeumen. */
+  function karte(b) {
+    var e = ausd(b), a = achsen(b);
+    var l0 = [0, 0, 0]; l0[a.iB] = e[a.iB] / 2;
+    var p00 = welt(b, l0);
+    var lu = l0.slice(); lu[a.iL] = 1;
+    var lv = l0.slice(); lv[a.iH] = 1;
+    var pu = welt(b, lu), pv = welt(b, lv);
+    return { p00: p00, L: e[a.iL], H: e[a.iH],
+             Du: [pu[0] - p00[0], pu[1] - p00[1], pu[2] - p00[2]],
+             Dv: [pv[0] - p00[0], pv[1] - p00[1], pv[2] - p00[2]] };
+  }
+
+  // Polygon an der Geraden a*u + b*v = c abschneiden (behalten: <= c).
+  function clip(poly, a, b, c) {
+    var out = [], i, p, q, dp, dq, t;
+    for (i = 0; i < poly.length; i++) {
+      p = poly[i]; q = poly[(i + 1) % poly.length];
+      dp = a * p[0] + b * p[1] - c; dq = a * q[0] + b * q[1] - c;
+      if (dp <= 1e-9) out.push(p);
+      if ((dp < -1e-9 && dq > 1e-9) || (dp > 1e-9 && dq < -1e-9)) {
+        t = dp / (dp - dq);
+        out.push([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]);
+      }
+    }
+    return out;
+  }
+
+  function flaeche(poly) {
+    var s = 0, i, j;
+    for (i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      s += (poly[j][0] + poly[i][0]) * (poly[j][1] - poly[i][1]);
+    }
+    return Math.abs(s / 2);
+  }
+
+  // Weltkasten eines ungedrehten Bauteils: [x0,x1,y0,y1,z0,z1].
+  function kasten(b) {
+    var e = ausd(b);
+    return [b.x, b.x + e[0], b.y, b.y + e[1], b.z, b.z + e[2]];
+  }
+
+  /* AUFLAGER EINSCHNEIDEN.
+     Geschnitten wird immer am TATSAECHLICHEN Gegenstueck, nie an der gedachten
+     Ebene. Die Bauteilmasse werden gerundet — schon 0,4 mm Unterschied
+     zwischen Soll-Ebene und gerundetem Balken genuegten, damit die
+     Kollisionspruefung wieder anschlaegt. `s` begrenzt die Auflagerbreite auf
+     der genannten Achse (0 = volle Breite des Gegenstuecks). */
+  function aufKlotz(k, achse, s, vonUnten) {
+    var kk = k.slice();
+    if (s > 0) {
+      if (vonUnten) kk[2 * achse + 1] = kk[2 * achse] + s;
+      else kk[2 * achse] = kk[2 * achse + 1] - s;
+    }
+    kk[2] = kk[3] - 900;                     // nur bis unter die Oberkante
+    return kk;
+  }
+
+  /* Halbraum-Bausteine. n·P <= c heisst "auf dieser Seite der Ebene". */
+  function hsMax(i, v) { var n = [0, 0, 0]; n[i] = 1; return { n: n, c: v }; }
+  function hsMin(i, v) { var n = [0, 0, 0]; n[i] = -1; return { n: n, c: -v }; }
+  function hsKasten(k) {
+    return [hsMin(0, k[0]), hsMax(0, k[1]), hsMin(1, k[2]),
+            hsMax(1, k[3]), hsMin(2, k[4]), hsMax(2, k[5])];
+  }
+  // Ebene durch p mit Normale n (weggenommen wird die Seite, in die n zeigt).
+  function hsEbene(n, p) { return { n: n, c: n[0] * p[0] + n[1] * p[1] + n[2] * p[2] }; }
+
+  /* Aus `b` alles herausnehmen, was in ALLEN angegebenen Halbraeumen liegt.
+     Liefert das Bauteil zurueck, damit sich Schnitte verketten lassen. */
+  function schneide(b, hs, art) {
+    var k = karte(b);
+    var poly = [[0, 0], [k.L, 0], [k.L, k.H], [0, k.H]];
+    for (var i = 0; i < hs.length && poly.length >= 3; i++) {
+      var n = hs[i].n;
+      var a = n[0] * k.Du[0] + n[1] * k.Du[1] + n[2] * k.Du[2];
+      var bb = n[0] * k.Dv[0] + n[1] * k.Dv[1] + n[2] * k.Dv[2];
+      var c = hs[i].c - (n[0] * k.p00[0] + n[1] * k.p00[1] + n[2] * k.p00[2]);
+      if (Math.abs(a) < 1e-9 && Math.abs(bb) < 1e-9) {
+        // Ebene senkrecht zur Schnittebene: gilt fuer das ganze Bauteil oder
+        // fuer keinen Punkt.
+        if (c < -1e-6) { poly = []; }
+        continue;
+      }
+      poly = clip(poly, a, bb, c);
+    }
+    if (poly.length < 3 || flaeche(poly) < 100) return b;   // nichts Nennenswertes
+    b.cutouts = b.cutouts || [];
+    b.cutouts.push({ shape: 'poly', ebene: 'seite', verbindung: art || 'auflager',
+      ecken: poly.map(function (p) {
+        return { u: Math.round(p[0] * 10) / 10, v: Math.round(p[1] * 10) / 10 };
+      }) });
+    return b;
+  }
+
+  /* UEBERBLATTUNG ueber Eck: beide Balken geben die halbe Ueberdeckung ab.
+     `unten` sagt, wer sein UNTERES Stueck hergibt — der liegt danach oben. */
+  function verblatten(a, b, aLiegtOben) {
+    var ka = [Math.max(a.x, b.x), Math.min(a.x + ausd(a)[0], b.x + ausd(b)[0]),
+              0, 0,
+              Math.max(a.z, b.z), Math.min(a.z + ausd(a)[2], b.z + ausd(b)[2])];
+    var lo = Math.max(a.y, b.y), hi = Math.min(a.y + ausd(a)[1], b.y + ausd(b)[1]);
+    var m = (lo + hi) / 2;
+    schneide(a, hsKasten([ka[0], ka[1], aLiegtOben ? lo : m, aLiegtOben ? m : hi, ka[4], ka[5]]), 'blatt');
+    schneide(b, hsKasten([ka[0], ka[1], aLiegtOben ? m : lo, aLiegtOben ? hi : m, ka[4], ka[5]]), 'blatt');
+  }
+
+  /* KOPFBAND.
+     Beschrieben wird die Ecke, die es aussteift: die Flanke der Stuetze
+     (Koordinate a0, Richtung s = +1/-1), die Unterkante des Traegers (y1) und
+     die Schenkellaenge. Beide Enden werden an EBENEN abgeschnitten —
+     senkrecht an der Stuetzenflanke, waagerecht unter dem Traeger. Genau so
+     saegt man ein Kopfband. Es greift damit g + h*wurzel(2) weit aus.       */
+  function kopfband(o) {
+    var w = Math.SQRT1_2, ue = o.h + 30;
+    var L = Math.SQRT2 * o.schenkel + 2 * ue;
+    var mA = o.a0 + o.s * o.schenkel / 2, mY = o.y1 - o.schenkel / 2;
+    var cA = mA + o.s * w * o.h / 2, cY = mY - w * o.h / 2;
+    var b, e;
+    if (o.ebene === 'xy') {
+      b = mk({ name: o.name, woodType: o.holz, L: L, B: o.breite, H: o.h, axis: 'x',
+               rz: o.s > 0 ? 45 : 135, x: 0, y: 0, z: o.quer, group: o.group });
+      e = ausd(b);
+      b.x = r1(cA - e[0] / 2); b.y = r1(cY - e[1] / 2);
+    } else {
+      b = mk({ name: o.name, woodType: o.holz, L: L, B: o.breite, H: o.h, axis: 'z',
+               rx: o.s > 0 ? -45 : -135, x: o.quer, y: 0, z: 0, group: o.group });
+      e = ausd(b);
+      b.z = r1(cA - e[2] / 2); b.y = r1(cY - e[1] / 2);
+    }
+    var g = 6000, iA = o.ebene === 'xy' ? 0 : 2, iQ = o.ebene === 'xy' ? 2 : 0;
+    var flanke = [hsMin(1, cY - g), hsMax(1, o.y1), hsMin(iQ, o.quer - g), hsMax(iQ, o.quer + o.breite + g)];
+    flanke.push(o.s > 0 ? hsMax(iA, o.a0) : hsMin(iA, o.a0));
+    schneide(b, flanke, 'auflager');
+    schneide(b, [hsMin(1, o.y1), hsMax(1, o.y1 + g),
+                 hsMin(iA, cA - g), hsMax(iA, cA + g),
+                 hsMin(iQ, o.quer - g), hsMax(iQ, o.quer + o.breite + g)], 'auflager');
+    return b;
+  }
+
+  /* Auflagerbreite einer Kerve: so breit wie moeglich, aber nie tiefer als ein
+     Drittel der Sparrenhoehe — mehr schwaecht den Sparren zu sehr. Bei einem
+     flachen Dach liegt der Sparren damit ueber die volle Pfettenbreite auf. */
+  function auflagerbreite(pfetteB, sparrenH, tan) {
+    if (tan <= 1e-6) return pfetteB;
+    return Math.max(30, Math.min(pfetteB, (sparrenH / 3) / tan));
+  }
+
   // ==========================================================================
   // 1) CARPORT  — Pultdach, Neigung quer ueber die Breite (X)
-  //    Tief low bei x=0, hoch bei x=width. Sparren liegen quer (axis 'x').
+  //    Niedrig bei x=0, hoch bei x=width. Sparren liegen quer (axis 'x').
+  //
+  //    Frueher steckten die Sparren in den Pfetten (bis 8 Durchdringungen).
+  //    Jetzt sitzen sie mit einer Kerve auf; die Neigung wird aus dem
+  //    GERUNDETEN Hoehenunterschied zurueckgerechnet, damit beide Auflager
+  //    exakt in einer Ebene liegen.
+  //    Quer zur Fahrtrichtung bleibt der Carport ein Zweigelenkrahmen — dort
+  //    muessen die Pfosten eingespannt sein (Pfostenanker im Fundament).
+  //    Ein Querriegel wuerde die Einfahrt versperren.
   // ==========================================================================
   function genCarport(p) {
     p = p || {};
-    var width  = num(p.width, 3000);
-    var depth  = num(p.depth, 5000);
-    var height = num(p.height, 2200);
-    var postSec = num(p.postSec, 120);
+    var width  = Math.round(num(p.width, 3000));
+    var depth  = Math.round(num(p.depth, 5000));
+    var height = Math.round(num(p.height, 2200));
+    var postSec = Math.round(num(p.postSec, 120));
     var pitch  = num(p.pitch, 5);
 
     var beams = [];
-    var pfetteB = postSec, pfetteH = 160;
-    var sparB = 80, sparH = 160;
-    var rise = Math.round(width * Math.tan(pitch * Math.PI / 180));
+    var pfB = postSec, pfH = 160, spB = 80, spH = 160;
+    var stich = width - pfB;                                  // Abstand der Auflager
+    var rise = Math.round(stich * Math.tan(pitch * RAD));
+    var tan = rise / stich, ang = Math.atan(tan) * DEG;
+    var s = auflagerbreite(pfB, spH, tan);
+    var okN = height + pfH, okH = okN + rise;                 // Pfetten-Oberkanten
 
     // --- Pfosten: Raster entlang der Tiefe (max ~2,5 m) ---
     var nSeg = Math.max(1, Math.ceil(depth / 2500));
+    var zRows = [];
     for (var r = 0; r <= nSeg; r++) {
       var zRow = Math.round((r * depth) / nSeg);
       if (r === 0) zRow = 0;
-      else if (r === nSeg) zRow = depth - postSec;         // Endreihe einruecken
-      else zRow = Math.round(zRow - postSec / 2);          // Mittelreihe zentrieren
-      // niedrige Traufseite (x=0)
-      beams.push(mk({ name: 'Pfosten', woodType: 'Douglasie',
+      else if (r === nSeg) zRow = depth - postSec;
+      else zRow = Math.round(zRow - postSec / 2);
+      zRows.push(zRow);
+      beams.push(mk({ name: 'Pfosten niedrig', woodType: 'Douglasie',
         L: height, B: postSec, H: postSec, axis: 'y',
         x: 0, y: 0, z: zRow, group: 'Pfosten' }));
-      // hohe Traufseite (x=width)
-      beams.push(mk({ name: 'Pfosten', woodType: 'Douglasie',
+      beams.push(mk({ name: 'Pfosten hoch', woodType: 'Douglasie',
         L: height + rise, B: postSec, H: postSec, axis: 'y',
         x: width - postSec, y: 0, z: zRow, group: 'Pfosten' }));
     }
 
-    // --- Laengs-Pfetten (auf den Pfosten, entlang Z) ---
-    beams.push(mk({ name: 'Pfette niedrig', woodType: 'Brettschichtholz (BSH)',
-      L: depth, B: pfetteB, H: pfetteH, axis: 'z',
-      x: 0, y: height, z: 0, group: 'Pfetten' }));
-    beams.push(mk({ name: 'Pfette hoch', woodType: 'Brettschichtholz (BSH)',
-      L: depth, B: pfetteB, H: pfetteH, axis: 'z',
-      x: width - pfetteB, y: height + rise, z: 0, group: 'Pfetten' }));
+    // --- Laengs-Pfetten AUF den Pfosten ---
+    var pfN = mk({ name: 'Pfette niedrig', woodType: 'Brettschichtholz (BSH)',
+      L: depth, B: pfB, H: pfH, axis: 'z',
+      x: 0, y: height, z: 0, group: 'Pfetten' });
+    var pfHo = mk({ name: 'Pfette hoch', woodType: 'Brettschichtholz (BSH)',
+      L: depth, B: pfB, H: pfH, axis: 'z',
+      x: width - pfB, y: height + rise, z: 0, group: 'Pfetten' });
+    beams.push(pfN, pfHo);
+    var kN = kasten(pfN), kH = kasten(pfHo);
 
-    // --- Sparren quer (axis 'x'), Abstand ~70 cm, liegen auf beiden Pfetten ---
+    // --- Sparren quer, mit Kerve auf beiden Pfetten ---
+    var ue = Math.min(300, Math.round(width / 8));
     var nSp = Math.max(2, Math.round(depth / 700) + 1);
-    var spY = height + pfetteH + rise / 2;   // Unterkante beider Enden auf Pfettenoberkante
+    var spL = Math.round((width + 2 * ue) / Math.cos(ang * RAD));
     for (var i = 0; i < nSp; i++) {
-      var zS = Math.round((i * (depth - sparB)) / (nSp - 1));
-      beams.push(mk({ name: 'Sparren', woodType: 'Fichte',
-        L: width, B: sparB, H: sparH, axis: 'x',
-        x: 0, y: spY, z: zS, rz: pitch, group: 'Sparren' }));
+      var zS = Math.round((i * (depth - spB)) / (nSp - 1));
+      var sp = mk({ name: 'Sparren', woodType: 'Fichte',
+        L: spL, B: spB, H: spH, axis: 'x', rz: ang,
+        x: 0, y: 0, z: zS, group: 'Sparren' });
+      // Unterkante durch den Auflagerpunkt (x = s, y = okN) legen
+      var ist = welt(sp, [0, 0, 0]);
+      var ziel = [-ue, kN[3] - (s + ue) * tan, zS];
+      sp.x = r1(sp.x + ziel[0] - ist[0]); sp.y = r1(sp.y + ziel[1] - ist[1]);
+      schneide(sp, hsKasten(aufKlotz([kN[0], kN[1], 0, kN[3], -1e5, 1e5], 0, s, true)), 'auflager');
+      schneide(sp, hsKasten(aufKlotz([kH[0], kH[1], 0, kH[3], -1e5, 1e5], 0, s, true)), 'auflager');
+      beams.push(sp);
     }
 
+    // --- Kopfbaender laengs an den Endpfosten ---
+    var lueck = zRows.length > 1 ? zRows[1] - (zRows[0] + postSec) : depth - 2 * postSec;
+    var hKb = Math.min(100, Math.round(postSec * 0.9));
+    var g = Math.max(250, Math.min(600, Math.round(lueck - hKb * Math.SQRT2 - 40)));
+    if (g >= 250) {
+      [[0, height, 'niedrig'], [width - pfB, height + rise, 'hoch']].forEach(function (v) {
+        beams.push(kopfband({ name: 'Kopfband ' + v[2], holz: 'Douglasie', group: 'Aussteifung',
+          ebene: 'zy', a0: postSec, s: 1, y1: v[1], schenkel: g, h: hKb,
+          breite: postSec, quer: v[0] }));
+        beams.push(kopfband({ name: 'Kopfband ' + v[2], holz: 'Douglasie', group: 'Aussteifung',
+          ebene: 'zy', a0: depth - postSec, s: -1, y1: v[1], schenkel: g, h: hKb,
+          breite: postSec, quer: v[0] }));
+      });
+    }
     return beams;
   }
 
   // ==========================================================================
   // 2) PERGOLA — 4 Eckpfosten, umlaufender Rahmen oben, Querlatten (~40 cm)
+  //
+  //    Der Querrahmen war frueher ZWISCHEN die Laengsbalken gesetzt: er hing
+  //    ohne Auflager an seinen Verbindungen. Jetzt laufen alle vier Balken
+  //    durch und sind ueber Eck verblattet — jeder liegt auf. Acht
+  //    Kopfbaender machen das Gestell in beiden Richtungen steif.
   // ==========================================================================
   function genPergola(p) {
     p = p || {};
-    var width  = num(p.width, 3000);
-    var depth  = num(p.depth, 4000);
-    var height = num(p.height, 2400);
-    var postSec = num(p.postSec, 120);
+    var width  = Math.round(num(p.width, 3000));
+    var depth  = Math.round(num(p.depth, 4000));
+    var height = Math.round(num(p.height, 2400));
+    var postSec = Math.round(num(p.postSec, 120));
 
     var beams = [];
-    var frB = postSec, frH = 160;   // Rahmenquerschnitt
-    var latB = 60, latH = 100;      // Querlatten
+    var frB = postSec, frH = 160, latB = 60, latH = 100;
 
-    // --- 4 Eckpfosten ---
-    var xs = [0, width - postSec];
-    var zs = [0, depth - postSec];
-    for (var a = 0; a < xs.length; a++) {
-      for (var b = 0; b < zs.length; b++) {
-        beams.push(mk({ name: 'Eckpfosten', woodType: 'Lärche',
-          L: height, B: postSec, H: postSec, axis: 'y',
-          x: xs[a], y: 0, z: zs[b], group: 'Pfosten' }));
-      }
+    var xs = [0, width - postSec], zs = [0, depth - postSec];
+    for (var a = 0; a < 2; a++) for (var b = 0; b < 2; b++) {
+      beams.push(mk({ name: 'Eckpfosten', woodType: 'Lärche',
+        L: height, B: postSec, H: postSec, axis: 'y',
+        x: xs[a], y: 0, z: zs[b], group: 'Pfosten' }));
     }
 
-    // --- Umlaufender Rahmen oben ---
-    // Laengsbalken (entlang Z) direkt auf den Pfosten
-    beams.push(mk({ name: 'Rahmen längs L', woodType: 'Lärche',
-      L: depth, B: frB, H: frH, axis: 'z',
-      x: 0, y: height, z: 0, group: 'Rahmen' }));
-    beams.push(mk({ name: 'Rahmen längs R', woodType: 'Lärche',
-      L: depth, B: frB, H: frH, axis: 'z',
-      x: width - frB, y: height, z: 0, group: 'Rahmen' }));
-    // Querbalken (entlang X), zwischen die Laengsbalken eingesetzt -> keine Eck-Ueberlappung
-    var inX = frB, inL = Math.max(1, width - 2 * frB);
-    beams.push(mk({ name: 'Rahmen quer V', woodType: 'Lärche',
-      L: inL, B: frB, H: frH, axis: 'x',
-      x: inX, y: height, z: 0, group: 'Rahmen' }));
-    beams.push(mk({ name: 'Rahmen quer H', woodType: 'Lärche',
-      L: inL, B: frB, H: frH, axis: 'x',
-      x: inX, y: height, z: depth - frB, group: 'Rahmen' }));
+    // Rahmen: quer (X) liegt unten auf den Pfosten, laengs (Z) oben darauf.
+    var quer = [
+      mk({ name: 'Rahmen quer V', woodType: 'Lärche', L: width, B: frB, H: frH,
+           axis: 'x', x: 0, y: height, z: 0, group: 'Rahmen' }),
+      mk({ name: 'Rahmen quer H', woodType: 'Lärche', L: width, B: frB, H: frH,
+           axis: 'x', x: 0, y: height, z: depth - frB, group: 'Rahmen' })];
+    var laengs = [
+      mk({ name: 'Rahmen längs L', woodType: 'Lärche', L: depth, B: frB, H: frH,
+           axis: 'z', x: 0, y: height, z: 0, group: 'Rahmen' }),
+      mk({ name: 'Rahmen längs R', woodType: 'Lärche', L: depth, B: frB, H: frH,
+           axis: 'z', x: width - frB, y: height, z: 0, group: 'Rahmen' })];
+    for (var i = 0; i < 2; i++) for (var j = 0; j < 2; j++) verblatten(laengs[i], quer[j], true);
+    beams = beams.concat(quer, laengs);
 
-    // --- Querlatten oben quer (axis 'x'), Abstand ~40 cm ---
+    // Querlatten auf dem Rahmen
     var nl = Math.max(2, Math.round(depth / 400) + 1);
-    var ly = height + frH;
-    for (var i = 0; i < nl; i++) {
-      var zL = Math.round((i * (depth - latB)) / (nl - 1));
+    for (var k = 0; k < nl; k++) {
+      var zL = Math.round((k * (depth - latB)) / (nl - 1));
       beams.push(mk({ name: 'Querlatte', woodType: 'Lärche',
         L: width, B: latB, H: latH, axis: 'x',
-        x: 0, y: ly, z: zL, group: 'Sparren' }));
+        x: 0, y: height + frH, z: zL, group: 'Sparren' }));
     }
 
+    // Acht Kopfbaender: an jedem Pfosten eines in Laengs- und eines in Querrichtung.
+    var hKb = Math.min(100, Math.round(postSec * 0.8));
+    var frei = Math.min(width, depth) - 2 * postSec;
+    var g = Math.max(200, Math.min(500, Math.round(frei / 2 - hKb * Math.SQRT2)));
+    var bKb = Math.max(60, Math.round(postSec * 0.6));
+    var mitte = Math.round((postSec - bKb) / 2);
+    [[0, 1], [width - postSec, -1]].forEach(function (vx) {
+      [[0, 1], [depth - postSec, -1]].forEach(function (vz) {
+        beams.push(kopfband({ name: 'Kopfband quer', holz: 'Lärche', group: 'Aussteifung',
+          ebene: 'xy', a0: vx[1] > 0 ? postSec : width - postSec, s: vx[1], y1: height,
+          schenkel: g, h: hKb, breite: bKb, quer: vz[0] + mitte }));
+        beams.push(kopfband({ name: 'Kopfband längs', holz: 'Lärche', group: 'Aussteifung',
+          ebene: 'zy', a0: vz[1] > 0 ? postSec : depth - postSec, s: vz[1], y1: height,
+          schenkel: g, h: hKb, breite: bKb, quer: vx[0] + mitte }));
+      });
+    });
     return beams;
   }
 
   // ==========================================================================
-  // 3) GARTENHAUS — Staenderbauweise, leichtes Pultdach (Gefaelle ueber Tiefe)
-  //    Bodenschwellen-Rahmen, Eck-/Zwischenpfosten, Raehm, Pultdach-Sparren.
+  // 3) GARTENHAUS — Staenderbauweise, Pultdach mit Gefaelle ueber die Tiefe
+  //
+  //    Die alte Fassung hatte je nach Masseingabe 17 bis 32 Durchdringungen:
+  //    die geneigten Seiten-Raehme liefen durch die waagerechten, die
+  //    Staender steckten in den Raehmen, die Sparren in den Pfetten.
+  //    Neu: Schwellenkranz ueber Eck verblattet; die geneigten Seitenraehme
+  //    laufen durch und sitzen mit einer Kerve auf jedem Seitenstaender; die
+  //    waagerechten Raehme vorn und hinten sind dazwischen eingepasst und
+  //    tragen die Sparren, die wiederum eine Kerve bekommen.
   // ==========================================================================
   function genGartenhaus(p) {
     p = p || {};
-    var width  = num(p.width, 3000);
-    var depth  = num(p.depth, 2500);
-    var wallH  = num(p.wallH, 2200);
-    var postSec = num(p.postSec, 100);
+    var width  = Math.round(num(p.width, 3000));
+    var depth  = Math.round(num(p.depth, 2500));
+    var wallH  = Math.round(num(p.wallH, 2200));
+    var postSec = Math.round(num(p.postSec, 100));
 
     var beams = [];
-    var sillB = postSec, sillH = 60;   // Schwelle (flach)
-    var rahmB = postSec, rahmH = 60;   // Raehm (flach)
-    var spB = 80, spH = 140;           // Sparren
-    var rise = Math.round(depth * Math.tan(10 * Math.PI / 180)); // ~10° Gefaelle
-    var angDeg = Math.atan2(rise, depth) * DEG;
+    var sillB = postSec, sillH = 60, rahmB = postSec, rahmH = 60;
+    var spB = 80, spH = 140;
+    var stich = depth - rahmB;
+    var rise = Math.round(stich * Math.tan(10 * RAD));
+    var tan = rise / stich, ang = Math.atan(tan) * DEG;
+    var s = auflagerbreite(rahmB, spH, tan);
+    var okV = wallH + rahmH;                    // Oberkante Raehm vorn
+    var okH = okV + rise;                       // Oberkante Raehm hinten
 
-    // --- Bodenschwellen-Rahmen (y=0) ---
-    beams.push(mk({ name: 'Schwelle V', L: width, B: sillB, H: sillH, axis: 'x',
-      x: 0, y: 0, z: 0, group: 'Rahmen' }));
-    beams.push(mk({ name: 'Schwelle H', L: width, B: sillB, H: sillH, axis: 'x',
-      x: 0, y: 0, z: depth - sillB, group: 'Rahmen' }));
-    beams.push(mk({ name: 'Schwelle L', L: Math.max(1, depth - 2 * sillB),
-      B: sillB, H: sillH, axis: 'z', x: 0, y: 0, z: sillB, group: 'Rahmen' }));
-    beams.push(mk({ name: 'Schwelle R', L: Math.max(1, depth - 2 * sillB),
-      B: sillB, H: sillH, axis: 'z', x: width - sillB, y: 0, z: sillB, group: 'Rahmen' }));
+    // --- Schwellenkranz, ueber Eck verblattet ---
+    var sV = mk({ name: 'Schwelle V', L: width, B: sillB, H: sillH, axis: 'x',
+      x: 0, y: 0, z: 0, group: 'Rahmen' });
+    var sH = mk({ name: 'Schwelle H', L: width, B: sillB, H: sillH, axis: 'x',
+      x: 0, y: 0, z: depth - sillB, group: 'Rahmen' });
+    var sL = mk({ name: 'Schwelle L', L: depth, B: sillB, H: sillH, axis: 'z',
+      x: 0, y: 0, z: 0, group: 'Rahmen' });
+    var sR = mk({ name: 'Schwelle R', L: depth, B: sillB, H: sillH, axis: 'z',
+      x: width - sillB, y: 0, z: 0, group: 'Rahmen' });
+    [sL, sR].forEach(function (l) { [sV, sH].forEach(function (q) { verblatten(l, q, true); }); });
+    beams.push(sV, sH, sL, sR);
 
-    // --- Staender (auf der Schwelle stehend, y=sillH) ---
-    // Vorderwand (z=0) niedrig, Rueckwand (z=depth) hoch -> Pultgefaelle.
-    var xs = spread(width, postSec, 800);
-    var frontL = wallH - sillH;
-    var backL  = wallH + rise - sillH;
-    for (var i = 0; i < xs.length; i++) {
-      beams.push(mk({ name: 'Ständer V', L: frontL, B: postSec, H: postSec, axis: 'y',
-        x: xs[i], y: sillH, z: 0, group: 'Pfosten' }));
-      beams.push(mk({ name: 'Ständer H', L: backL, B: postSec, H: postSec, axis: 'y',
-        x: xs[i], y: sillH, z: depth - postSec, group: 'Pfosten' }));
-    }
-    // Seitenwaende: Zwischenstaender (ohne Ecken), Hoehe linear interpoliert
+    /* Unterkante der Seitenraehme: die Ebene der Sparrenunterkanten, um die
+       (senkrecht gemessene) Raehmhoehe nach unten versetzt. Auf ihr enden die
+       Seitenstaender. */
+    var uk = function (z) { return okV + (z - s) * tan - rahmH / Math.cos(ang * RAD); };
+
+    // --- Seitenstaender (inkl. Ecken) ---
     var zs = spread(depth, postSec, 800);
-    for (var j = 1; j < zs.length - 1; j++) {
-      var pz = zs[j];
-      var frac = pz / Math.max(1, depth - postSec);
-      var h = Math.round(frontL + rise * frac);
-      beams.push(mk({ name: 'Ständer L', L: h, B: postSec, H: postSec, axis: 'y',
-        x: 0, y: sillH, z: pz, group: 'Pfosten' }));
-      beams.push(mk({ name: 'Ständer R', L: h, B: postSec, H: postSec, axis: 'y',
-        x: width - postSec, y: sillH, z: pz, group: 'Pfosten' }));
+    var seitenSt = [[], []];
+    zs.forEach(function (pz) {
+      var top = uk(pz + postSec);                       // Kerve ueber die volle Breite
+      [0, width - postSec].forEach(function (px, k) {
+        var st = mk({ name: 'Ständer ' + (k ? 'R' : 'L'), L: Math.max(100, top - sillH),
+          B: postSec, H: postSec, axis: 'y', x: px, y: sillH, z: pz, group: 'Pfosten' });
+        seitenSt[k].push(st); beams.push(st);
+      });
+    });
+    // --- Vorder-/Rueckstaender (ohne Ecken; die gehoeren zur Seitenwand) ---
+    var xs = spread(width, postSec, 800);
+    xs.forEach(function (px, i) {
+      if (i === 0 || i === xs.length - 1) return;
+      beams.push(mk({ name: 'Ständer V', L: okV - rahmH - sillH, B: postSec, H: postSec,
+        axis: 'y', x: px, y: sillH, z: 0, group: 'Pfosten' }));
+      beams.push(mk({ name: 'Ständer H', L: okH - rahmH - sillH, B: postSec, H: postSec,
+        axis: 'y', x: px, y: sillH, z: depth - postSec, group: 'Pfosten' }));
+    });
+
+    // --- Raehm vorn/hinten, waagerecht, zwischen die Seitenraehme eingepasst ---
+    var rV = mk({ name: 'Rähm V', L: width - 2 * rahmB, B: rahmB, H: rahmH, axis: 'x',
+      x: rahmB, y: okV - rahmH, z: 0, group: 'Rahmen' });
+    var rH = mk({ name: 'Rähm H', L: width - 2 * rahmB, B: rahmB, H: rahmH, axis: 'x',
+      x: rahmB, y: okH - rahmH, z: depth - rahmB, group: 'Rahmen' });
+    beams.push(rV, rH);
+    var kV = kasten(rV), kHi = kasten(rH);
+
+    // --- Seitenraehme: geneigt, ueber jedem Seitenstaender eingekerbt ---
+    [0, width - rahmB].forEach(function (px, k) {
+      var rl = mk({ name: 'Rähm ' + (k ? 'R' : 'L'), L: Math.round(depth / Math.cos(ang * RAD)),
+        B: rahmB, H: rahmH, axis: 'z', rx: -ang, x: px, y: 0, z: 0, group: 'Rahmen' });
+      var ist = welt(rl, [0, rahmH, 0]);              // Oberkante am vorderen Ende
+      rl.y = r1(rl.y + (kV[3] - (s - kV[4]) * tan) - ist[1]);
+      rl.z = r1(rl.z + 0 - ist[2]);
+      seitenSt[k].forEach(function (st) {
+        var ks = kasten(st);
+        schneide(rl, hsKasten([px - 50, px + rahmB + 50, ks[3] - 900, ks[3], ks[4], ks[5]]),
+          'auflager');
+      });
+      beams.push(rl);
+    });
+
+    // --- Sparren: auf Raehm V und H, mit Kerve ---
+    var nutz = width - 2 * rahmB;
+    var nSp = Math.max(2, Math.round(nutz / 700) + 1);
+    var spL = Math.round(depth / Math.cos(ang * RAD));
+    for (var m = 0; m < nSp; m++) {
+      var xS = Math.round(rahmB + (m * (nutz - spB)) / (nSp - 1));
+      var sp = mk({ name: 'Sparren', woodType: 'Fichte', L: spL, B: spB, H: spH,
+        axis: 'z', rx: -ang, x: xS, y: 0, z: 0, group: 'Sparren' });
+      var i0 = welt(sp, [0, 0, 0]);
+      sp.y = r1(sp.y + (kV[3] - (s - kV[4]) * tan) - i0[1]);
+      sp.z = r1(sp.z + 0 - i0[2]);
+      schneide(sp, hsKasten(aufKlotz([-1e5, 1e5, 0, kV[3], kV[4], kV[5]], 2, s, true)), 'auflager');
+      schneide(sp, hsKasten(aufKlotz([-1e5, 1e5, 0, kHi[3], kHi[4], kHi[5]], 2, s, true)), 'auflager');
+      beams.push(sp);
     }
 
-    // --- Raehm (oberer Rahmen) ---
-    // Vorne/hinten horizontal, Seiten geneigt (folgen dem Pultgefaelle).
-    beams.push(mk({ name: 'Rähm V', L: width, B: rahmB, H: rahmH, axis: 'x',
-      x: 0, y: wallH, z: 0, group: 'Rahmen' }));
-    beams.push(mk({ name: 'Rähm H', L: width, B: rahmB, H: rahmH, axis: 'x',
-      x: 0, y: wallH + rise, z: depth - rahmB, group: 'Rahmen' }));
-    var sideY = Math.round(wallH + rise / 2 - rahmH / 2);
-    beams.push(mk({ name: 'Rähm L', L: depth, B: rahmB, H: rahmH, axis: 'z',
-      x: 0, y: sideY, z: 0, rx: -angDeg, group: 'Rahmen' }));
-    beams.push(mk({ name: 'Rähm R', L: depth, B: rahmB, H: rahmH, axis: 'z',
-      x: width - rahmB, y: sideY, z: 0, rx: -angDeg, group: 'Rahmen' }));
-
-    // --- Pultdach-Sparren (laengs, axis 'z'), Abstand ~70 cm ---
-    var nSp = Math.max(2, Math.round(width / 700) + 1);
-    var spY = wallH + rahmH + rise / 2;   // Unterkante der Enden auf Raehm-Oberkante
-    for (var k = 0; k < nSp; k++) {
-      var xS = Math.round((k * (width - spB)) / (nSp - 1));
-      beams.push(mk({ name: 'Sparren', woodType: 'Fichte',
-        L: depth, B: spB, H: spH, axis: 'z',
-        x: xS, y: spY, z: 0, rx: -angDeg, group: 'Sparren' }));
+    // --- Kopfbaender in den Giebelwaenden ---
+    var hKb = Math.min(90, Math.round(postSec * 0.9));
+    var bKb = Math.max(50, Math.round(postSec * 0.6));
+    var g = Math.max(200, Math.min(450, Math.round((xs[1] - postSec) - hKb * Math.SQRT2 - 30)));
+    if (g >= 200 && width > 2 * postSec + 400) {
+      [[postSec, 1], [width - postSec, -1]].forEach(function (v) {
+        beams.push(kopfband({ name: 'Kopfband V', group: 'Aussteifung', ebene: 'xy',
+          a0: v[0], s: v[1], y1: okV - rahmH, schenkel: g, h: hKb, breite: bKb,
+          quer: Math.round((postSec - bKb) / 2) }));
+        beams.push(kopfband({ name: 'Kopfband H', group: 'Aussteifung', ebene: 'xy',
+          a0: v[0], s: v[1], y1: okH - rahmH, schenkel: g, h: hKb, breite: bKb,
+          quer: depth - postSec + Math.round((postSec - bKb) / 2) }));
+      });
     }
-
     return beams;
   }
 
   // ==========================================================================
-  // 4) TERRASSE — Anlehn-Pultdach an Hauswand
+  // 4) TERRASSE — Anlehn-Pultdach an der Hauswand
   //    Wandpfette hoch (wallH), Frontpfosten (frontH), Sparren mit Gefaelle
   //    von der Wand (z=0, hoch) zur Front (z=depth, niedrig).
+  //
+  //    Die Wandpfette wird an die Hauswand geschraubt — sie hat im Modell
+  //    bewusst kein Auflager, und quer ausgesteift wird ueber die Wand.
+  //    In Laengsrichtung sitzen Kopfbaender an den Frontpfosten.
+  //    Frueher schnitten die Sparren bis 12-fach in die Pfetten; die Front
+  //    konnte sogar HOEHER liegen als die Wand, dann lief das Wasser aufs Haus zu.
   // ==========================================================================
   function genTerrasse(p) {
     p = p || {};
-    var width  = num(p.width, 4000);
-    var depth  = num(p.depth, 3000);
-    var wallH  = num(p.wallH, 2600);
-    var frontH = num(p.frontH, 2200);
-    var postSec = num(p.postSec, 120);
+    var width  = Math.round(num(p.width, 4000));
+    var depth  = Math.round(num(p.depth, 3000));
+    var wallH  = Math.round(num(p.wallH, 2600));
+    var frontH = Math.round(num(p.frontH, 2200));
+    var postSec = Math.round(num(p.postSec, 120));
 
     var beams = [];
-    var pfB = postSec, pfH = 160;      // Pfetten
-    var spB = 80, spH = 160;           // Sparren
-    var rise = Math.max(0, wallH - frontH);
-    var angDeg = Math.atan2(rise, depth) * DEG;
+    var pfB = postSec, pfH = 160, spB = 80, spH = 160;
+    // Ein Pultdach muss zur Front hin FALLEN. Liegt die Front zu hoch, wird
+    // sie gesenkt — lieber die Eingabe korrigieren als ein Dach bauen, das
+    // das Wasser gegen die Hauswand leitet.
+    var stich = depth - pfB;
+    var minGefaelle = Math.round(stich * Math.tan(3 * RAD));
+    if (wallH - frontH < minGefaelle) frontH = wallH - minGefaelle;
+    var rise = wallH - frontH;
+    var tan = rise / stich, ang = Math.atan(tan) * DEG;
+    var s = auflagerbreite(pfB, spH, tan);
+    var okW = wallH + pfH, okF = frontH + pfH;
 
-    // --- Wandanschluss-Pfette (hoch, an der Wand z=0, entlang X) ---
-    beams.push(mk({ name: 'Wandpfette', woodType: 'Brettschichtholz (BSH)',
+    var pfW = mk({ name: 'Wandpfette', woodType: 'Brettschichtholz (BSH)',
       L: width, B: pfB, H: pfH, axis: 'x',
-      x: 0, y: wallH, z: 0, group: 'Pfetten' }));
+      x: 0, y: wallH, z: 0, group: 'Pfetten' });
+    beams.push(pfW);
 
-    // --- Frontpfosten (2-3) ---
     var nPosts = Math.max(2, Math.round(width / 2000) + 1);
     var xs = [];
     for (var i = 0; i < nPosts; i++) xs.push(Math.round((i * (width - postSec)) / (nPosts - 1)));
-    for (var a = 0; a < xs.length; a++) {
+    xs.forEach(function (px) {
       beams.push(mk({ name: 'Frontpfosten', woodType: 'Douglasie',
         L: frontH, B: postSec, H: postSec, axis: 'y',
-        x: xs[a], y: 0, z: depth - postSec, group: 'Pfosten' }));
-    }
-
-    // --- Frontpfette (niedrig, auf den Frontpfosten, entlang X) ---
-    beams.push(mk({ name: 'Frontpfette', woodType: 'Brettschichtholz (BSH)',
+        x: px, y: 0, z: depth - postSec, group: 'Pfosten' }));
+    });
+    var pfF = mk({ name: 'Frontpfette', woodType: 'Brettschichtholz (BSH)',
       L: width, B: pfB, H: pfH, axis: 'x',
-      x: 0, y: frontH, z: depth - pfB, group: 'Pfetten' }));
+      x: 0, y: frontH, z: depth - pfB, group: 'Pfetten' });
+    beams.push(pfF);
+    var kW = kasten(pfW), kF = kasten(pfF);
 
-    // --- Sparren (laengs, axis 'z') mit Gefaelle Wand->Front, Abstand ~70 cm ---
+    // Sparren: Unterkante durch (z = s, okW) — Gefaelle nach vorn.
     var nSp = Math.max(2, Math.round(width / 700) + 1);
-    var spY = frontH + pfH + rise / 2;   // Unterkante der Enden auf Pfetten-Oberkante
+    var ue = Math.min(250, Math.round(depth / 10));
+    var spL = Math.round((depth + ue) / Math.cos(ang * RAD));
     for (var k = 0; k < nSp; k++) {
       var xS = Math.round((k * (width - spB)) / (nSp - 1));
-      beams.push(mk({ name: 'Sparren', woodType: 'Fichte',
-        L: depth, B: spB, H: spH, axis: 'z',
-        x: xS, y: spY, z: 0, rx: angDeg, group: 'Sparren' }));  // Wandende (z=0) hoch
+      var sp = mk({ name: 'Sparren', woodType: 'Fichte', L: spL, B: spB, H: spH,
+        axis: 'z', rx: ang, x: xS, y: 0, z: 0, group: 'Sparren' });
+      var i0 = welt(sp, [0, 0, 0]);
+      sp.y = r1(sp.y + (kW[3] + (kW[5] - s) * tan) - i0[1]);
+      sp.z = r1(sp.z + 0 - i0[2]);
+      schneide(sp, hsKasten(aufKlotz([-1e5, 1e5, 0, kW[3], kW[4], kW[5]], 2, s, false)), 'auflager');
+      schneide(sp, hsKasten(aufKlotz([-1e5, 1e5, 0, kF[3], kF[4], kF[5]], 2, s, false)), 'auflager');
+      beams.push(sp);
     }
 
+    // Kopfbaender laengs an den aeusseren Frontpfosten
+    var hKb = Math.min(100, Math.round(postSec * 0.9));
+    var frei = xs.length > 1 ? xs[1] - postSec : width - 2 * postSec;
+    var g = Math.max(250, Math.min(600, Math.round(frei - hKb * Math.SQRT2 - 40)));
+    if (g >= 250 && width > 2 * postSec + 600) {
+      beams.push(kopfband({ name: 'Kopfband L', holz: 'Douglasie', group: 'Aussteifung',
+        ebene: 'xy', a0: postSec, s: 1, y1: frontH, schenkel: g, h: hKb,
+        breite: postSec, quer: depth - postSec }));
+      beams.push(kopfband({ name: 'Kopfband R', holz: 'Douglasie', group: 'Aussteifung',
+        ebene: 'xy', a0: width - postSec, s: -1, y1: frontH, schenkel: g, h: hKb,
+        breite: postSec, quer: depth - postSec }));
+    }
     return beams;
   }
 
@@ -663,6 +987,7 @@
   };
 
   if (root) {
+    root.hb_param = API;
     root.PARAM_TEMPLATES = PARAM_TEMPLATES;
     root.genCarport = genCarport;
     root.genPergola = genPergola;
