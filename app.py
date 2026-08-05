@@ -3377,6 +3377,84 @@ def admin_set_plan():
 
 
 # ---------------------------------------------------------------------------
+@app.route('/admin/smtp-probe', methods=['GET', 'POST'])
+@admin_required
+def admin_smtp_probe():
+    """Stimmen diese SMTP-Zugangsdaten — ja oder nein?
+
+    Gmail meldet beim Einrichten eines Absenders nur "Die Einrichtung dieses
+    Kontos konnte nicht abgeschlossen werden". Das kann alles heissen. Brevos
+    Protokoll blieb leer, die Anmeldung ist also gar nicht erst zustande
+    gekommen — aber welchen Satz der Server dabei gesagt hat, sieht man
+    nirgends.
+
+    Hier wird genau diese eine Anmeldung durchgefuehrt und die Antwort des
+    Servers im Klartext gezeigt. Die Zugangsdaten werden NICHT gespeichert,
+    nicht protokolliert und nicht weitergegeben — sie leben nur fuer die Dauer
+    dieser einen Anfrage.
+    """
+    ergebnis = []
+    host = request.form.get('host', 'smtp-relay.brevo.com').strip()
+    port = request.form.get('port', '587').strip()
+    user = request.form.get('user', '').strip()
+    pw   = request.form.get('pass', '')
+    if request.method == 'POST':
+        if not validate_csrf(request.form.get('csrf_token', '')):
+            ergebnis.append(('rot', 'Ungültige Anfrage — bitte die Seite neu laden.'))
+        elif not user or not pw:
+            ergebnis.append(('rot', 'Anmeldename und Schlüssel werden beide gebraucht.'))
+        else:
+            try:
+                srv = smtplib.SMTP(host, int(port or 587), timeout=20)
+                ergebnis.append(('gruen', 'Verbindung zu %s:%s steht.' % (host, port)))
+                srv.ehlo()
+                if srv.has_extn('starttls'):
+                    srv.starttls()
+                    srv.ehlo()
+                    ergebnis.append(('gruen', 'Verschlüsselung (STARTTLS) ausgehandelt.'))
+                else:
+                    ergebnis.append(('gelb', 'Server bietet kein STARTTLS an.'))
+                try:
+                    srv.login(user, pw)
+                    ergebnis.append(('gruen', 'ANMELDUNG ERFOLGREICH — diese Daten sind richtig. '
+                                              'Genau so gehören sie in Gmail.'))
+                except smtplib.SMTPAuthenticationError as e:
+                    ergebnis.append(('rot', 'Anmeldung abgelehnt: %s %s'
+                                     % (e.smtp_code, (e.smtp_error or b'').decode('utf-8', 'replace')[:200])))
+                    ergebnis.append(('grau', 'Bei Brevo heisst der Anmeldename NICHT deine E-Mail, '
+                                             'sondern die Kennung von der SMTP-Seite '
+                                             '(z. B. ae71da001@smtp-brevo.com). Das Passwort ist ein '
+                                             'SMTP-SCHLÜSSEL — nicht der API-Schlüssel, nicht das Kontopasswort. '
+                                             'Der Schlüssel wird nur bei der Erstellung angezeigt; '
+                                             'wer ihn nicht kopiert hat, muss einen neuen erzeugen.'))
+                srv.quit()
+            except Exception as e:
+                ergebnis.append(('rot', 'Kein Durchkommen: %s: %s' % (type(e).__name__, str(e)[:200])))
+    from html import escape as _e
+    farben = {'gruen': '#16a34a', 'rot': '#dc2626', 'gelb': '#d97706', 'grau': '#9ca3af'}
+    zeilen = ''.join('<div style="color:%s;margin:6px 0;line-height:1.6">%s</div>'
+                     % (farben[f], _e(t)) for f, t in ergebnis)
+    return ('<html><body style="font-family:system-ui,sans-serif;background:#0e1117;color:#dde5f4;'
+            'padding:28px;max-width:760px;margin:auto">'
+            '<h2 style="color:#4e8cdd">SMTP-Zugangsdaten prüfen</h2>'
+            '<p style="color:#9ca3af;font-size:14px;line-height:1.6">Prüft eine Anmeldung direkt beim '
+            'Mailserver und zeigt dessen Antwort. Die Eingaben werden nicht gespeichert und nicht '
+            'protokolliert.</p>'
+            '<form method="POST" style="display:grid;gap:10px;margin:20px 0">'
+            '<input type="hidden" name="csrf_token" value="' + generate_csrf() + '">'
+            '<label>Server<input name="host" value="' + _e(host) + '" style="width:100%;padding:8px"></label>'
+            '<label>Port<input name="port" value="' + _e(port) + '" style="width:100%;padding:8px"></label>'
+            '<label>Anmeldename<input name="user" value="' + _e(user) + '" '
+            'placeholder="z. B. ae71da001@smtp-brevo.com" style="width:100%;padding:8px"></label>'
+            '<label>SMTP-Schlüssel<input name="pass" type="password" style="width:100%;padding:8px"></label>'
+            '<button type="submit" style="padding:10px 18px;background:#4e8cdd;border:0;border-radius:8px;'
+            'color:#fff;font-weight:700;cursor:pointer">Anmeldung prüfen</button>'
+            '</form>'
+            '<div style="background:#161b27;border:1px solid #283755;border-radius:10px;padding:16px">'
+            + (zeilen or '<span style="color:#9ca3af">Noch nichts geprüft.</span>') +
+            '</div></body></html>')
+
+
 @app.route('/admin/email-test', methods=['GET'])
 @admin_required
 def admin_email_test():
