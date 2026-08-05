@@ -4406,6 +4406,31 @@ def cron_feature_mail():
     if not _cron_schluessel_pruefen('feature-mail'):
         abort(403)
     basis = os.environ.get('BASE_URL', 'https://holzbau3d.app').rstrip('/')
+
+    # Wie viele stehen insgesamt noch aus? Getrennt gezaehlt, damit der Aufrufer
+    # den Fortschritt sieht, ohne die Mails zu verschicken.
+    def _offen():
+        r = query_db(
+            """SELECT COUNT(*) AS c FROM app_users u
+                WHERE u.email IS NOT NULL AND u.email <> ''
+                  AND u.email_verified = 1 AND u.marketing_opt_out = 0
+                  AND u.feature_mail_sent IS NULL""", [], one=True)
+        return (r or {}).get('c', 0) or 0
+
+    # Nur nachsehen, nichts verschicken.
+    if request.args.get('nur_zaehlen') == '1':
+        return jsonify(ok=True, offen=_offen(), verschickt=0)
+
+    # HAEPPCHENWEISE. Beim ersten Versuch lief die Route in einen Timeout: rund
+    # 87 Mails nacheinander dauern bei Brevo etwa 35 Sekunden, cron-job.org
+    # bricht nach 30 ab — und der Arbeitsprozess wird irgendwann ohnehin
+    # abgeraeumt. Weil jeder Empfaenger SOFORT markiert wird, ist ein Abbruch
+    # harmlos: der naechste Aufruf macht genau dort weiter. Trotzdem soll ein
+    # Aufruf zuegig antworten, statt sich abschiessen zu lassen.
+    try:
+        limit = max(1, min(100, int(request.args.get('limit', 20))))
+    except (TypeError, ValueError):
+        limit = 20
     rows = query_db(
         """SELECT u.id, u.email, u.full_name, u.username, u.unsub_token, u.lang,
                   COALESCE(s.plan, 'free') AS plan, COALESCE(s.status, '') AS status,
@@ -4415,7 +4440,8 @@ def cron_feature_mail():
             WHERE u.email IS NOT NULL AND u.email <> ''
               AND u.email_verified = 1
               AND u.marketing_opt_out = 0
-              AND u.feature_mail_sent IS NULL""", []) or []
+              AND u.feature_mail_sent IS NULL
+            LIMIT ?""", [limit]) or []
     sent, failed = 0, 0
     for r in rows:
         try:
@@ -4445,10 +4471,13 @@ def cron_feature_mail():
             logger.error('feature-mail an Nutzer %s fehlgeschlagen: %s',
                          r.get('id'), type(e).__name__)
             failed += 1
+    offen = _offen()
     _cron_protokoll('feature-mail', True,
-                    '%d Ankuendigung(en) verschickt, %d fehlgeschlagen, %d Empfaenger gefunden'
-                    % (sent, failed, len(rows)))
-    return jsonify(ok=True, sent=sent, failed=failed, kandidaten=len(rows))
+                    '%d verschickt, %d fehlgeschlagen, %d in diesem Haeppchen, %d noch offen'
+                    % (sent, failed, len(rows), offen))
+    # `offen` ist die Antwort auf die einzige Frage, die der Aufrufer hat:
+    # muss ich nochmal? 0 heisst fertig.
+    return jsonify(ok=True, sent=sent, failed=failed, kandidaten=len(rows), offen=offen)
 
 
 @app.route('/cron/premium-upsell', methods=['GET', 'POST'])
