@@ -1108,8 +1108,43 @@
 
   // --- Hauptfunktion -------------------------------------------------------
 
-  function beamsToDXF(beams) {
+  /* `umriss` ist optional: eine Funktion (balken, projektion) -> {ringe},
+     die den ECHTEN Umriss eines Bauteils in einer Ansicht liefert. Der Editor
+     reicht dafuer _ansichtRinge herein, das Drehungen und Ausschnitte kennt.
+
+     Ohne sie bleibt es bei der achsparallelen Kiste — das war bisher der
+     einzige Weg, und er zeichnete einen um 30 Grad gedrehten Sparren als
+     liegendes Rechteck ueber die volle Dachhoehe. Wer die DXF in CAD oeffnet,
+     misst darin nach; deshalb ist der ehrliche Umriss hier genauso wichtig wie
+     im Ausdruck. */
+  function ringeVon(umriss, b, proj) {
+    try {
+      var r = umriss(b, proj);
+      return (r && r.ringe && r.ringe.length) ? r.ringe : null;
+    } catch (e) { return null; }
+  }
+
+  /* Die Kiste aus L/B/H ist bei einem gedrehten Bauteil zu klein — sie kennt
+     die Drehung nicht. Wird der echte Umriss gezeichnet, muessen auch die
+     Grenzen daraus kommen. */
+  function spanneAuf(bx, ringe) {
+    if (ringe.oben) ringe.oben.forEach(function (ring) { ring.forEach(function (p) {
+      if (p[0] < bx.x0) bx.x0 = p[0]; if (p[0] > bx.x1) bx.x1 = p[0];
+      if (p[1] < bx.z0) bx.z0 = p[1]; if (p[1] > bx.z1) bx.z1 = p[1];
+    }); });
+    if (ringe.vorne) ringe.vorne.forEach(function (ring) { ring.forEach(function (p) {
+      if (p[0] < bx.x0) bx.x0 = p[0]; if (p[0] > bx.x1) bx.x1 = p[0];
+      if (p[1] < bx.y0) bx.y0 = p[1]; if (p[1] > bx.y1) bx.y1 = p[1];
+    }); });
+    if (ringe.seite) ringe.seite.forEach(function (ring) { ring.forEach(function (p) {
+      if (p[0] < bx.z0) bx.z0 = p[0]; if (p[0] > bx.z1) bx.z1 = p[0];
+      if (p[1] < bx.y0) bx.y0 = p[1]; if (p[1] > bx.y1) bx.y1 = p[1];
+    }); });
+  }
+
+  function beamsToDXF(beams, umriss) {
     beams = Array.isArray(beams) ? beams : [];
+    if (typeof umriss !== 'function') umriss = null;
 
     // 1) Balken-Boxen (Bounding-Boxes in Modellkoordinaten) berechnen.
     var boxes = beams.map(function (b) {
@@ -1120,12 +1155,24 @@
       var hY = (axis === 'y' ? L : H); // Ausdehnung entlang Y
       var dZ = (axis === 'z' ? L : B); // Ausdehnung entlang Z
       var x0 = num(b.x), y0 = num(b.y), z0 = num(b.z);
-      return {
+      var bx = {
         beam: b,
         x0: x0, x1: x0 + wX,
         y0: y0, y1: y0 + hY,
         z0: z0, z1: z0 + dZ
       };
+      if (umriss) {
+        // Dieselben drei Projektionen wie die Planansichten im Editor.
+        bx.ringe = {
+          oben:  ringeVon(umriss, b, function (x, y, z) { return [x, z]; }),
+          vorne: ringeVon(umriss, b, function (x, y, z) { return [x, y]; }),
+          seite: ringeVon(umriss, b, function (x, y, z) { return [z, y]; })
+        };
+        // Die Grenzen muessen zum Gezeichneten passen, sonst stimmt der Versatz
+        // zwischen den Ansichten nicht mehr.
+        spanneAuf(bx, bx.ringe);
+      }
+      return bx;
     });
 
     // 2) Globale Modellgrenzen ermitteln.
@@ -1161,28 +1208,39 @@
       var layerBase = bx.beam.group || bx.beam.name || '';
 
       // -- Draufsicht: X -> dxfX, Z -> -dxfY (Norden oben) --
-      emitPolyline(ent, 'DRAUFSICHT', [
-        [bx.x0, -bx.z0],
-        [bx.x1, -bx.z0],
-        [bx.x1, -bx.z1],
-        [bx.x0, -bx.z1]
-      ]);
+      if (bx.ringe && bx.ringe.oben) {
+        bx.ringe.oben.forEach(function (ring) {
+          emitPolyline(ent, 'DRAUFSICHT', ring.map(function (p) { return [p[0], -p[1]]; }));
+        });
+      } else {
+        emitPolyline(ent, 'DRAUFSICHT', [
+          [bx.x0, -bx.z0], [bx.x1, -bx.z0], [bx.x1, -bx.z1], [bx.x0, -bx.z1]
+        ]);
+      }
 
       // -- Vorderansicht: X -> dxfX, Y -> dxfY (nach unten versetzt) --
-      emitPolyline(ent, 'VORNE', [
-        [bx.x0, bx.y0 + frontDeltaY],
-        [bx.x1, bx.y0 + frontDeltaY],
-        [bx.x1, bx.y1 + frontDeltaY],
-        [bx.x0, bx.y1 + frontDeltaY]
-      ]);
+      if (bx.ringe && bx.ringe.vorne) {
+        bx.ringe.vorne.forEach(function (ring) {
+          emitPolyline(ent, 'VORNE', ring.map(function (p) { return [p[0], p[1] + frontDeltaY]; }));
+        });
+      } else {
+        emitPolyline(ent, 'VORNE', [
+          [bx.x0, bx.y0 + frontDeltaY], [bx.x1, bx.y0 + frontDeltaY],
+          [bx.x1, bx.y1 + frontDeltaY], [bx.x0, bx.y1 + frontDeltaY]
+        ]);
+      }
 
       // -- Seitenansicht: Z -> dxfX (nach rechts versetzt), Y -> dxfY (Basis wie Vorne) --
-      emitPolyline(ent, 'SEITE', [
-        [bx.z0 + sideDeltaX, bx.y0 + frontDeltaY],
-        [bx.z1 + sideDeltaX, bx.y0 + frontDeltaY],
-        [bx.z1 + sideDeltaX, bx.y1 + frontDeltaY],
-        [bx.z0 + sideDeltaX, bx.y1 + frontDeltaY]
-      ]);
+      if (bx.ringe && bx.ringe.seite) {
+        bx.ringe.seite.forEach(function (ring) {
+          emitPolyline(ent, 'SEITE', ring.map(function (p) { return [p[0] + sideDeltaX, p[1] + frontDeltaY]; }));
+        });
+      } else {
+        emitPolyline(ent, 'SEITE', [
+          [bx.z0 + sideDeltaX, bx.y0 + frontDeltaY], [bx.z1 + sideDeltaX, bx.y0 + frontDeltaY],
+          [bx.z1 + sideDeltaX, bx.y1 + frontDeltaY], [bx.z0 + sideDeltaX, bx.y1 + frontDeltaY]
+        ]);
+      }
 
       // layerBase aktuell ungenutzt (alle Balken pro Ansicht auf gemeinsamem Layer)
       void layerBase;

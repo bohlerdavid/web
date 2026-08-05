@@ -5734,6 +5734,92 @@ function _panelFaceBasis(beam) {
            eA: axes[w.iA].e, eB: axes[w.iB].e, eT: axes[w.ti].e };
 }
 
+/* UMRISS EINES BAUTEILS IN EINER ANSICHT — als Vieleck, nicht als Kiste.
+
+   Seit es Holzverbindungen gibt, ist ein Balken nicht mehr zwangslaeufig ein
+   Quader: eine Kerve, der 45-Grad-Schnitt eines Kopfbands oder der
+   Schraegschnitt einer Giebelplatte nehmen Material weg. Die Planansicht hat
+   das ignoriert und den vollen Quader gezeichnet. Im Ausdruck sah ein
+   Kopfband dadurch aus, als steckte es in der Stuetze, und eine Giebelplatte
+   war ein Rechteck statt eines Dreiecks. Nach diesem Plan wird gesaegt — das
+   ist der teuerste Ort fuer eine Vereinfachung.
+
+   Gerechnet wird wie in buildPanelGeometry: FLAECHE MINUS LOECHER in der
+   Schnittebene des Bauteils. Dieses Vieleck wird durch die Bauteildicke
+   gezogen; die Silhouette eines solchen Prismas ist die Vereinigung seiner
+   beiden Deckflaechen mit allen Mantelflaechen. Loecher mitten in der Flaeche
+   (ein Fensterausschnitt in der Platte) ueberleben das in der Aufsicht und
+   verschwinden in der Kantenansicht — beides richtig.
+
+   Ohne Ausschnitte — und ohne polygon-clipping — bleibt es bei der konvexen
+   Huelle der acht Eckpunkte, also beim alten, guenstigen Weg. */
+function _ansichtRinge(b, projectFn) {
+  const e = _ausdehnungVon(b);
+  const grad = Math.PI / 180;
+  const q = new THREE.Quaternion().setFromEuler(
+    new THREE.Euler((b.rx || 0) * grad, (b.ry || 0) * grad, (b.rz || 0) * grad));
+  const cx = b.x + e[0] / 2, cy = b.y + e[1] / 2, cz = b.z + e[2] / 2;
+  const cuts = (b.cutouts || []).filter(c => !c.aus);
+
+  const huelle = () => {
+    const uv = [], welt = [];
+    for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+      const v = new THREE.Vector3(sx * e[0] / 2, sy * e[1] / 2, sz * e[2] / 2).applyQuaternion(q);
+      const p = [cx + v.x, cy + v.y, cz + v.z];
+      welt.push(p); uv.push(projectFn(p[0], p[1], p[2]));
+    }
+    return { ringe: [_huelle2D(uv)], welt };
+  };
+  if (!cuts.length || !window.polygonClipping) return huelle();
+
+  try {
+    const bas = _panelFaceBasis(b);
+    const eA = bas.eA.clone().applyQuaternion(q);
+    const eB = bas.eB.clone().applyQuaternion(q);
+    const eT = bas.eT.clone().applyQuaternion(q);
+    const welt = [];
+    const pkt = (pa, pb, pt) => {
+      const w = [cx + eA.x * pa + eB.x * pb + eT.x * pt,
+                 cy + eA.y * pa + eB.y * pb + eT.y * pt,
+                 cz + eA.z * pa + eB.z * pb + eT.z * pt];
+      welt.push(w);
+      return projectFn(w[0], w[1], w[2]);
+    };
+    const A = bas.A, B = bas.B, T = bas.T;
+    const platte = [[-A/2,-B/2],[A/2,-B/2],[A/2,B/2],[-A/2,B/2],[-A/2,-B/2]];
+    const loecher = cuts.map(c => _cutoutPolygone(c, A, B));
+    const flaechen = window.polygonClipping.difference([platte], ...loecher);
+    // Frist eine Fraesbahn die Platte ganz weg, bleibt nichts uebrig. Dann ist
+    // der volle Quader die ehrlichere Auskunft als ein leeres Blatt.
+    if (!flaechen || !flaechen.length) return huelle();
+
+    const teile = [];
+    for (const seite of [-T / 2, T / 2]) {
+      teile.push(flaechen.map(poly => poly.map(ring => ring.map(([pa, pb]) => pkt(pa, pb, seite)))));
+    }
+    // Mantelflaechen: jede Kante der Flaeche, durch die Dicke gezogen.
+    flaechen.forEach(poly => poly.forEach(ring => {
+      for (let i = 0; i < ring.length - 1; i++) {
+        const a0 = pkt(ring[i][0], ring[i][1], -T / 2);
+        const a1 = pkt(ring[i + 1][0], ring[i + 1][1], -T / 2);
+        const b1 = pkt(ring[i + 1][0], ring[i + 1][1], T / 2);
+        const b0 = pkt(ring[i][0], ring[i][1], T / 2);
+        teile.push([[[a0, a1, b1, b0, a0]]]);
+      }
+    }));
+    const sil = window.polygonClipping.union(...teile);
+    if (!sil || !sil.length) return huelle();
+    /* Mehrere getrennte Stuecke gibt es wirklich: eine Fraesbahn quer durch
+       die Platte teilt sie. Alle Ringe aller Stuecke werden gezeichnet, die
+       Fuellregel evenodd macht daraus Loecher, wo Loecher hingehoeren. */
+    const ringe = [];
+    sil.forEach(poly => poly.forEach(ring => ringe.push(ring.slice(0, -1))));
+    return { ringe, welt };
+  } catch (err) {
+    return huelle();
+  }
+}
+
 function _cutoutDefaults(shape, A, B) {
   if (shape === 'circle') return { dia: Math.min(200, Math.round(Math.min(A, B) * 0.3)) };
   return { w: Math.min(300, Math.round(A * 0.25)), h: Math.min(300, Math.round(B * 0.25)) };
@@ -10190,7 +10276,11 @@ function exportDXF() {
   if (!requirePremium('📐 DXF-Export', 'Der DXF-Export der Planansichten ist eine Premium-Funktion.')) return;
   if (beams.length === 0) { alert('Keine Balken vorhanden.'); return; }
   if (typeof window.beamsToDXF !== 'function') { alert('DXF-Modul nicht geladen.'); return; }
-  const dxf = window.beamsToDXF(beams);
+  /* Den echten Umriss mitgeben: hb_tools kennt weder THREE noch
+     polygon-clipping und zeichnete deshalb achsparallele Kisten — ein um
+     30 Grad gedrehter Sparren wurde darin zu einem Rechteck ueber die volle
+     Dachhoehe. In CAD misst man in dieser Datei nach. */
+  const dxf = window.beamsToDXF(beams, _ansichtRinge);
   const blob = new Blob([dxf], { type: 'application/dxf' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -10555,37 +10645,18 @@ function printProject() {
        Ausserdem wird jetzt der echte Umriss (konvexe Huelle der acht
        projizierten Ecken) gezeichnet statt einer umschliessenden Kiste —
        sonst waere ein schraeger Sparren immer noch ein Rechteck. */
-    const _ausd = (b) => b.axis === 'x' ? [b.L, b.H, b.B]
-                       : b.axis === 'y' ? [b.B, b.L, b.H]
-                       :                  [b.B, b.H, b.L];
-    const _huelle = (pts) => {                       // Monotone Chain
-      const p = pts.slice().sort((a, b2) => a[0] - b2[0] || a[1] - b2[1]);
-      if (p.length < 3) return p;
-      const kreuz = (o, a, b2) => (a[0]-o[0])*(b2[1]-o[1]) - (a[1]-o[1])*(b2[0]-o[0]);
-      const unten = [], oben = [];
-      for (const q of p) { while (unten.length >= 2 && kreuz(unten[unten.length-2], unten[unten.length-1], q) <= 0) unten.pop(); unten.push(q); }
-      for (let i = p.length - 1; i >= 0; i--) { const q = p[i]; while (oben.length >= 2 && kreuz(oben[oben.length-2], oben[oben.length-1], q) <= 0) oben.pop(); oben.push(q); }
-      unten.pop(); oben.pop();
-      return unten.concat(oben);
-    };
-    const _grad = Math.PI / 180;
     let rects = beams.map(b => {
-      const e = _ausd(b);
-      const cx = b.x + e[0]/2, cy = b.y + e[1]/2, cz = b.z + e[2]/2;
-      const q = new THREE.Quaternion().setFromEuler(
-        new THREE.Euler((b.rx||0)*_grad, (b.ry||0)*_grad, (b.rz||0)*_grad));
-      const ecken = [], welt = [];
-      for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
-        const v = new THREE.Vector3(sx*e[0]/2, sy*e[1]/2, sz*e[2]/2).applyQuaternion(q);
-        const p = [cx + v.x, cy + v.y, cz + v.z];
-        welt.push(p);
-        ecken.push(projectFn(p[0], p[1], p[2]));
-      }
-      const us = ecken.map(c=>c[0]), vs = ecken.map(c=>c[1]);
+      const { ringe, welt } = _ansichtRinge(b, projectFn);
+      const alle = ringe.flat();
+      const us = alle.map(c=>c[0]), vs = alle.map(c=>c[1]);
+      /* Der Rahmen kommt aus dem ECHTEN Umriss, nicht mehr aus dem Quader.
+         Ein Kopfband ist als Rohling gut ein Drittel laenger als nach den
+         beiden 45-Grad-Schnitten; mit dem Quader-Rahmen waere die Zeichnung
+         entsprechend zu gross skaliert worden. */
       // Lage zur Schnittebene aus den GEDREHTEN Ecken, nicht aus L/B/H —
       // sonst laege ein geneigter Sparren in der falschen Schicht.
       const sw = schnitt ? welt.map(p => p[schnitt.achse]) : null;
-      return { b, poly: _huelle(ecken),
+      return { b, poly: ringe[0] || [], ringe,
                u0:Math.min(...us), u1:Math.max(...us), v0:Math.min(...vs), v1:Math.max(...vs),
                sMin: sw ? Math.min(...sw) : 0, sMax: sw ? Math.max(...sw) : 0 };
     });
@@ -10631,7 +10702,12 @@ function printProject() {
     // damit Neigungen sichtbar bleiben.
     rects.forEach(r => {
       const punkte = r.poly.map(([u,v]) => toSVG(u,v));
-      const d = punkte.map(p2 => p2[0].toFixed(1) + ',' + p2[1].toFixed(1)).join(' ');
+      /* Als PFAD, nicht als polygon: ein Bauteil kann seit den Ausschnitten
+         mehrere Ringe haben — Aussenkante plus Loch. Mit fill-rule evenodd
+         wird aus dem zweiten Ring ein Loch statt einer zweiten Flaeche. */
+      const d = r.ringe.map(ring => 'M ' + ring.map(([u,v]) => {
+        const p2 = toSVG(u,v); return p2[0].toFixed(1) + ' ' + p2[1].toFixed(1);
+      }).join(' L ') + ' Z').join(' ');
       const fill = WOOD_COLORS_HEX[r.b.woodType]||'#c8a06e';
       /* Im Schnitt traegt die Strichstaerke die Information: was die Ebene
          durchstoesst, steht kraeftig da; was dahinter liegt, ist blasse
@@ -10639,7 +10715,7 @@ function printProject() {
       const imSchnitt = schnitt && r.geschnitten;
       const deck = schnitt ? (imSchnitt ? 0.85 : 0.18) : 0.7;
       const kante = schnitt && !imSchnitt ? 0.4 : (imSchnitt ? 1.4 : 0.8);
-      parts.push(`<polygon points="${d}" fill="${fill}" fill-opacity="${deck}" stroke="#7a5020" stroke-width="${kante}" stroke-linejoin="round"${schnitt && !imSchnitt ? ' stroke-opacity="0.45"' : ''}/>`);
+      parts.push(`<path d="${d}" fill-rule="evenodd" fill="${fill}" fill-opacity="${deck}" stroke="#7a5020" stroke-width="${kante}" stroke-linejoin="round"${schnitt && !imSchnitt ? ' stroke-opacity="0.45"' : ''}/>`);
       // Schraffur und Positionsnummer richten sich nach dem Umriss-Schwerpunkt,
       // nicht nach der Bounding-Box — bei einem schraegen Sparren laege die
       // Box-Mitte sonst neben dem Bauteil.
