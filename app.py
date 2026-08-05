@@ -3393,10 +3393,14 @@ def admin_smtp_probe():
     nicht protokolliert und nicht weitergegeben — sie leben nur fuer die Dauer
     dieser einen Anfrage.
     """
+    class _Fertig(Exception):
+        """Abbruch nach erfolgreicher Zweitanmeldung — kein Fehler."""
+
     ergebnis = []
     host = request.form.get('host', 'smtp-relay.brevo.com').strip()
     port = request.form.get('port', '587').strip()
-    user = request.form.get('user', '').strip()
+    # Bewusst NICHT getrimmt: sonst faellt genau der Fehler nie auf, um den es geht.
+    user = request.form.get('user', '')
     pw   = request.form.get('pass', '')
     if request.method == 'POST':
         if not validate_csrf(request.form.get('csrf_token', '')):
@@ -3404,6 +3408,17 @@ def admin_smtp_probe():
         elif not user or not pw:
             ergebnis.append(('rot', 'Anmeldename und Schlüssel werden beide gebraucht.'))
         else:
+            # Ein Leerzeichen am Anfang oder Ende — beim Kopieren aus der
+            # Brevo-Oberflaeche schnell passiert und von aussen nicht zu sehen.
+            # Genau daran ist die Einrichtung eine Stunde lang gescheitert, und
+            # Gmail sagte nur "konnte nicht abgeschlossen werden". Deshalb wird
+            # es hier ausdruecklich benannt UND beides ausprobiert.
+            unsauber = (user != user.strip()) or (pw != pw.strip())
+            if unsauber:
+                ergebnis.append(('gelb', 'ACHTUNG: In Anmeldename oder Schlüssel steht ein '
+                                         'Leerzeichen am Anfang oder Ende. Das ist der häufigste '
+                                         'Grund für eine abgelehnte Anmeldung — es wird gleich '
+                                         'auch ohne probiert.'))
             try:
                 srv = smtplib.SMTP(host, int(port or 587), timeout=20)
                 ergebnis.append(('gruen', 'Verbindung zu %s:%s steht.' % (host, port)))
@@ -3419,6 +3434,16 @@ def admin_smtp_probe():
                     ergebnis.append(('gruen', 'ANMELDUNG ERFOLGREICH — diese Daten sind richtig. '
                                               'Genau so gehören sie in Gmail.'))
                 except smtplib.SMTPAuthenticationError as e:
+                    if unsauber:
+                        try:
+                            srv.login(user.strip(), pw.strip())
+                            ergebnis.append(('gruen', 'OHNE die Leerzeichen klappt die Anmeldung! '
+                                                      'Das war die ganze Ursache — beim Einfügen in '
+                                                      'Gmail auf Leerzeichen am Rand achten.'))
+                            srv.quit()
+                            raise _Fertig()
+                        except smtplib.SMTPAuthenticationError:
+                            pass
                     ergebnis.append(('rot', 'Anmeldung abgelehnt: %s %s'
                                      % (e.smtp_code, (e.smtp_error or b'').decode('utf-8', 'replace')[:200])))
                     ergebnis.append(('grau', 'Bei Brevo heisst der Anmeldename NICHT deine E-Mail, '
@@ -3428,6 +3453,8 @@ def admin_smtp_probe():
                                              'Der Schlüssel wird nur bei der Erstellung angezeigt; '
                                              'wer ihn nicht kopiert hat, muss einen neuen erzeugen.'))
                 srv.quit()
+            except _Fertig:
+                pass
             except Exception as e:
                 ergebnis.append(('rot', 'Kein Durchkommen: %s: %s' % (type(e).__name__, str(e)[:200])))
     from html import escape as _e
