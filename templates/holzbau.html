@@ -648,6 +648,12 @@ body {
 .tpl-ico { font-size: 22px; line-height: 1; margin-bottom: 4px; }
 .tpl-lbl { font-size: 11px; font-weight: 600; color: var(--text); line-height: 1.3; margin-bottom: 3px; }
 .tpl-meta { font-size: 10px; color: var(--text-2); }
+/* Eine Vorlage ist ohne Abo nutzbar. Sie muss man SEHEN, sonst klickt der
+   Free-Nutzer sie nie an — und genau sie soll zeigen, was die Vorlagen taugen. */
+.tpl-card.frei { border-color: #16a34a; }
+.tpl-card.frei:hover { border-color: #16a34a; background: rgba(22,163,74,.08); }
+.tpl-frei { display: inline-block; font-size: 9px; font-weight: 700; letter-spacing: .3px;
+  color: #16a34a; border: 1px solid #16a34a; border-radius: 999px; padding: 0 5px; margin-top: 3px; }
 
 /* ── CTX MENU ── */
 .ctx-item {
@@ -1675,15 +1681,16 @@ body {
     <div id="pane-vorlagen" class="tab-pane" style="display:none;overflow-y:auto;padding:8px">
       <p style="font-size:11px;color:var(--text-2);margin:0 0 8px;line-height:1.4">
         Fertige Konstruktion laden &amp; anpassen.
-        {% if user_plan != 'premium' %}<br><strong style="color:#d97706">✨ Premium erforderlich</strong>{% endif %}
+        {% if user_plan != 'premium' %}<br><strong style="color:#d97706">✨ Premium</strong> — außer der Pergola, die ist für alle frei.{% endif %}
       </p>
-      <div class="panel-title" style="margin:2px 0 6px">📐 Nach Maß erzeugen{% if user_plan != 'premium' %} 🔒{% endif %}</div>
+      <div class="panel-title" style="margin:2px 0 6px">📐 Nach Maß erzeugen</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px">
         <div class="tpl-card" onclick="openParamTemplate('carport')">
           <div class="tpl-ico">🚗</div><div class="tpl-lbl">Carport</div><div class="tpl-meta">Maße eingeben</div>
         </div>
-        <div class="tpl-card" onclick="openParamTemplate('pergola')">
+        <div class="tpl-card frei" onclick="openParamTemplate('pergola')">
           <div class="tpl-ico">🌿</div><div class="tpl-lbl">Pergola</div><div class="tpl-meta">Maße eingeben</div>
+          <div class="tpl-frei">GRATIS</div>
         </div>
         <div class="tpl-card" onclick="openParamTemplate('gartenhaus')">
           <div class="tpl-ico">🏡</div><div class="tpl-lbl">Gartenhaus</div><div class="tpl-meta">Maße eingeben</div>
@@ -2202,7 +2209,7 @@ body {
          Preiszusage GRATIS — sie duerfen hier nicht mehr als Premium-Vorteil
          beworben werden, sonst ist es derselbe Wortbruch nur andersherum. #}
       <div style="font-size:.85rem;color:var(--text);line-height:1.8">
-        ✅ Fertige Vorlagen (Carport, Pergola …)<br>
+        ✅ Fertige Vorlagen (Carport, Gartenhaus …)<br>
         ✅ Drucken / PDF-Plan<br>
         ✅ Schnittplan &amp; Plattenzuschnitt<br>
         ✅ DXF- &amp; CNC-Export<br>
@@ -10193,8 +10200,22 @@ function exportDXF() {
 }
 
 // ── Parametrische Vorlagen (#3) ──
+/* EINE Vorlage ist ohne Abo nutzbar: die Pergola.
+   Ein Schloss vor jeder einzelnen Vorlage verkauft nichts — man sieht ja nie,
+   was dahinter steckt. Die Pergola ist dafuer die richtige: vier Pfosten, ein
+   verblatteter Rahmen, Kopfbaender, Querlatten. Wer sie einmal erzeugt hat,
+   weiss, was die anderen drei koennen.
+   Der Schluessel steht hier und nicht im Markup — sonst haette ein zweiter
+   Aufrufer (Tour, Tastenkuerzel) die Schranke wieder umgangen oder doppelt. */
+const VORLAGEN_FREI = new Set(['pergola']);
+
 function openParamTemplate(key) {
-  if (!requirePremium('📦 Vorlagen', 'Fertige Konstruktionen sind nur im Premium-Abo verfügbar.')) return;
+  if (VORLAGEN_FREI.has(key)) {
+    _premiumBeacon('📦 Vorlage ' + key + ' (frei)', 'used');
+  } else if (!requirePremium('📦 Vorlagen',
+      'Fertige Konstruktionen sind nur im Premium-Abo verfügbar. Die Pergola kannst du ohne Abo ausprobieren.')) {
+    return;
+  }
   const tpl = window.PARAM_TEMPLATES && window.PARAM_TEMPLATES[key];
   if (!tpl) { alert('Vorlage nicht verfügbar.'); return; }
   let f = `<div style="font-weight:700;margin-bottom:12px;color:var(--text)">${escHtml(tpl.label)}</div>`;
