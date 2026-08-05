@@ -119,7 +119,24 @@ Talisman(
         # Kein fremder Code darf die Seite selbst einbetten (Clickjacking).
         'frame-ancestors': ["'self'"],
         'base-uri': ["'self'"],
-        'form-action': ["'self'"],
+        # HIER ist der Kauf gestorben — und zwar lautlos.
+        #
+        # form-action gilt in Chrome und Safari AUCH fuer die Weiterleitung,
+        # die auf ein abgeschicktes Formular folgt. Der Ablauf war:
+        #   1. Formular POSTet an /subscribe/create-checkout  (eigene Domain, erlaubt)
+        #   2. Server antwortet 303 -> https://checkout.stripe.com/...
+        #   3. Browser prueft das ZIEL gegen form-action 'self' -> nicht erlaubt
+        #   4. Er verwirft die Weiterleitung. Die Seite bleibt einfach stehen.
+        #
+        # Kein Fehler, keine Meldung, keine Zeile im Server-Log: dort sah alles
+        # richtig aus, weil serverseitig auch alles richtig war. Genau deshalb
+        # meldete der Probelauf "OK" und jeder Test lief gruen, waehrend kein
+        # einziger Kunde durchkam. Der Beleg steht nur in der Browser-Konsole:
+        # "Refused to send form data to 'https://checkout.stripe.com/...'".
+        #
+        # In Firefox funktionierte der Kauf uebrigens — der wendet form-action
+        # nicht auf Weiterleitungen an.
+        'form-action': ["'self'", 'checkout.stripe.com', 'js.stripe.com'],
         'object-src': ["'none'"],
     },
     referrer_policy='strict-origin-when-cross-origin',
