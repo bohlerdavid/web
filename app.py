@@ -823,6 +823,47 @@ def health():
     return 'ok', 200
 
 
+@app.route('/health/zahlung')
+def health_zahlung():
+    """Ist der Weg zum Abo von aussen betrachtet in Ordnung?
+
+    Ein Kunde hat gemeldet, dass er kein Upgrade auswaehlen kann. Die Ursache
+    liess sich von aussen nicht feststellen: /subscribe braucht ein Login, und
+    ob eine Umgebungsvariable auf Railway gesetzt ist, sieht man dem HTML nicht
+    an. Ein Bezahlweg, der lautlos verschwinden kann, ohne dass es jemandem
+    auffaellt, ist die teuerste Art von Fehler.
+
+    Zurueck kommen NUR Ja/Nein-Werte. Kein Schluessel, kein Praefix, keine
+    Preis-ID — die gehoeren in keine oeffentliche Antwort, auch nicht
+    abgekuerzt. Was hier steht, weiss ein Angreifer ohnehin.
+    """
+    schluessel = bool(os.environ.get('STRIPE_SECRET_KEY'))
+    monat = bool(os.environ.get('STRIPE_PRICE_ID'))
+    jahr = bool(os.environ.get('STRIPE_YEARLY_PRICE_ID'))
+    # Erreichbar heisst: Stripe antwortet uns mit unserem Schluessel. Ein
+    # abgelaufener oder zurueckgezogener Schluessel sieht sonst genauso aus wie
+    # ein gesetzter.
+    erreichbar = None
+    if schluessel:
+        try:
+            _stripe_api_get('prices', {'limit': 1})
+            erreichbar = True
+        except Exception as e:
+            erreichbar = False
+            logger.error('Stripe nicht erreichbar: %s', type(e).__name__)
+    kaufbar = bool(schluessel and monat and erreichbar)
+    if not kaufbar:
+        logger.error('ZAHLWEG GESTOERT: key=%s monat=%s jahr=%s erreichbar=%s',
+                     schluessel, monat, jahr, erreichbar)
+    return jsonify({
+        'kaufbar': kaufbar,
+        'stripe_key': schluessel,
+        'preis_monat': monat,
+        'preis_jahr': jahr,
+        'stripe_erreichbar': erreichbar,
+    }), (200 if kaufbar else 503)
+
+
 @app.route('/ping')
 def ping():
     if 'user_id' in session:
