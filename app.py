@@ -4490,45 +4490,91 @@ def subscribe_cancel():
 
 @app.route('/webhook/stripe', methods=['POST'])
 def stripe_webhook():
+    """Nimmt Stripe-Ereignisse entgegen — und antwortet NIE mit 500.
+
+    Am 05.08.2026 kam auf einen Zustellversuch ein blanker 500 zurueck, also
+    eine Ausnahme an allen Auffangnetzen vorbei. Von aussen war nur Flasks
+    Standard-Fehlerseite zu sehen, und Stripe zaehlt so etwas als Fehlschlag,
+    bis es den Endpunkt abschaltet.
+
+    Deshalb liegt jetzt ein Netz um die GANZE Funktion. Eine echte HTTP-Antwort
+    (etwa 400 bei falscher Signatur) geht weiterhin durch — alles andere wird
+    mit voller Fehlerspur festgehalten und mit 200 quittiert. Empfangen haben
+    wir das Ereignis schliesslich; nur verarbeiten konnten wir es nicht, und
+    das ist Stripes Problem nicht.
+    """
+    from werkzeug.exceptions import HTTPException
+    try:
+        return _stripe_webhook_verarbeiten()
+    except HTTPException:
+        raise                                   # 400 bei falscher Signatur bleibt 400
+    except Exception:
+        import traceback
+        spur = traceback.format_exc()
+        logger.error('Stripe webhook: unbehandelter Fehler -- %s', spur)
+        _cron_protokoll('stripe-webhook', False, spur[-1800:], 'ausnahme')
+        return jsonify(ok=True)
+
+
+def _stripe_signaturfehler(stripe):
+    """Die Klasse fuer "Signatur passt nicht" — je nach SDK-Fassung woanders.
+
+    Bis stripe-python 11 lag sie unter stripe.error, seither direkt unter
+    stripe. requirements.txt sagt nur stripe>=8.0.0; ein Neubau kann also
+    jederzeit eine Fassung ziehen, in der stripe.error fehlt. Stuende der Pfad
+    fest im except-Zweig, wuerde beim ersten Fehler ein AttributeError WAEHREND
+    der Fehlerbehandlung fliegen — und genau das ergibt einen 500.
+    """
+    for pfad in (('error', 'SignatureVerificationError'), ('SignatureVerificationError',)):
+        ziel = stripe
+        for teil in pfad:
+            ziel = getattr(ziel, teil, None)
+            if ziel is None:
+                break
+        if ziel is not None:
+            return ziel
+    return None
+
+
+def _stripe_webhook_verarbeiten():
     stripe_key = os.environ.get('STRIPE_SECRET_KEY')
     webhook_secret = os.environ.get('STRIPE_WEBHOOK_SECRET')
     if not stripe_key or not webhook_secret:
         logger.error('Stripe webhook called but STRIPE_SECRET_KEY or STRIPE_WEBHOOK_SECRET not set')
         abort(400)
+    import stripe
+    stripe.api_key = stripe_key
+    SigErr = _stripe_signaturfehler(stripe)
     try:
-        import stripe
-        stripe.api_key = stripe_key
         payload = request.get_data()
         sig = request.headers.get('Stripe-Signature', '')
         event = stripe.Webhook.construct_event(payload, sig, webhook_secret)
-    except stripe.error.SignatureVerificationError:
-        logger.warning('Stripe webhook signature verification failed')
-        abort(400)
     except Exception as e:
-        logger.error('Stripe webhook nicht lesbar: %s: %s', type(e).__name__, str(e)[:300])
+        if SigErr is not None and isinstance(e, SigErr):
+            logger.warning('Stripe webhook signature verification failed')
+        else:
+            logger.error('Stripe webhook nicht lesbar: %s: %s', type(e).__name__, str(e)[:300])
         abort(400)
 
     # Ein Fehler bei der VERARBEITUNG darf nicht mit 400 beantwortet werden.
     # 400 heisst fuer Stripe "deine Anfrage war fehlerhaft" — es versucht es
     # wieder und wieder und schaltet den Endpunkt nach ein paar Tagen ab. Genau
     # das war im Gange (neun Versuche, Abschaltung angekuendigt fuer den 11.).
-    # Empfangen HABEN wir das Ereignis; das wird bestaetigt. Was schiefging,
-    # steht jetzt mit Ereignistyp, Kennung und Meldung im Log — vorher stand
-    # dort nur der Ausnahmetyp, also nichts Brauchbares.
     # Der Abo-Stand haengt ohnehin nicht allein am Webhook: /subscribe holt ihn
     # bei jedem Aufruf frisch von Stripe (_sync_user_from_stripe).
     try:
         _handle_stripe_event(event)
-    except Exception as e:
-        grund = '%s: %s' % (type(e).__name__, str(e)[:400])
-        logger.error('Stripe webhook: Ereignis %s (%s) nicht verarbeitet — %s',
-                     event.get('type'), event.get('id'), grund)
-        # ...und zusaetzlich dorthin, wo man ohne Server-Logs hinkommt. Genau
-        # daran hing die Suche: Stripe zeigt nur unsere nichtssagende Antwort
-        # ("Webhook error"), und an die Railway-Logs kommt man im Zweifel nicht
-        # schnell genug heran. cron_runs ist dafuer schon da.
+    except Exception:
+        import traceback
+        spur = traceback.format_exc()
+        logger.error('Stripe webhook: Ereignis %s (%s) nicht verarbeitet -- %s',
+                     event.get('type'), event.get('id'), spur)
+        # ...und zusaetzlich dorthin, wo man ohne Server-Logs hinkommt: Stripe
+        # zeigt nur unsere eigene Antwort, und an die Railway-Logs kommt man im
+        # Zweifel nicht schnell genug heran. cron_runs ist dafuer schon da.
         _cron_protokoll('stripe-webhook', False,
-                        '%s (%s): %s' % (event.get('type'), event.get('id'), grund),
+                        '%s (%s) -- %s' % (event.get('type'), event.get('id'),
+                                           spur[-1500:]),
                         'fehler')
     return jsonify(ok=True)
 
