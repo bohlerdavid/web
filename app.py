@@ -4548,7 +4548,23 @@ def _stripe_webhook_verarbeiten():
     try:
         payload = request.get_data()
         sig = request.headers.get('Stripe-Signature', '')
-        event = stripe.Webhook.construct_event(payload, sig, webhook_secret)
+        # Das SDK prueft die Signatur — dafuer ist es da.
+        stripe.Webhook.construct_event(payload, sig, webhook_secret)
+        # ...und danach wird mit der ROHEN Nutzlast weitergearbeitet, nicht mit
+        # dem Rueckgabeobjekt des SDK.
+        #
+        # Genau hier lag der Fehler, den Stripe seit dem 2. August gemeldet hat:
+        # KeyError: 'get' in stripe/_stripe_object.py. Seit stripe-python 12 ist
+        # StripeObject KEIN dict mehr — es haelt seine Werte in self._data und
+        # bildet jeden Attributzugriff auf self[...] ab. `event.get('type')`
+        # sucht dadurch einen SCHLUESSEL namens "get" und fliegt. Unser ganzer
+        # Ereigniscode arbeitet mit .get(). requirements.txt sagt nur
+        # stripe>=8.0.0, ein Neubau zog also irgendwann die neue Fassung —
+        # und ab da schlug jedes Ereignis fehl.
+        #
+        # Mit json.loads bekommen wir schlichte dicts. Das Verhalten ist damit
+        # von der SDK-Fassung unabhaengig, und zwar dauerhaft.
+        event = json.loads(payload.decode('utf-8'))
     except Exception as e:
         if SigErr is not None and isinstance(e, SigErr):
             logger.warning('Stripe webhook signature verification failed')
