@@ -4487,14 +4487,28 @@ def stripe_webhook():
         payload = request.get_data()
         sig = request.headers.get('Stripe-Signature', '')
         event = stripe.Webhook.construct_event(payload, sig, webhook_secret)
-        _handle_stripe_event(event)
-        return jsonify(ok=True)
     except stripe.error.SignatureVerificationError:
         logger.warning('Stripe webhook signature verification failed')
         abort(400)
     except Exception as e:
-        logger.error('Stripe webhook error: %s', type(e).__name__)
-        return jsonify(error='Webhook error'), 400
+        logger.error('Stripe webhook nicht lesbar: %s: %s', type(e).__name__, str(e)[:300])
+        abort(400)
+
+    # Ein Fehler bei der VERARBEITUNG darf nicht mit 400 beantwortet werden.
+    # 400 heisst fuer Stripe "deine Anfrage war fehlerhaft" — es versucht es
+    # wieder und wieder und schaltet den Endpunkt nach ein paar Tagen ab. Genau
+    # das war im Gange (neun Versuche, Abschaltung angekuendigt fuer den 11.).
+    # Empfangen HABEN wir das Ereignis; das wird bestaetigt. Was schiefging,
+    # steht jetzt mit Ereignistyp, Kennung und Meldung im Log — vorher stand
+    # dort nur der Ausnahmetyp, also nichts Brauchbares.
+    # Der Abo-Stand haengt ohnehin nicht allein am Webhook: /subscribe holt ihn
+    # bei jedem Aufruf frisch von Stripe (_sync_user_from_stripe).
+    try:
+        _handle_stripe_event(event)
+    except Exception as e:
+        logger.error('Stripe webhook: Ereignis %s (%s) nicht verarbeitet — %s: %s',
+                     event.get('type'), event.get('id'), type(e).__name__, str(e)[:400])
+    return jsonify(ok=True)
 
 
 def _cron_protokoll(job, ok, note, grund='ok'):
@@ -5731,14 +5745,60 @@ def _run_subscription_reminders():
     return out
 
 
+def _nutzer_zu_stripe_kunde(cust):
+    """Welches Konto gehoert zu diesem Stripe-Kunden? 0, wenn keines passt.
+
+    Erst ueber die gespeicherte Kundenkennung, sonst ueber die E-Mail-Adresse
+    bei Stripe. Genau diese Zuordnung fehlte bisher beim Checkout-Ereignis —
+    dort wurde blind auf die Metadaten vertraut.
+    """
+    if not cust:
+        return 0
+    row = query_db('SELECT user_id FROM subscriptions WHERE stripe_customer_id=?', [cust], one=True)
+    if row:
+        return row['user_id']
+    try:
+        mail = ((_stripe_api_get('customers/' + cust) or {}).get('email') or '').strip()
+        if mail:
+            u = query_db('SELECT id FROM app_users WHERE LOWER(email)=LOWER(?)', [mail], one=True)
+            if u:
+                return u['id']
+    except Exception as e:
+        logger.error('Kunden-E-Mail bei Stripe nicht lesbar (%s): %s', cust, str(e)[:200])
+    return 0
+
+
 def _handle_stripe_event(event):
     data = event['data']['object']
     etype = event['type']
     if etype == 'checkout.session.completed':
-        user_id = int(data.get('metadata', {}).get('user_id', 0))
-        plan_type = data.get('metadata', {}).get('plan_type', 'monthly')
-        interval = 'yearly' if plan_type == 'yearly' else 'monthly'
-        _activate_premium(user_id, data.get('customer'), data.get('subscription'), interval)
+        """Hier ist der Webhook gestorben.
+
+        Frueher stand hier int(data.get('metadata', {}).get('user_id', 0)).
+        Der Vorgabewert {} greift nur, wenn der SCHLUESSEL FEHLT — schickt
+        Stripe dagegen "metadata": null, kommt None zurueck und .get() darauf
+        wirft. Und eine Sitzung ohne unsere Metadaten gibt es wirklich: jeder
+        Zahlungslink und jede im Stripe-Dashboard erzeugte Sitzung hat keine.
+        Die Ausnahme wurde mit 400 beantwortet, Stripe hat es neun Mal wieder
+        versucht und wollte den Endpunkt abschalten.
+        """
+        meta = data.get('metadata') or {}
+        try:
+            user_id = int(meta.get('user_id') or 0)
+        except (TypeError, ValueError):
+            user_id = 0
+        interval = 'yearly' if meta.get('plan_type') == 'yearly' else 'monthly'
+        if not user_id:
+            # Ohne Metadaten ueber den Kunden zuordnen, statt aufzugeben.
+            user_id = _nutzer_zu_stripe_kunde(data.get('customer'))
+            if user_id:
+                logger.info('Checkout ohne Metadaten dem Konto %s zugeordnet', user_id)
+        if user_id:
+            _activate_premium(user_id, data.get('customer'), data.get('subscription'), interval)
+        else:
+            logger.warning('checkout.session.completed ohne zuordenbares Konto '
+                           '(Kunde=%s, Sitzung=%s) — nichts freigeschaltet',
+                           data.get('customer'), data.get('id'))
     elif etype in ('customer.subscription.created', 'customer.subscription.deleted',
                    'customer.subscription.updated'):
         # 'created' war frueher nicht dabei — dadurch kam ein von Hand im Stripe-
