@@ -467,14 +467,14 @@
     HolzBau 3D
   </a>
   <ul class="nav-links">
-    <li><a href="#features">{{ L.nav_features }}</a></li>
-    <li><a href="#pricing">{{ L.nav_preise }}</a></li>
-    <li><a href="{{ '/ratgeber' if seo_lang|default('de') == 'de' else '/' + seo_lang + '/guides' }}">{{ L.nav_ratgeber }}</a></li>
-    <li><a href="#faq">{{ L.nav_faq }}</a></li>
+    <li><a href="#features" data-klick="nav_features">{{ L.nav_features }}</a></li>
+    <li><a href="#pricing" data-klick="nav_preise">{{ L.nav_preise }}</a></li>
+    <li><a href="{{ '/ratgeber' if seo_lang|default('de') == 'de' else '/' + seo_lang + '/guides' }}" data-klick="nav_ratgeber">{{ L.nav_ratgeber }}</a></li>
+    <li><a href="#faq" data-klick="nav_faq">{{ L.nav_faq }}</a></li>
   </ul>
   <div class="nav-actions">
-    <a href="/login" class="nav-login">{{ L.nav_anmelden }}</a>
-    <a href="/register" class="btn-primary">{{ L.nav_start }}</a>
+    <a href="/login" class="nav-login" data-klick="nav_anmelden">{{ L.nav_anmelden }}</a>
+    <a href="/register" class="btn-primary" data-klick="nav_start">{{ L.nav_start }}</a>
   </div>
 </nav>
 
@@ -489,8 +489,8 @@
       <h1>{{ L.hero_h1_html|safe }}</h1>
       <p class="hero-sub">{{ L.hero_sub }}</p>
       <div class="hero-ctas">
-        <a href="/demo" class="btn-primary" style="padding:14px 26px;font-size:15px;">{{ L.hero_cta1 }}</a>
-        <a href="#pricing" class="btn-outline" style="padding:14px 26px;font-size:15px;">{{ L.hero_cta2 }}</a>
+        <a href="/demo" class="btn-primary" data-klick="hero_demo" style="padding:14px 26px;font-size:15px;">{{ L.hero_cta1 }}</a>
+        <a href="#pricing" class="btn-outline" data-klick="hero_preise" style="padding:14px 26px;font-size:15px;">{{ L.hero_cta2 }}</a>
       </div>
     </div>
 
@@ -751,7 +751,7 @@
           <div class="price-muted">{{ L.pr_free_f5 }}</div>
           <div class="price-muted">{{ L.pr_free_f6 }}</div>
         </div>
-        <a href="/login" class="btn-plan btn-plan-outline">{{ L.pr_free_cta }}</a>
+        <a href="/login" class="btn-plan btn-plan-outline" data-klick="preis_free">{{ L.pr_free_cta }}</a>
       </div>
 
       <!-- Premium monthly -->
@@ -767,7 +767,7 @@
           <div>{{ L.pr_f5_html|safe }}</div>
           <div>{{ L.pr_f6 }}</div>
         </div>
-        <a href="/subscribe" class="btn-plan btn-plan-solid">{{ L.pr_mon_cta }}</a>
+        <a href="/subscribe" class="btn-plan btn-plan-solid" data-klick="preis_monat">{{ L.pr_mon_cta }}</a>
       </div>
 
       <!-- Premium annual -->
@@ -785,7 +785,7 @@
           <div>{{ L.pr_f5_html|safe }}</div>
           <div>{{ L.pr_f6 }}</div>
         </div>
-        <a href="/subscribe" class="btn-plan btn-plan-solid">{{ L.pr_year_cta }}</a>
+        <a href="/subscribe" class="btn-plan btn-plan-solid" data-klick="preis_jahr">{{ L.pr_year_cta }}</a>
       </div>
 
     </div>
@@ -828,7 +828,7 @@
       {% endfor %}
     </div>
     <div class="examples-cta">
-      <a href="{{ guides_url|default('/ratgeber') }}" class="btn-outline" style="padding:12px 24px;font-size:14px;">{{ guides_cta|default('Alle Ratgeber ansehen') }}</a>
+      <a href="{{ guides_url|default('/ratgeber') }}" class="btn-outline" data-klick="ratgeber_alle" style="padding:12px 24px;font-size:14px;">{{ guides_cta|default('Alle Ratgeber ansehen') }}</a>
     </div>
   </div>
 </section>
@@ -909,6 +909,38 @@
       box.appendChild(btn);
     });
   });
+})();
+</script>
+
+{# ═══ ANONYMER KLICKZAEHLER ═══
+   Gesendet wird ausschliesslich der Name des Klickziels und die Sprache der
+   Seite. Keine Kennung, kein Cookie, keine Sitzung — der Server legt daraus
+   nur einen Tageszaehler an und kann Besuche nicht auseinanderhalten. Welche
+   Ziele ueberhaupt gezaehlt werden, entscheidet die Weissliste im Server;
+   was hier steht, ist nur der Ausloeser.
+
+   sendBeacon statt fetch: der Klick fuehrt die Seite sofort weg, und ein
+   laufendes fetch wuerde dabei abgebrochen. Der Beacon ueberlebt den
+   Seitenwechsel — genau dafuer gibt es ihn. #}
+<script>
+(function () {
+  if (!navigator.sendBeacon) return;
+  var sprache = (document.documentElement.getAttribute('lang') || 'de').slice(0, 2);
+  // In der Erfassungsphase (true): ein Klick auf einen Link, der die Seite
+  // verlaesst, darf nicht vorher von einem anderen Handler gestoppt worden
+  // sein — gezaehlt wird, was der Nutzer angeklickt hat.
+  document.addEventListener('click', function (e) {
+    var el = e.target;
+    if (!el || typeof el.closest !== 'function') return;
+    var ziel = el.closest('[data-klick]');
+    if (!ziel) return;
+    try {
+      var d = new FormData();
+      d.append('ziel', ziel.getAttribute('data-klick'));
+      d.append('sprache', sprache);
+      navigator.sendBeacon('/telemetry/landing', d);
+    } catch (err) { /* Zaehlen darf nie stoeren */ }
+  }, true);
 })();
 </script>
 </body>

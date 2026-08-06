@@ -221,6 +221,7 @@ def row_to_dict(row):
 PERSONENBEZOGENE_TABELLEN = (
     ('feedback', 'user_id'),        # Betreff, Nachricht, Screenshot, Projekt-JSON
     ('feature_use', 'user_id'),     # welche Funktion wann benutzt wurde
+    ('checkout_intents', 'user_id'),  # Kaufversuche und woran sie scheiterten
     ('projects', 'user_id'),        # gespeicherte Modelle inkl. Bauvorhaben (Ort!)
     ('subscriptions', 'user_id'),
 )
@@ -335,6 +336,53 @@ SCHEMA_STATEMENTS = [
     # geloescht: beim Widerruf, beim Loeschen des Projekts und beim Loeschen des
     # Kontos. PERSONENBEZOGENE_TABELLEN greift hier nicht, weil dort ueber
     # user_id geloescht wird und diese Tabelle keine hat.
+    # Der Kaufweg. Eine Zeile je Klick auf "Abo abschliessen" — mit dem Ausgang.
+    #
+    # Warum ueberhaupt: bis hierher hinterliess ein gescheiterter Kauf KEINE
+    # Spur. Am 05.08.2026 kam ein Kunde nicht zur Kasse und meldete es per
+    # E-Mail; serverseitig war nichts zu finden, weil serverseitig alles
+    # richtig war. Wer nicht schreibt, wo der Weg endet, sucht beim naechsten
+    # Mal wieder von vorn.
+    #
+    # `grund` benennt die Sackgasse, und zwar genau die vier, die es gibt:
+    #   sitzung   – CSRF-Merkmal veraltet (Tab lag zu lange offen)
+    #   limit     – zu viele Versuche in kurzer Zeit
+    #   technik   – Stripe nicht erreichbar oder nicht konfiguriert
+    #   zurueck   – bei Stripe auf Abbrechen geklickt (?cancelled=1)
+    #   abgelaufen– Stripe hat die Sitzung nach 24 h verfallen lassen
+    #
+    # Rechtsgrundlage ist NICHT die Nutzungsstatistik (Art. 6 I f), sondern die
+    # Anbahnung des Vertrags (Art. 6 I b) — deshalb greift der Widerspruch
+    # gegen die Funktionsstatistik hier bewusst nicht: wer nicht bezahlen kann,
+    # muss auffindbar bleiben, sonst ist ihm nicht zu helfen. Die Zeilen haengen
+    # am Konto und werden mit ihm geloescht (PERSONENBEZOGENE_TABELLEN).
+    """CREATE TABLE IF NOT EXISTS checkout_intents (
+        id           INT PRIMARY KEY AUTO_INCREMENT,
+        user_id      INT          NOT NULL,
+        plan_type    VARCHAR(12)  NOT NULL,
+        status       VARCHAR(12)  NOT NULL,
+        grund        VARCHAR(20)  NULL,
+        session_id   VARCHAR(80)  NULL,
+        gestartet_at DATETIME     NOT NULL,
+        beendet_at   DATETIME     NULL,
+        INDEX (user_id), INDEX (status), INDEX (gestartet_at), INDEX (session_id)
+    )""",
+    # Klickzaehler der Startseite. BEWUSST nur ein Zaehler je Tag, Ziel und
+    # Sprache — es gibt hier kein Feld, ueber das sich jemand wiedererkennen
+    # liesse: keine Kennung, keine IP, kein Cookie, keine Uhrzeit. Damit ist es
+    # kein Personenbezug und braucht kein Einwilligungsbanner.
+    #
+    # Der Preis dafuer ist ehrlich zu nennen: die Reihenfolge der Klicks eines
+    # Besuchs laesst sich damit NICHT rekonstruieren. Man sieht, WO geklickt
+    # wird, nicht, wer welchen Weg genommen hat. Das war die Abwaegung.
+    """CREATE TABLE IF NOT EXISTS landing_clicks (
+        id      INT PRIMARY KEY AUTO_INCREMENT,
+        tag     DATE         NOT NULL,
+        ziel    VARCHAR(40)  NOT NULL,
+        sprache VARCHAR(5)   NOT NULL,
+        anzahl  INT          NOT NULL DEFAULT 0,
+        UNIQUE KEY uq_tag_ziel_sprache (tag, ziel, sprache)
+    )""",
     """CREATE TABLE IF NOT EXISTS share_access (
         id         INT PRIMARY KEY AUTO_INCREMENT,
         project_id INT          NOT NULL,
@@ -2378,6 +2426,60 @@ def telemetry_feature():
     return ('', 204)
 
 
+# Was auf der Startseite ueberhaupt gezaehlt werden darf. Die Liste steht
+# HIER und nicht im Markup: der Browser darf nicht bestimmen, welche Werte in
+# der Spalte landen. Alles Unbekannte faellt lautlos durch — sonst waere der
+# offene Endpunkt eine Einladung, die Tabelle mit Phantasie zu fuellen.
+LANDING_ZIELE = {
+    'nav_start', 'nav_anmelden', 'nav_features', 'nav_preise', 'nav_ratgeber', 'nav_faq',
+    'hero_demo', 'hero_preise',
+    'preis_free', 'preis_monat', 'preis_jahr',
+    'ratgeber_alle',
+}
+_landing_clicks_limit = {}
+
+
+@app.route('/telemetry/landing', methods=['POST'])
+def telemetry_landing():
+    """Ein Klickziel der Startseite meldet sich. OHNE Login und OHNE Kennung.
+
+    Gespeichert wird ausschliesslich ein Zaehler je (Tag, Ziel, Sprache). Es
+    gibt kein Feld, ueber das ein Besucher wiedererkennbar waere: keine
+    Kennung, keine IP, kein Cookie, keine Uhrzeit unterhalb des Tages. Damit
+    liegt kein Personenbezug vor und es braucht kein Einwilligungsbanner.
+
+    Die IP wird fuer die Drosselung fluechtig im Arbeitsspeicher benutzt und
+    NIRGENDS gespeichert — ohne sie waere ein offener Zaehl-Endpunkt in fuenf
+    Minuten mit erfundenen Zahlen gefuellt.
+
+    Kein CSRF-Merkmal: die Seite ist anonym, ein Token setzte erst ein
+    Sitzungs-Cookie — also genau das, was hier vermieden werden soll. Zu
+    schuetzen ist ohnehin nichts: es gibt keinen Nutzer, in dessen Namen etwas
+    geschaehe. Missbrauch faengt die Weissliste und die Drosselung ab.
+    """
+    ziel = (request.form.get('ziel', '') or '').strip()[:40]
+    if ziel not in LANDING_ZIELE:
+        return ('', 204)
+    if _check_rate_limit(_landing_clicks_limit, request.remote_addr or '-', 60, window=300):
+        return ('', 204)
+    # Die Sprache kommt von der SEITE, nicht aus dem Cookie: die Startseite
+    # entscheidet sie ueber die Route (/, /en, /fr). Wer auf /en steht und
+    # einen deutschen Browser hat, waere ueber _request_lang() falsch gezaehlt
+    # worden. Fest auf die drei bekannten Werte geklemmt.
+    sprache = (request.form.get('sprache', '') or '').strip().lower()[:5]
+    if sprache not in ('de', 'en', 'fr'):
+        sprache = 'de'
+    try:
+        execute_db(
+            'INSERT INTO landing_clicks (tag, ziel, sprache, anzahl) '
+            'VALUES (CURDATE(), ?, ?, 1) '
+            'ON DUPLICATE KEY UPDATE anzahl = anzahl + 1',
+            [ziel, sprache])
+    except Exception as e:
+        logger.warning('landing_clicks fehlgeschlagen (%s: %s)', type(e).__name__, str(e)[:200])
+    return ('', 204)
+
+
 def _stats_abgelehnt(user_id):
     """Hat dieses Konto der Nutzungsstatistik widersprochen?
 
@@ -3291,6 +3393,95 @@ def admin_feature_use():
                            tage=tage, gesamt=(gesamt['c'] if gesamt else 0))
 
 
+# Nach dieser Zeit gilt eine offene Kasse als aufgegeben. Stripe laesst eine
+# Checkout-Sitzung nach 24 Stunden verfallen; zwei Stunden Luft, damit ein
+# spaet eintreffendes checkout.session.expired die Zeile noch selbst schliessen
+# kann, bevor die Auswertung sie fuer sich entscheidet.
+KAUFWEG_OFFEN_STUNDEN = 26
+
+
+def _kaufweg_ausgang(zeile, jetzt):
+    """Was ist aus diesem Versuch geworden?
+
+    'gestartet' ist KEIN Endzustand — es heisst nur, dass niemand
+    zurueckgemeldet hat. Nach 26 Stunden ist das eine Aufgabe, davor laeuft es
+    vielleicht noch. Diese Unterscheidung hier und nicht in SQL, damit sie an
+    einer Stelle steht und lesbar bleibt.
+    """
+    st = zeile['status']
+    if st != 'gestartet':
+        return st
+    begonnen = _to_dt(zeile['gestartet_at'])
+    if begonnen and (jetzt - begonnen).total_seconds() > KAUFWEG_OFFEN_STUNDEN * 3600:
+        return 'abgebrochen'
+    return 'laeuft'
+
+
+@app.route('/admin/kaufweg')
+@admin_required
+def admin_kaufweg():
+    """Wer wollte zahlen — und wo blieb er haengen?
+
+    Zwei Quellen, bewusst getrennt gehalten:
+      - checkout_intents: angemeldete Nutzer, ihre eigenen Kaufversuche, mit
+        Namen. Das ist der Teil, bei dem Nachfassen moeglich ist.
+      - landing_clicks: anonyme Tageszaehler der Startseite. Hier gibt es
+        niemanden zum Nachfassen, nur die Frage, WO geklickt wird.
+    Beide zusammen ergeben den Trichter — mit einer Luecke dazwischen, die auf
+    der Seite ausdruecklich benannt wird.
+    """
+    tage = request.args.get('tage', 30, type=int)
+    if tage not in (7, 30, 90):
+        tage = 30
+    jetzt = datetime.now()
+
+    zeilen = query_db(
+        "SELECT c.id, c.user_id, c.plan_type, c.status, c.grund, c.gestartet_at, "
+        "c.beendet_at, u.username, u.email "
+        "FROM checkout_intents c LEFT JOIN app_users u ON u.id = c.user_id "
+        "WHERE c.gestartet_at >= DATE_SUB(NOW(), INTERVAL ? DAY) "
+        "ORDER BY c.id DESC", [tage]) or []
+    zeilen = [dict(row_to_dict(z)) for z in zeilen]
+    for z in zeilen:
+        z['ausgang'] = _kaufweg_ausgang(z, jetzt)
+
+    zahlen = {'gestartet': 0, 'bezahlt': 0, 'abgebrochen': 0, 'fehler': 0, 'laeuft': 0}
+    gruende = {}
+    for z in zeilen:
+        zahlen[z['ausgang']] = zahlen.get(z['ausgang'], 0) + 1
+        if z['ausgang'] in ('fehler', 'abgebrochen'):
+            g = z['grund'] or ('offen' if z['status'] == 'gestartet' else '—')
+            gruende[g] = gruende.get(g, 0) + 1
+    zahlen['gestartet'] = len(zeilen)
+    gruende = sorted(gruende.items(), key=lambda p: -p[1])
+
+    # Die Liste zum Nachfassen: nur, was wirklich nicht bezahlt wurde.
+    haenger = [z for z in zeilen if z['ausgang'] in ('abgebrochen', 'fehler')]
+
+    klicks = query_db(
+        "SELECT ziel, sprache, SUM(anzahl) AS n FROM landing_clicks "
+        "WHERE tag >= DATE_SUB(CURDATE(), INTERVAL ? DAY) "
+        "GROUP BY ziel, sprache", [tage]) or []
+    je_ziel = {}
+    for k in klicks:
+        e = je_ziel.setdefault(k['ziel'], {'ziel': k['ziel'], 'n': 0, 'de': 0, 'en': 0, 'fr': 0})
+        n = int(k['n'] or 0)
+        e['n'] += n
+        if k['sprache'] in e:
+            e[k['sprache']] += n
+    je_ziel = sorted(je_ziel.values(), key=lambda e: -e['n'])
+    abo_klicks = sum(e['n'] for e in je_ziel if e['ziel'] in ('preis_monat', 'preis_jahr'))
+
+    erster = query_db("SELECT MIN(gestartet_at) AS a FROM checkout_intents", [], one=True)
+    erster_klick = query_db("SELECT MIN(tag) AS a FROM landing_clicks", [], one=True)
+
+    return render_template('admin_kaufweg.html', tage=tage, zeilen=zeilen,
+                           zahlen=zahlen, gruende=gruende, haenger=haenger,
+                           ziele=je_ziel, abo_klicks=abo_klicks,
+                           messbeginn=(erster or {}).get('a'),
+                           messbeginn_klicks=(erster_klick or {}).get('a'))
+
+
 @app.route('/admin/mails/<key>')
 @admin_required
 def admin_mail_vorschau(key):
@@ -3798,10 +3989,17 @@ def admin_sub_check():
     except Exception as e:
         L.append('DB-FEHLER: ' + type(e).__name__ + ': ' + str(e)[:200])
     L.append('')
-    L.append('=== Bezahlte Stripe Checkout-Sessions (letzte 20) ===')
+    # Die Ueberschrift hiess "Bezahlte Checkout-Sessions" — aufgelistet wurde
+    # aber JEDE der letzten 20, gefiltert erst eine Zeile spaeter und nur fuer
+    # den ?activate=-Knopf. Wer die Ausgabe las, sah "bezahlt=unpaid" unter
+    # einer Ueberschrift, die das Gegenteil behauptete. Jetzt sagt sie, was
+    # dasteht, und zaehlt am Ende, wie viele davon wirklich bezahlt sind.
+    L.append('=== Stripe Checkout-Sessions (letzte 20, ALLE Status) ===')
     sessions_by_user = {}
     try:
-        for cs in _stripe_api_get('checkout/sessions', {'limit': 20}).get('data', []):
+        alle = _stripe_api_get('checkout/sessions', {'limit': 20}).get('data', [])
+        bezahlt_n = 0
+        for cs in alle:
             meta = cs.get('metadata') or {}
             uid = int(meta.get('user_id', 0) or 0)
             paid = cs.get('payment_status', '')
@@ -3810,6 +4008,10 @@ def admin_sub_check():
                      + '  sub=' + str(cs.get('subscription')))
             if uid and paid == 'paid' and cs.get('mode') == 'subscription':
                 sessions_by_user.setdefault(uid, cs)
+                bezahlt_n += 1
+        L.append('  --> %d von %d bezahlt. Der Rest sind abgebrochene Kaeufe.' % (bezahlt_n, len(alle)))
+        L.append('      Wer, wann und WARUM steht unter /admin/kaufweg — Stripe kennt die')
+        L.append('      Gruende nicht, weil die drei haeufigsten hier entstehen, nicht dort.')
     except Exception as e:
         L.append('STRIPE-FEHLER: ' + type(e).__name__ + ': ' + str(e)[:200])
     L.append('')
@@ -4326,6 +4528,13 @@ def subscribe():
     # bezahlte Checkout-Sessions dieses Users suchen und das Abo aktivieren,
     # falls der Webhook (noch) nicht gegriffen hat.
     cs_id = request.args.get('session_id')
+
+    # Rueckkehr von Stripe ueber "Abbrechen". Das ist das sauberste
+    # Abbruchsignal, das es gibt: es kommt sofort und ohne Umweg ueber einen
+    # Webhook, der erst nach 24 Stunden feuert. Bisher wurde es weggeworfen.
+    if request.args.get('cancelled'):
+        _kaufweg_abschluss('abgebrochen', 'zurueck', cs_id, user_id)
+
     if (request.args.get('success') or request.args.get('sync')) and get_user_plan(user_id) == 'free':
         try:
             if cs_id:
@@ -4402,6 +4611,54 @@ def subscribe_status():
     })
 
 
+def _kaufweg_notiz(user_id, plan_type, status, grund=None, session_id=None):
+    """Haelt einen Kaufversuch fest. Stoert nie den Kauf.
+
+    Absichtlich genauso genuegsam wie die Telemetrie: jeder Fehler wird
+    geschluckt und nur protokolliert. Eine Statistikzeile darf niemanden am
+    Bezahlen hindern — das waere die Umkehrung des Zwecks.
+    """
+    try:
+        return execute_db(
+            'INSERT INTO checkout_intents '
+            '(user_id, plan_type, status, grund, session_id, gestartet_at) '
+            'VALUES (?, ?, ?, ?, ?, NOW())',
+            [user_id, (plan_type or 'monthly')[:12], status[:12],
+             (grund or None), (session_id or None)])
+    except Exception as e:
+        logger.warning('Kaufweg-Notiz fehlgeschlagen (%s: %s)', type(e).__name__, str(e)[:200])
+        return None
+
+
+def _kaufweg_abschluss(status, grund=None, session_id=None, user_id=None):
+    """Schliesst den juengsten offenen Versuch ab.
+
+    Ueber session_id, wenn Stripe sie mitliefert — das ist eindeutig. Sonst
+    ueber das Konto, und dann NUR die juengste offene Zeile: wer zweimal
+    hintereinander klickt, soll nicht beide Zeilen auf einmal geschlossen
+    bekommen.
+    """
+    try:
+        if session_id:
+            r = query_db("SELECT id FROM checkout_intents WHERE session_id=? "
+                         "AND status='gestartet' ORDER BY id DESC LIMIT 1",
+                         [session_id], one=True)
+        elif user_id:
+            r = query_db("SELECT id FROM checkout_intents WHERE user_id=? "
+                         "AND status='gestartet' ORDER BY id DESC LIMIT 1",
+                         [user_id], one=True)
+        else:
+            return False
+        if not r:
+            return False
+        execute_db('UPDATE checkout_intents SET status=?, grund=?, beendet_at=NOW() WHERE id=?',
+                   [status[:12], (grund or None), r['id']])
+        return True
+    except Exception as e:
+        logger.warning('Kaufweg-Abschluss fehlgeschlagen (%s: %s)', type(e).__name__, str(e)[:200])
+        return False
+
+
 @app.route('/subscribe/create-checkout', methods=['POST'])
 @login_required
 def subscribe_create_checkout():
@@ -4412,10 +4669,14 @@ def subscribe_create_checkout():
         # hinein. Abgewiesen wird der Kauf weiterhin (nichts wird ausgefuehrt),
         # aber der Kunde bekommt einen Weg zurueck statt einer Fehlerseite.
         logger.warning('Checkout mit veraltetem CSRF-Merkmal abgewiesen')
+        _kaufweg_notiz(session.get('user_id'), request.form.get('plan_type'),
+                       'fehler', 'sitzung')
         return redirect(url_for('subscribe', fehler='sitzung') + '#abo-aktion')
     if _check_rate_limit(_checkout_attempts, 'u%s' % session.get('user_id'),
                          CHECKOUT_MAX_ATTEMPTS):
         flash('Zu viele Versuche. Bitte warte kurz.', 'danger')
+        _kaufweg_notiz(session.get('user_id'), request.form.get('plan_type'),
+                       'fehler', 'limit')
         return redirect(url_for('subscribe', fehler='limit') + '#abo-aktion')
     stripe_key = os.environ.get('STRIPE_SECRET_KEY')
     plan_type = request.form.get('plan_type', 'monthly')
@@ -4425,6 +4686,7 @@ def subscribe_create_checkout():
         price_id = os.environ.get('STRIPE_PRICE_ID')
     if not stripe_key or not price_id:
         logger.error('Checkout ohne Stripe-Konfiguration angefordert')
+        _kaufweg_notiz(session['user_id'], plan_type, 'fehler', 'technik')
         return redirect(url_for('subscribe', fehler='technik') + '#abo-aktion')
     user_id = session['user_id']
     sub_row = query_db('SELECT stripe_customer_id FROM subscriptions WHERE user_id=?', [user_id], one=True)
@@ -4461,6 +4723,10 @@ def subscribe_create_checkout():
                            '— zweiter Versuch ohne Kundenkennung',
                            type(e1).__name__, str(e1)[:200])
             checkout = _sitzung(None)
+        # Erst JETZT notieren: vorher steht nicht fest, dass es ueberhaupt eine
+        # Kasse gibt. Die Kennung macht den Abschluss spaeter eindeutig — der
+        # Webhook meldet dieselbe zurueck.
+        _kaufweg_notiz(user_id, plan_type, 'gestartet', None, checkout.id)
         return redirect(checkout.url, code=303)
     except Exception as e:
         # Der Kunde wollte zahlen und konnte nicht — das ist die eine Meldung,
@@ -4468,6 +4734,7 @@ def subscribe_create_checkout():
         # Die Meldung von Stripe gehoert ins Log. Ohne sie stand dort nur
         # "Exception" — und die naechste Suche begann wieder bei null.
         logger.error('Stripe checkout error: %s: %s', type(e).__name__, str(e)[:300])
+        _kaufweg_notiz(user_id, plan_type, 'fehler', 'technik')
         return redirect(url_for('subscribe', fehler='technik') + '#abo-aktion')
 
 
@@ -5902,6 +6169,14 @@ def _handle_stripe_event(event):
             logger.warning('checkout.session.completed ohne zuordenbares Konto '
                            '(Kunde=%s, Sitzung=%s) — nichts freigeschaltet',
                            data.get('customer'), data.get('id'))
+        _kaufweg_abschluss('bezahlt', None, data.get('id'), user_id or None)
+    elif etype == 'checkout.session.expired':
+        # Stripe laesst eine unbezahlte Kasse nach 24 Stunden verfallen. Das ist
+        # der zweite Abbruchweg neben ?cancelled=1: wer den Tab einfach
+        # zumacht, kommt hier an — nur eben einen Tag spaeter.
+        # Muss im Stripe-Dashboard fuer den Endpunkt aktiviert sein; fehlt das
+        # Ereignis, faengt die 26-Stunden-Regel in der Auswertung den Fall auf.
+        _kaufweg_abschluss('abgebrochen', 'abgelaufen', data.get('id'))
     elif etype in ('customer.subscription.created', 'customer.subscription.deleted',
                    'customer.subscription.updated'):
         # 'created' war frueher nicht dabei — dadurch kam ein von Hand im Stripe-

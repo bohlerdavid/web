@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin — Kaufweg</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <style>
+    body { background: #faf6f0; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .78rem; }
+    .hinweis { font-size: .82rem; color: #6b7280; line-height: 1.6; }
+    .kpi { border-radius: 12px; padding: 18px 20px; height: 100%; }
+    .kpi-zahl { font-size: 1.9rem; font-weight: 800; line-height: 1; }
+    .kpi-lab { font-size: .78rem; text-transform: uppercase; letter-spacing: .5px; color: #6b7280; margin-bottom: 6px; }
+    .k-gruen { background: #f0fdf4; border: 1px solid #86efac; }
+    .k-rot   { background: #fef2f2; border: 1px solid #fca5a5; }
+    .k-gelb  { background: #fffbeb; border: 1px solid #fcd34d; }
+    .k-grau  { background: #f3f4f6; border: 1px solid #e5e7eb; }
+    .balken { height: 22px; background: #4e8cdd; border-radius: 4px; display: flex;
+              align-items: center; padding: 0 7px; color: #fff; font-size: .78rem;
+              font-weight: 700; min-width: 26px; }
+    td, th { font-size: .87rem; }
+    .stufe { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+    .stufe-bar { height: 30px; border-radius: 5px; display: flex; align-items: center;
+                 padding: 0 10px; color: #fff; font-weight: 700; font-size: .85rem; min-width: 40px; }
+  </style>
+</head>
+<body>
+  {% include '_admin_nav.html' %}
+
+  <div class="container-fluid px-4 py-4" style="max-width:1040px">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-1">
+      <h4 class="mb-0">Kaufweg</h4>
+      <div>
+        {% for t in [7, 30, 90] %}
+          <a href="{{ url_for('admin_kaufweg', tage=t) }}"
+             class="btn btn-sm {% if tage == t %}btn-secondary{% else %}btn-outline-secondary{% endif %}">{{ t }} Tage</a>
+        {% endfor %}
+      </div>
+    </div>
+    <p class="hinweis mb-3" style="max-width:820px">
+      Jeder Klick auf <strong>„Abo abschließen"</strong> hinterlässt hier eine Zeile — mit dem
+      Ausgang. Bis dahin war ein gescheiterter Kauf unsichtbar: der Kunde am 5.&nbsp;August hat
+      per E-Mail gemeldet, dass er nicht zur Kasse kam, und serverseitig war nichts zu finden.
+      Wer eine Premium-Funktion anklickt und am Schloss abprallt, steht unter
+      <a href="{{ url_for('admin_nutzung') }}">Wo prallen sie ab?</a>.
+    </p>
+
+    {% if not messbeginn %}
+    <div class="card shadow-sm mb-4" style="border-color:#fcd34d;background:#fffbeb">
+      <div class="card-body">
+        <h6 class="fw-bold mb-1"><i class="bi bi-hourglass-split me-1"></i>Noch keine Kaufversuche erfasst</h6>
+        <p class="hinweis mb-0">
+          Die Zählung beginnt mit dem ersten Klick nach der Veröffentlichung. Rückwirkend
+          gibt es nichts: die Gründe, an denen ein Kauf scheitert, sind nie bei Stripe
+          angekommen — sie entstanden vorher, in dieser App.
+        </p>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="row g-3 mb-4">
+      <div class="col-6 col-lg-3"><div class="kpi k-grau">
+        <div class="kpi-lab">Kassen geöffnet</div>
+        <div class="kpi-zahl">{{ zahlen.gestartet }}</div></div></div>
+      <div class="col-6 col-lg-3"><div class="kpi k-gruen">
+        <div class="kpi-lab">Bezahlt</div>
+        <div class="kpi-zahl text-success">{{ zahlen.bezahlt }}</div></div></div>
+      <div class="col-6 col-lg-3"><div class="kpi k-gelb">
+        <div class="kpi-lab">Abgebrochen</div>
+        <div class="kpi-zahl" style="color:#b45309">{{ zahlen.abgebrochen }}</div></div></div>
+      <div class="col-6 col-lg-3"><div class="kpi k-rot">
+        <div class="kpi-lab">Technisch gescheitert</div>
+        <div class="kpi-zahl text-danger">{{ zahlen.fehler }}</div></div></div>
+    </div>
+
+    {% if zahlen.laeuft %}
+    <p class="hinweis mb-4">
+      <i class="bi bi-hourglass me-1"></i>{{ zahlen.laeuft }} Kasse(n) sind noch offen und
+      jünger als 26 Stunden — die zählen noch nicht als Abbruch. Stripe lässt eine Sitzung
+      nach 24 Stunden verfallen.
+    </p>
+    {% endif %}
+
+    {# ── TRICHTER ────────────────────────────────────────────────────────── #}
+    <div class="card shadow-sm mb-4">
+      <div class="card-body">
+        <h6 class="fw-bold mb-3">Vom Knopf bis zur Zahlung</h6>
+        {% set breit = [abo_klicks, zahlen.gestartet, zahlen.bezahlt] | max %}
+        {% for lab, wert, farbe in [
+             ('Klick auf einen Abo-Knopf der Startseite', abo_klicks, '#94a3b8'),
+             ('Kasse bei Stripe geöffnet', zahlen.gestartet, '#4e8cdd'),
+             ('Bezahlt', zahlen.bezahlt, '#16a34a')] %}
+        <div class="stufe">
+          <div class="stufe-bar" style="background:{{ farbe }};width:{{ (wert / breit * 100) if breit else 4 }}%">{{ wert }}</div>
+          <div class="hinweis" style="flex:1">{{ lab }}</div>
+        </div>
+        {% endfor %}
+        <p class="hinweis mb-0 mt-3" style="max-width:780px">
+          <strong>Eine Lücke ist in dieser Darstellung nicht gemessen:</strong> die Abo-Knöpfe
+          der Startseite führen auf <span class="mono">/subscribe</span>, und das verlangt eine
+          Anmeldung. Wer nicht eingeloggt ist, landet zuerst beim Login — kommt er dort nicht
+          durch, taucht er in der zweiten Stufe nie auf. Ein Sprung zwischen Stufe 1 und 2
+          bedeutet also nicht zwangsläufig, dass die Preise abschrecken; er kann genauso gut
+          an der Anmeldung liegen. Die erste Stufe ist außerdem anonym gezählt und die zweite
+          personenbezogen — es sind nicht dieselben Personen, nur dieselben Wege.
+        </p>
+      </div>
+    </div>
+
+    {# ── GRUENDE ─────────────────────────────────────────────────────────── #}
+    {% if gruende %}
+    <div class="card shadow-sm mb-4">
+      <div class="card-body">
+        <h6 class="fw-bold mb-3">Woran es lag</h6>
+        <table class="table table-sm align-middle mb-2">
+          <tbody>
+          {% set gmax = gruende[0][1] %}
+          {% for grund, n in gruende %}
+          <tr>
+            <td style="width:190px">
+              {% if grund == 'technik' %}<span class="badge bg-danger">technik</span>
+              {% elif grund == 'sitzung' %}<span class="badge bg-danger">sitzung</span>
+              {% elif grund == 'limit' %}<span class="badge bg-danger">limit</span>
+              {% elif grund == 'zurueck' %}<span class="badge bg-warning text-dark">zurück bei Stripe</span>
+              {% elif grund == 'abgelaufen' %}<span class="badge bg-warning text-dark">abgelaufen</span>
+              {% else %}<span class="badge bg-secondary">{{ grund }}</span>{% endif %}
+            </td>
+            <td><div class="balken" style="width:{{ (n / gmax * 100) }}%">{{ n }}</div></td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        <p class="hinweis mb-0">
+          <strong>technik</strong> — Stripe nicht erreichbar oder nicht konfiguriert.
+          <strong>sitzung</strong> — das Sicherheitsmerkmal war veraltet, der Tab lag zu lange offen.
+          <strong>limit</strong> — zu viele Versuche kurz hintereinander.
+          Diese drei liegen bei dir, nicht beim Kunden.
+          <strong>zurück bei Stripe</strong> und <strong>abgelaufen</strong> sind echte
+          Kaufentscheidungen — da hat jemand es sich anders überlegt.
+        </p>
+      </div>
+    </div>
+    {% endif %}
+
+    {# ── WER HAENGENGEBLIEBEN IST ────────────────────────────────────────── #}
+    <div class="card shadow-sm mb-4">
+      <div class="card-body">
+        <h6 class="fw-bold mb-1">Wer nicht bezahlt hat</h6>
+        <p class="hinweis mb-3">
+          Angemeldete Nutzer, also deine eigenen Kundendaten. Bei
+          <span class="badge bg-danger">technik</span>,
+          <span class="badge bg-danger">sitzung</span> oder
+          <span class="badge bg-danger">limit</span> lohnt sich Nachfassen: die wollten zahlen
+          und konnten nicht.
+        </p>
+        {% if haenger %}
+        <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle">
+          <thead><tr>
+            <th>Konto</th><th>E-Mail</th><th>Tarif</th><th>Ausgang</th><th>Grund</th><th>Wann</th>
+          </tr></thead>
+          <tbody>
+          {% for z in haenger %}
+          <tr>
+            <td>{{ z.username or ('#' ~ z.user_id) }}</td>
+            <td class="mono">{{ z.email or '—' }}</td>
+            <td>{{ 'Jahr' if z.plan_type == 'yearly' else 'Monat' }}</td>
+            <td>
+              {% if z.ausgang == 'fehler' %}<span class="badge bg-danger">gescheitert</span>
+              {% else %}<span class="badge bg-warning text-dark">abgebrochen</span>{% endif %}
+            </td>
+            <td class="mono">{{ z.grund or 'offen' }}</td>
+            <td class="mono">{{ z.gestartet_at }}</td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% else %}
+        <p class="hinweis mb-0">Niemand — im gewählten Zeitraum wurde jeder begonnene Kauf abgeschlossen.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ── STARTSEITE ──────────────────────────────────────────────────────── #}
+    <div class="card shadow-sm mb-4">
+      <div class="card-body">
+        <h6 class="fw-bold mb-1">Wo auf der Startseite geklickt wird</h6>
+        <p class="hinweis mb-3" style="max-width:820px">
+          <strong>Anonym und nur als Tageszähler.</strong> Gespeichert wird ausschließlich
+          „Ziel X wurde am Tag Y in Sprache Z so oft angeklickt" — keine Kennung, keine IP,
+          kein Cookie, keine Uhrzeit. Deshalb braucht es kein Einwilligungsbanner. Der Preis
+          dafür: die <em>Reihenfolge</em> der Klicks eines Besuchs lässt sich nicht
+          rekonstruieren. Du siehst, <em>wo</em> geklickt wird, nicht, wer welchen Weg nahm.
+        </p>
+        {% if ziele %}
+        <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead><tr><th style="width:170px">Ziel</th><th>Klicks</th>
+            <th style="width:60px">DE</th><th style="width:60px">EN</th><th style="width:60px">FR</th></tr></thead>
+          <tbody>
+          {% set zmax = ziele[0].n %}
+          {% for e in ziele %}
+          <tr>
+            <td class="mono">{{ e.ziel }}</td>
+            <td><div class="balken" style="width:{{ (e.n / zmax * 100) }}%">{{ e.n }}</div></td>
+            <td class="mono">{{ e.de or '' }}</td>
+            <td class="mono">{{ e.en or '' }}</td>
+            <td class="mono">{{ e.fr or '' }}</td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% else %}
+        <p class="hinweis mb-0">
+          Noch keine Klicks erfasst{% if messbeginn_klicks %} (seit {{ messbeginn_klicks }}){% endif %}.
+        </p>
+        {% endif %}
+      </div>
+    </div>
+
+    <p class="hinweis">
+      Erfasst seit {{ messbeginn or '—' }} (Kaufweg) bzw. {{ messbeginn_klicks or '—' }} (Startseite).
+      Kaufversuche hängen am Konto und werden mit ihm gelöscht. Rechtsgrundlage ist die
+      Vertragsanbahnung (Art.&nbsp;6&nbsp;Abs.&nbsp;1&nbsp;lit.&nbsp;b&nbsp;DSGVO), nicht die
+      Nutzungsstatistik — deshalb greift der Widerspruch aus dem Profil hier bewusst nicht:
+      wer nicht bezahlen kann, muss auffindbar bleiben, sonst ist ihm nicht zu helfen.
+    </p>
+  </div>
+</body>
+</html>
