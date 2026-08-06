@@ -3475,9 +3475,22 @@ def admin_kaufweg():
     erster = query_db("SELECT MIN(gestartet_at) AS a FROM checkout_intents", [], one=True)
     erster_klick = query_db("SELECT MIN(tag) AS a FROM landing_clicks", [], one=True)
 
+    # Null ist zweideutig: "noch niemand geklickt" sieht genauso aus wie "wird
+    # gar nicht geschrieben". Beide Schreibwege schlucken Fehler absichtlich —
+    # eine Statistikzeile darf keinen Kauf verhindern —, und damit waere ein
+    # fehlender Tisch monatelang unsichtbar geblieben. Deshalb wird hier
+    # ausdruecklich nachgesehen und auf der Seite gesagt, was Sache ist.
+    fehlend = []
+    for t in ('checkout_intents', 'landing_clicks'):
+        try:
+            query_db('SELECT 1 FROM ' + t + ' LIMIT 1', [])
+        except Exception:
+            fehlend.append(t)
+
     return render_template('admin_kaufweg.html', tage=tage, zeilen=zeilen,
                            zahlen=zahlen, gruende=gruende, haenger=haenger,
                            ziele=je_ziel, abo_klicks=abo_klicks,
+                           fehlende_tabellen=fehlend,
                            messbeginn=(erster or {}).get('a'),
                            messbeginn_klicks=(erster_klick or {}).get('a'))
 

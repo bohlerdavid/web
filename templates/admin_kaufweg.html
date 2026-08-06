@@ -48,6 +48,24 @@
       <a href="{{ url_for('admin_nutzung') }}">Wo prallen sie ab?</a>.
     </p>
 
+    {% if fehlende_tabellen %}
+    <div class="card shadow-sm mb-4" style="border-color:#fca5a5;background:#fef2f2">
+      <div class="card-body">
+        <h6 class="fw-bold mb-1 text-danger">
+          <i class="bi bi-exclamation-octagon me-1"></i>Es wird gerade NICHTS aufgezeichnet</h6>
+        <p class="hinweis mb-0">
+          Diese Tabelle fehlt: <span class="mono">{{ fehlende_tabellen|join(', ') }}</span>.
+          Beide Schreibwege schlucken Datenbankfehler absichtlich — eine Statistikzeile darf
+          keinen Kauf verhindern. Der Preis dafür ist, dass ein fehlender Tisch sonst still
+          bliebe und die Nullen unten wie „noch keine Klicks“ aussähen. <strong>Die Zahlen auf
+          dieser Seite sind daher wertlos, bis das behoben ist.</strong>
+          <span class="mono">init_db()</span> legt die Tabellen beim Start an — ein Neustart der
+          App genügt in der Regel.
+        </p>
+      </div>
+    </div>
+    {% endif %}
+
     {% if not messbeginn %}
     <div class="card shadow-sm mb-4" style="border-color:#fcd34d;background:#fffbeb">
       <div class="card-body">
