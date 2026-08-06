@@ -3682,6 +3682,20 @@ def admin_stripe_check():
     # Stripe nirgends sichtbar war. Hier wird der Kauf mit DENSELBEN Werten
     # angestossen wie im echten Knopf — und die Antwort im Klartext gezeigt.
     # Es entsteht hoechstens eine unbezahlte Checkout-Sitzung; die verfaellt.
+    L.append('=== Webhook: die letzten Fehlschlaege ===')
+    try:
+        zeilen = query_db("SELECT ran_at, note FROM cron_runs WHERE job='stripe-webhook' "
+                          "AND ok=0 ORDER BY ran_at DESC LIMIT 10", [])
+        if zeilen:
+            for z in zeilen:
+                L.append('  ' + str(z['ran_at']) + '  ' + str(z['note'] or '')[:300])
+        else:
+            L.append('  Keine — seit dem Umbau ist kein Ereignis mehr gescheitert.')
+            L.append('  (Aeltere Fehlschlaege stehen nur bei Stripe; wir haben sie damals')
+            L.append('   mit einem nichtssagenden 400 beantwortet und nirgends festgehalten.)')
+    except Exception as e:
+        L.append('  Protokoll nicht lesbar: ' + type(e).__name__)
+    L.append('')
     L.append('=== Probelauf: derselbe Aufruf wie der Kauf-Knopf ===')
     if not sk or not price_m:
         L.append('Kein Schluessel oder kein Monatspreis gesetzt — Probelauf entfaellt.')
@@ -4506,8 +4520,16 @@ def stripe_webhook():
     try:
         _handle_stripe_event(event)
     except Exception as e:
-        logger.error('Stripe webhook: Ereignis %s (%s) nicht verarbeitet — %s: %s',
-                     event.get('type'), event.get('id'), type(e).__name__, str(e)[:400])
+        grund = '%s: %s' % (type(e).__name__, str(e)[:400])
+        logger.error('Stripe webhook: Ereignis %s (%s) nicht verarbeitet — %s',
+                     event.get('type'), event.get('id'), grund)
+        # ...und zusaetzlich dorthin, wo man ohne Server-Logs hinkommt. Genau
+        # daran hing die Suche: Stripe zeigt nur unsere nichtssagende Antwort
+        # ("Webhook error"), und an die Railway-Logs kommt man im Zweifel nicht
+        # schnell genug heran. cron_runs ist dafuer schon da.
+        _cron_protokoll('stripe-webhook', False,
+                        '%s (%s): %s' % (event.get('type'), event.get('id'), grund),
+                        'fehler')
     return jsonify(ok=True)
 
 
