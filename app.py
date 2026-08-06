@@ -3682,17 +3682,31 @@ def admin_stripe_check():
     # Stripe nirgends sichtbar war. Hier wird der Kauf mit DENSELBEN Werten
     # angestossen wie im echten Knopf — und die Antwort im Klartext gezeigt.
     # Es entsteht hoechstens eine unbezahlte Checkout-Sitzung; die verfaellt.
-    L.append('=== Webhook: die letzten Fehlschlaege ===')
+    L.append('=== Webhook ===')
     try:
+        gut = query_db("SELECT ran_at, note FROM cron_runs WHERE job='stripe-webhook' "
+                       "AND ok=1 ORDER BY ran_at DESC LIMIT 1", [], one=True)
+        schlecht = query_db("SELECT ran_at, note FROM cron_runs WHERE job='stripe-webhook' "
+                            "AND ok=0 ORDER BY ran_at DESC LIMIT 1", [], one=True)
+        L.append('Zuletzt ERFOLGREICH verarbeitet: '
+                 + (str(gut['ran_at']) + '   ' + str(gut['note'] or '')[:80]
+                    if gut else 'noch nie'))
+        L.append('Zuletzt GESCHEITERT:             '
+                 + (str(schlecht['ran_at']) if schlecht else 'noch nie'))
+        if gut and schlecht and gut['ran_at'] > schlecht['ran_at']:
+            L.append('--> Der letzte Fehlschlag ist AELTER als der letzte Erfolg.')
+            L.append('    Der Webhook laeuft; was darunter steht, ist Vergangenheit.')
+        elif schlecht and (not gut or schlecht['ran_at'] >= gut['ran_at']):
+            L.append('--> Der letzte Zustellversuch ist GESCHEITERT — Spur unten.')
+        L.append('')
         zeilen = query_db("SELECT ran_at, note FROM cron_runs WHERE job='stripe-webhook' "
-                          "AND ok=0 ORDER BY ran_at DESC LIMIT 10", [])
+                          "AND ok=0 ORDER BY ran_at DESC LIMIT 5", [])
         if zeilen:
+            L.append('Die letzten Fehlschlaege (aelteste Eintraege bleiben stehen):')
             for z in zeilen:
                 L.append('  ' + str(z['ran_at']) + '  ' + str(z['note'] or '')[:300])
         else:
-            L.append('  Keine — seit dem Umbau ist kein Ereignis mehr gescheitert.')
-            L.append('  (Aeltere Fehlschlaege stehen nur bei Stripe; wir haben sie damals')
-            L.append('   mit einem nichtssagenden 400 beantwortet und nirgends festgehalten.)')
+            L.append('Kein Fehlschlag protokolliert.')
     except Exception as e:
         L.append('  Protokoll nicht lesbar: ' + type(e).__name__)
     L.append('')
@@ -4580,6 +4594,11 @@ def _stripe_webhook_verarbeiten():
     # bei jedem Aufruf frisch von Stripe (_sync_user_from_stripe).
     try:
         _handle_stripe_event(event)
+        # Auch der ERFOLG wird festgehalten. Ohne ihn sieht man in der
+        # Fehlerliste nur alte Eintraege und weiss nicht, ob seither ueberhaupt
+        # etwas angekommen ist — genau diese Verwechslung gab es schon.
+        _cron_protokoll('stripe-webhook', True,
+                        '%s (%s)' % (event.get('type'), event.get('id')), 'ok')
     except Exception:
         import traceback
         spur = traceback.format_exc()
